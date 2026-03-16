@@ -1,0 +1,19 @@
+{
+  "name": "helmos-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AngularJS landing page for HelmOS",
+  "dependencies": {
+    "angular": "^1.8.3",
+    "angular-route": "^1.8.3",
+    "bootstrap": "^5.3.8"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "check": "sh -c \"node --check server.js && find app -name '*.js' -print0 | xargs -0 -n1 node --check\""
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

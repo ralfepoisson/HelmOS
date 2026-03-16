@@ -1,0 +1,8 @@
+<article class="feature-card h-100">
+  <div class="feature-icon">{{ $ctrl.feature.icon }}</div>
+  <h3>{{ $ctrl.feature.title }}</h3>
+  <p>{{ $ctrl.feature.description }}</p>
+  <ul class="feature-list list-unstyled mb-0">
+    <li ng-repeat="bullet in $ctrl.feature.bullets track by bullet">{{ bullet }}</li>
+  </ul>
+</article>

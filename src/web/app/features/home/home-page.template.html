@@ -1,0 +1,136 @@
+<div class="landing-page" ng-if="$ctrl.content">
+  <site-header navigation="$ctrl.content.navigation" cta="$ctrl.content.hero.primaryCta"></site-header>
+
+  <section class="hero-section" id="platform">
+    <div class="hero-background" aria-hidden="true"></div>
+    <div class="container">
+      <div class="hero-frame">
+        <div class="row align-items-center g-5">
+          <div class="col-lg-6">
+            <div class="eyebrow">{{ $ctrl.content.hero.eyebrow }}</div>
+            <h1 class="hero-title">
+              <span ng-repeat="line in $ctrl.content.hero.title track by $index">{{ line }}</span>
+            </h1>
+            <p class="hero-copy">{{ $ctrl.content.hero.description }}</p>
+
+            <div class="hero-actions">
+              <a class="btn btn-helmos" ng-href="{{ $ctrl.content.hero.primaryCta.href }}">
+                {{ $ctrl.content.hero.primaryCta.label }}
+              </a>
+              <a class="btn btn-secondary-helmos" ng-href="{{ $ctrl.content.hero.secondaryCta.href }}">
+                {{ $ctrl.content.hero.secondaryCta.label }}
+              </a>
+            </div>
+
+            <ul class="hero-highlights list-unstyled mb-0">
+              <li ng-repeat="highlight in $ctrl.content.hero.highlights track by highlight">{{ highlight }}</li>
+            </ul>
+          </div>
+
+          <div class="col-lg-6">
+            <div class="hero-visual">
+              <div class="signal-card signal-card-top">
+                <div class="signal-label">{{ $ctrl.content.hero.signalCards[0].label }}</div>
+                <div class="signal-value">{{ $ctrl.content.hero.signalCards[0].value }}</div>
+                <div class="signal-detail">{{ $ctrl.content.hero.signalCards[0].detail }}</div>
+              </div>
+              <div class="signal-card signal-card-bottom">
+                <div class="signal-label">{{ $ctrl.content.hero.signalCards[1].label }}</div>
+                <div class="signal-value">{{ $ctrl.content.hero.signalCards[1].value }}</div>
+                <div class="signal-detail">{{ $ctrl.content.hero.signalCards[1].detail }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-shell trust-section" id="agents">
+    <div class="container">
+      <div class="section-heading text-center">
+        <p class="section-kicker">Trusted by AI-first founders</p>
+        <h2>Build the company before the company builds itself.</h2>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-lg-4" ng-repeat="feature in $ctrl.content.pillars track by feature.title">
+          <feature-card feature="feature"></feature-card>
+        </div>
+      </div>
+
+      <trust-logo-strip logos="$ctrl.content.logos"></trust-logo-strip>
+    </div>
+  </section>
+
+  <section class="section-shell workflow-section" id="workflow">
+    <div class="container">
+      <div class="row g-5 align-items-start">
+        <div class="col-lg-4">
+          <div class="section-heading sticky-section-heading">
+            <p class="section-kicker">How it works</p>
+            <h2>From idea to operating company in one founder workflow.</h2>
+            <p class="section-copy">
+              HelmOS follows the same loop described in the product vision: plan, design, implement,
+              test, evaluate, and improve.
+            </p>
+          </div>
+        </div>
+
+        <div class="col-lg-8">
+          <div class="workflow-list">
+            <article class="workflow-step" ng-repeat="step in $ctrl.content.workflow track by step.step">
+              <div class="workflow-number">{{ step.step }}</div>
+              <div class="workflow-body">
+                <h3>{{ step.title }}</h3>
+                <p>{{ step.description }}</p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-shell governance-section" id="governance">
+    <div class="container">
+      <div class="governance-panel">
+        <div class="row g-5 align-items-center">
+          <div class="col-lg-6">
+            <p class="section-kicker">Governance layer</p>
+            <h2>{{ $ctrl.content.governance.title }}</h2>
+            <p class="section-copy">{{ $ctrl.content.governance.description }}</p>
+            <ul class="governance-list list-unstyled mb-0">
+              <li ng-repeat="check in $ctrl.content.governance.checks track by check">{{ check }}</li>
+            </ul>
+          </div>
+          <div class="col-lg-6">
+            <div class="governance-grid">
+              <div class="governance-card">
+                <span class="governance-card-label">Operating mode</span>
+                <strong>Autonomous where possible</strong>
+                <p>Founders keep strategic control while agents execute continuously inside clear guardrails.</p>
+              </div>
+              <div class="governance-card">
+                <span class="governance-card-label">Audit trail</span>
+                <strong>Every decision stays reviewable</strong>
+                <p>Artefacts, outputs, approvals, and escalations remain visible across the product lifecycle.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-shell cta-section" id="launch">
+    <div class="container">
+      <div class="cta-band">
+        <p class="section-kicker">Launch</p>
+        <h2>{{ $ctrl.content.launch.title }}</h2>
+        <p class="section-copy">{{ $ctrl.content.launch.description }}</p>
+        <a class="btn btn-helmos" ng-href="{{ $ctrl.content.launch.cta.href }}">{{ $ctrl.content.launch.cta.label }}</a>
+      </div>
+    </div>
+  </section>
+</div>

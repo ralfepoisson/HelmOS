@@ -1,0 +1,31 @@
+<header class="top-shell">
+  <div class="container">
+    <nav class="navbar navbar-expand-lg helm-navbar">
+      <a class="navbar-brand brand-lockup" href="/">
+        <img src="assets/media/helm-mark.svg" alt="HelmOS logo" class="brand-mark" />
+        <span>HelmOS</span>
+      </a>
+
+      <button
+        type="button"
+        class="navbar-toggler helm-toggler"
+        aria-label="Toggle navigation"
+        ng-click="$ctrl.toggleMenu()"
+      >
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" ng-class="{ show: $ctrl.isMenuOpen }">
+        <ul class="navbar-nav mx-auto mb-3 mb-lg-0">
+          <li class="nav-item" ng-repeat="item in $ctrl.navigation track by item.label">
+            <a class="nav-link" ng-href="{{ item.href }}" ng-click="$ctrl.closeMenu()">{{ item.label }}</a>
+          </li>
+        </ul>
+
+        <a class="btn btn-helmos btn-helmos-sm" ng-href="{{ $ctrl.cta.href }}" ng-click="$ctrl.closeMenu()">
+          {{ $ctrl.cta.label }}
+        </a>
+      </div>
+    </nav>
+  </div>
+</header>

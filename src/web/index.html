@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" ng-app="helmosApp">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HelmOS | Steer Autonomous Companies</title>
+    <meta
+      name="description"
+      content="HelmOS is the operating system for AI-native founders to design companies, deploy autonomous agents, and govern execution."
+    />
+    <base href="/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="node_modules/bootstrap/dist/css/bootstrap.min.css"
+    />
+    <link rel="stylesheet" href="assets/styles/main.css" />
+  </head>
+  <body ng-cloak>
+    <main ng-view class="site-shell"></main>
+
+    <script src="node_modules/angular/angular.min.js"></script>
+    <script src="node_modules/angular-route/angular-route.min.js"></script>
+
+    <script src="app/core/core.module.js"></script>
+    <script src="app/shared/shared.module.js"></script>
+    <script src="app/features/features.module.js"></script>
+
+    <script src="app/core/services/site-content.service.js"></script>
+
+    <script src="app/shared/components/site-header/site-header.component.js"></script>
+    <script src="app/shared/components/feature-card/feature-card.component.js"></script>
+    <script src="app/shared/components/trust-logo-strip/trust-logo-strip.component.js"></script>
+
+    <script src="app/features/home/home.module.js"></script>
+    <script src="app/features/home/home-page.component.js"></script>
+
+    <script src="app/app.module.js"></script>
+    <script src="app/app.routes.js"></script>
+  </body>
+</html>

@@ -1,0 +1,38 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="helmGradient" x1="15" y1="18" x2="109" y2="111" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8E8FF"/>
+      <stop offset="0.4" stop-color="#B86CFF"/>
+      <stop offset="1" stop-color="#73F0FF"/>
+    </linearGradient>
+    <filter id="helmGlow" x="0" y="0" width="128" height="128" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <circle cx="64" cy="64" r="36" stroke="url(#helmGradient)" stroke-width="6"/>
+  <circle cx="64" cy="64" r="8" fill="#F8E8FF"/>
+  <g stroke="url(#helmGradient)" stroke-width="6" stroke-linecap="round" filter="url(#helmGlow)">
+    <path d="M64 18V42"/>
+    <path d="M64 86V110"/>
+    <path d="M18 64H42"/>
+    <path d="M86 64H110"/>
+    <path d="M31.5 31.5L47.5 47.5"/>
+    <path d="M80.5 80.5L96.5 96.5"/>
+    <path d="M31.5 96.5L47.5 80.5"/>
+    <path d="M80.5 47.5L96.5 31.5"/>
+  </g>
+  <g fill="#F8E8FF">
+    <circle cx="64" cy="14" r="7"/>
+    <circle cx="64" cy="114" r="7"/>
+    <circle cx="14" cy="64" r="7"/>
+    <circle cx="114" cy="64" r="7"/>
+    <circle cx="27" cy="27" r="7"/>
+    <circle cx="101" cy="101" r="7"/>
+    <circle cx="27" cy="101" r="7"/>
+    <circle cx="101" cy="27" r="7"/>
+  </g>
+</svg>
