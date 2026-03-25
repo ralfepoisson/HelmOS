@@ -8,10 +8,11 @@ class StructuredOutputNormalizer:
 
     def normalize(self, output: AgentExecutionOutput) -> dict:
         artifact = output.artifact.model_dump()
-        return {
+        base = {
             "agent_key": output.agent_key,
             "version": output.version,
             "artifact": artifact,
+            "debug": output.debug,
             "intermediate_notes": output.intermediate_notes,
             "citations": output.citations,
             "next_actions": output.next_actions,
@@ -19,3 +20,9 @@ class StructuredOutputNormalizer:
             "approval_reason": output.approval_reason,
             "requested_tools": output.requested_tools,
         }
+        if output.structured_output:
+            return {
+                **base,
+                **output.structured_output,
+            }
+        return base

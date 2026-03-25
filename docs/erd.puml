@@ -24,6 +24,8 @@ package "Identity & Ownership" {
     email : VARCHAR(320) <<UK>>
     display_name : VARCHAR(200)
     avatar_url : TEXT
+    app_role : VARCHAR(20)
+    life2_account_id : VARCHAR(255)
     auth_provider : VARCHAR(50)
     auth_provider_user_id : VARCHAR(255)
     created_at : TIMESTAMP
@@ -53,6 +55,13 @@ package "Identity & Ownership" {
     UNIQUE(organisation_id, user_id)
   }
 }
+
+note right of users
+Life2 JWT identities are materialised locally
+when protected routes are accessed.
+app_role controls HelmOS-wide admin RBAC.
+life2_account_id supports tenant-aware admin bootstrap.
+end note
 
 package "Business Context" {
   entity "companies" as companies {

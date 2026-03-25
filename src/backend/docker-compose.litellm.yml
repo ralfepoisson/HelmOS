@@ -7,6 +7,9 @@ services:
       - .env.litellm
     ports:
       - "${LITELLM_PROXY_PORT:-4000}:4000"
+    networks:
+      - default
+      - litellm_db_net
     volumes:
       - ./infra/litellm/config.yaml:/app/config.yaml:ro
     command:
@@ -14,3 +17,8 @@ services:
       - "/app/config.yaml"
       - "--port"
       - "4000"
+
+networks:
+  litellm_db_net:
+    external: true
+    name: litellm_default

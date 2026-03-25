@@ -103,6 +103,7 @@ export interface StrategyCopilotChat {
   panelSubtitle: string;
   placeholder: string;
   messages: ChatMessage[];
+  resendAvailable?: boolean;
 }
 
 export interface StrategyCopilotData {

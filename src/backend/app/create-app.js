@@ -2,6 +2,7 @@ const express = require("express");
 
 const { createApiRouter } = require("./api/router");
 const { errorHandler } = require("./api/error-handler");
+const { buildRequestLogger } = require("./api/request-log-middleware");
 const { createAgentGatewayClient } = require("./services/agent-gateway-client");
 
 function isAllowedOrigin(origin) {
@@ -21,7 +22,10 @@ function createApp({ prisma, agentGatewayClient }) {
   const app = express();
   const gatewayClient =
     agentGatewayClient ??
-    createAgentGatewayClient({ baseUrl: process.env.AGENT_GATEWAY_BASE_URL });
+    createAgentGatewayClient({
+      baseUrl: process.env.AGENT_GATEWAY_BASE_URL || "http://127.0.0.1:8000/api/v1",
+      prisma,
+    });
 
   app.disable("x-powered-by");
   app.use((req, res, next) => {
@@ -41,6 +45,7 @@ function createApp({ prisma, agentGatewayClient }) {
     next();
   });
   app.use(express.json({ limit: "1mb" }));
+  app.use(buildRequestLogger({ prisma }));
 
   app.use("/api", createApiRouter({ prisma, agentGatewayClient: gatewayClient }));
 

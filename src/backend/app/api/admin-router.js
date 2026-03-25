@@ -3,9 +3,11 @@ const { z } = require("zod");
 
 const {
   createAgentAdmin,
+  loadAgentAdminRecord,
   loadAgentAdminSnapshot,
   updateAgentAdmin,
 } = require("../services/agent-admin.service");
+const { searchLogEntries, SUPPORTED_LEVELS } = require("../services/log-entry.service");
 
 const stringField = (max) => {
   const base = z.string().trim().min(1);
@@ -65,11 +67,42 @@ function ensureUpdatePayload(data) {
 function createAdminRouter({ prisma, agentGatewayClient }) {
   const router = express.Router();
 
+  router.get("/logs", async (req, res) => {
+    const snapshot = await searchLogEntries(prisma, {
+      query: req.query.q,
+      timeRange: req.query.timeRange,
+      levels: req.query.levels,
+      limit: 100,
+    });
+
+    res.json({
+      data: {
+        ...snapshot,
+        availableLevels: SUPPORTED_LEVELS,
+      },
+    });
+  });
+
   router.get("/agents", async (_req, res) => {
     const snapshot = await loadAgentAdminSnapshot(prisma, agentGatewayClient);
 
     res.json({
       data: snapshot,
+    });
+  });
+
+  router.get("/agents/:id", async (req, res) => {
+    const agent = await loadAgentAdminRecord(prisma, req.params.id, agentGatewayClient);
+
+    if (!agent) {
+      res.status(404).json({
+        error: "Agent not found",
+      });
+      return;
+    }
+
+    res.json({
+      data: agent,
     });
   });
 

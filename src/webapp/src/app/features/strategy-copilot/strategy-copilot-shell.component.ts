@@ -1,3 +1,4 @@
+import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { TopNavComponent } from '../../core/layout/top-nav.component';
@@ -9,7 +10,7 @@ import { AgentChatPanelComponent } from '../ideation/agent-chat-panel.component'
 @Component({
   selector: 'app-strategy-copilot-shell',
   standalone: true,
-  imports: [TopNavComponent, StrategySidebarComponent, AgentChatPanelComponent],
+  imports: [CommonModule, TopNavComponent, StrategySidebarComponent, AgentChatPanelComponent],
   template: `
     <app-top-nav
       [productName]="productName"
@@ -23,7 +24,11 @@ import { AgentChatPanelComponent } from '../ideation/agent-chat-panel.component'
 
     <main class="screen-shell container-fluid" data-testid="strategy-copilot-shell">
       <div class="row g-0 shell-grid">
-        <div class="col-12 col-lg-4 col-xl-3 strategy-column" data-testid="strategy-column">
+        <div
+          *ngIf="showStrategySidebar"
+          class="col-12 col-lg-4 col-xl-3 strategy-column"
+          data-testid="strategy-column"
+        >
           <app-strategy-sidebar
             [activeToolId]="activeToolId"
             [tools]="primaryTools"
@@ -33,7 +38,14 @@ import { AgentChatPanelComponent } from '../ideation/agent-chat-panel.component'
           />
         </div>
 
-        <div class="col-12 col-lg-8 col-xl-6 workspace-column" data-testid="workspace-column">
+        <div
+          class="workspace-column"
+          [class.col-12]="true"
+          [class.col-lg-8]="showStrategySidebar"
+          [class.col-xl-6]="showStrategySidebar"
+          [class.col-xl-9]="!showStrategySidebar"
+          data-testid="workspace-column"
+        >
           <ng-content />
         </div>
 
@@ -44,7 +56,9 @@ import { AgentChatPanelComponent } from '../ideation/agent-chat-panel.component'
             [placeholder]="placeholder"
             [messages]="messages"
             [isSending]="isSending"
+            [resendAvailable]="resendAvailable"
             (messageSend)="messageSend.emit($event)"
+            (resendLastMessage)="resendLastMessage.emit()"
           />
         </div>
       </div>
@@ -118,6 +132,9 @@ export class StrategyCopilotShellComponent {
   @Input({ required: true }) placeholder!: string;
   @Input({ required: true }) messages: ChatMessage[] = [];
   @Input() isSending = false;
+  @Input() resendAvailable = false;
+  @Input() showStrategySidebar = true;
   @Output() readonly workspaceChange = new EventEmitter<string>();
   @Output() readonly messageSend = new EventEmitter<string>();
+  @Output() readonly resendLastMessage = new EventEmitter<void>();
 }

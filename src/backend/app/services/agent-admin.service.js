@@ -1,3 +1,5 @@
+const { createLogEntry } = require("./log-entry.service");
+
 function normalizeToolList(value) {
   if (!Array.isArray(value)) {
     return [];
@@ -12,7 +14,8 @@ function getAgentKeyFromPromptKey(key) {
   }
 
   const [agentKey] = key.split(".");
-  return agentKey || null;
+  const normalized = normalizeAgentKeySeed(agentKey);
+  return normalized || null;
 }
 
 function normalizeAgentKeySeed(value) {
@@ -104,6 +107,22 @@ function mapAdminAgent(agentDefinition, promptConfig, runtimeAgent) {
   };
 }
 
+function buildPromptConfigByAgentKey(promptConfigs) {
+  const promptConfigByAgentKey = new Map();
+  for (const promptConfig of promptConfigs) {
+    const agentKey = getAgentKeyFromPromptKey(promptConfig.key);
+    if (agentKey && !promptConfigByAgentKey.has(agentKey)) {
+      promptConfigByAgentKey.set(agentKey, promptConfig);
+    }
+  }
+
+  return promptConfigByAgentKey;
+}
+
+function buildRuntimeAgentByKey(gateway) {
+  return new Map((gateway.agents ?? []).map((agent) => [agent.key, agent]));
+}
+
 async function loadAgentAdminSnapshot(prisma, agentGatewayClient) {
   const [agentDefinitions, promptConfigs, gateway] = await Promise.all([
     prisma.agentDefinition.findMany({
@@ -118,17 +137,8 @@ async function loadAgentAdminSnapshot(prisma, agentGatewayClient) {
     agentGatewayClient.getAdminSnapshot(),
   ]);
 
-  const promptConfigByAgentKey = new Map();
-  for (const promptConfig of promptConfigs) {
-    const agentKey = getAgentKeyFromPromptKey(promptConfig.key);
-    if (agentKey && !promptConfigByAgentKey.has(agentKey)) {
-      promptConfigByAgentKey.set(agentKey, promptConfig);
-    }
-  }
-
-  const runtimeAgentByKey = new Map(
-    (gateway.agents ?? []).map((agent) => [agent.key, agent]),
-  );
+  const promptConfigByAgentKey = buildPromptConfigByAgentKey(promptConfigs);
+  const runtimeAgentByKey = buildRuntimeAgentByKey(gateway);
 
   return {
     gateway,
@@ -140,6 +150,36 @@ async function loadAgentAdminSnapshot(prisma, agentGatewayClient) {
       ),
     ),
   };
+}
+
+async function loadAgentAdminRecord(prisma, agentId, agentGatewayClient) {
+  const [agentDefinition, promptConfigs, gateway] = await Promise.all([
+    prisma.agentDefinition.findUnique({
+      where: {
+        id: agentId,
+      },
+    }),
+    prisma.promptConfig.findMany({
+      where: {
+        active: true,
+      },
+      orderBy: [{ updatedAt: "desc" }],
+    }),
+    agentGatewayClient.getAdminSnapshot(),
+  ]);
+
+  if (!agentDefinition) {
+    return null;
+  }
+
+  const promptConfigByAgentKey = buildPromptConfigByAgentKey(promptConfigs);
+  const runtimeAgentByKey = buildRuntimeAgentByKey(gateway);
+
+  return mapAdminAgent(
+    agentDefinition,
+    promptConfigByAgentKey.get(agentDefinition.key) ?? null,
+    runtimeAgentByKey.get(agentDefinition.key) ?? null,
+  );
 }
 
 async function createAgentAdmin(prisma, payload, agentGatewayClient) {
@@ -183,6 +223,20 @@ async function createAgentAdmin(prisma, payload, agentGatewayClient) {
           promptTemplate: payload.promptConfig.promptTemplate,
           configJson: payload.promptConfig.configJson ?? {},
           active: true,
+        },
+      });
+
+      await createLogEntry(tx, {
+        level: "info",
+        scope: "agent-admin",
+        event: "agent_created",
+        message: `Created agent "${payload.name}" with prompt key "${promptKey}"`,
+        context: {
+          agentKey: createdAgentKey,
+          version: payload.version,
+          promptKey,
+          promptVersion: payload.promptConfig.version,
+          promptTemplate: payload.promptConfig.promptTemplate,
         },
       });
     }
@@ -278,6 +332,33 @@ async function updateAgentAdmin(prisma, agentId, payload, agentGatewayClient) {
           },
         });
       }
+
+      await createLogEntry(tx, {
+        level: "info",
+        scope: "agent-admin",
+        event: "agent_updated",
+        message: `Updated agent "${existingAgent.name}" prompt configuration`,
+        context: {
+          agentId,
+          agentKey: existingAgent.key,
+          updatedFields: Object.keys(agentUpdate),
+          promptKey,
+          promptVersion: payload.promptConfig.version,
+          promptTemplate: payload.promptConfig.promptTemplate,
+        },
+      });
+    } else if (Object.keys(agentUpdate).length > 0) {
+      await createLogEntry(tx, {
+        level: "info",
+        scope: "agent-admin",
+        event: "agent_updated",
+        message: `Updated agent "${existingAgent.name}" registry settings`,
+        context: {
+          agentId,
+          agentKey: existingAgent.key,
+          updatedFields: Object.keys(agentUpdate),
+        },
+      });
     }
   });
 
@@ -288,6 +369,7 @@ async function updateAgentAdmin(prisma, agentId, payload, agentGatewayClient) {
 
 module.exports = {
   createAgentAdmin,
+  loadAgentAdminRecord,
   loadAgentAdminSnapshot,
   updateAgentAdmin,
 };

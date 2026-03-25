@@ -34,6 +34,22 @@ The design centres on:
 5. Outputs are normalized and stored as `Artifact` records.
 6. Audit events, checkpoint references, and trace references are persisted for observability and resumption.
 
+## Local Development Routing
+
+For local product work, the Angular dev server acts as a small edge proxy:
+
+- `/api` is forwarded to the Node control-plane backend on `127.0.0.1:3001`
+- `/api/v1` is forwarded to the FastAPI Agent Gateway on `127.0.0.1:8000`
+
+That means the ideation workspace can stay on same-origin browser paths while
+still talking to both backend surfaces:
+
+- business idea CRUD and agent admin flows through the Node control plane
+- durable agent runs and approvals through the FastAPI gateway
+
+The frontend retains direct fallback logic for resilience in development, but
+the proxy path is now the intended local integration route.
+
 ## Key Boundaries
 
 ### API
@@ -138,6 +154,30 @@ The backend now treats LiteLLM proxy as the single LLM ingress point.
 - LiteLLM maps those aliases to upstream provider models
 - provider credentials live in the LiteLLM container environment instead of the backend process
 - this keeps rotation, fallback, and future routing policy centralized
+
+## Runtime Prompt Composition
+
+Runtime agents are expected to send a rich composite system prompt to the
+LLM, not just a single flat sentence.
+
+When an agent is configured through Agent Admin, the runtime prompt is
+assembled from the active prompt config using these inputs:
+
+- `config_json.system_prompt` when an explicit override is present
+- otherwise `config_json.promptSections.rolePersona`
+- `config_json.promptSections.taskInstructions`
+- `config_json.promptSections.constraints`
+- `config_json.promptSections.outputFormat`
+- `config_json.purpose`
+- `config_json.scopeNotes`
+- execution metadata such as reasoning mode, retry policy, max steps,
+  timeout, and lifecycle state
+- permitted tool metadata from `config_json.toolPermissions`
+
+This means the LLM-facing system prompt should reflect the rich prompt
+configuration shown in Agent Admin. The prompt template remains a
+separate user-prompt scaffold and should not be treated as the only
+source of runtime instruction.
 
 ## Current Limits
 

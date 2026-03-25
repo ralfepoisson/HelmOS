@@ -32,9 +32,27 @@ export class BusinessIdeasApiService {
     return this.parseApiResponse<StrategyCopilotData>(response, 'create the business idea');
   }
 
+  async sendIdeationMessage(workspaceId: string, messageText: string): Promise<StrategyCopilotData> {
+    const response = await this.requestWithDevFallback(
+      `/business-ideas/${workspaceId}/ideation/messages`,
+      { messageText },
+      'POST'
+    );
+    return this.parseApiResponse<StrategyCopilotData>(response, 'send the ideation chat message');
+  }
+
+  async resendLastIdeationMessage(workspaceId: string): Promise<StrategyCopilotData> {
+    const response = await this.requestWithDevFallback(
+      `/business-ideas/${workspaceId}/ideation/messages/retry-last`,
+      {},
+      'POST'
+    );
+    return this.parseApiResponse<StrategyCopilotData>(response, 'resend the latest ideation chat message');
+  }
+
   private async requestWithDevFallback(
     path: string,
-    payload?: { name: string; businessType: BusinessType },
+    payload?: unknown,
     method: 'GET' | 'POST' = 'GET'
   ): Promise<HttpResponse<string>> {
     if (this.preferredApiBaseUrl === this.fallbackApiBaseUrl && this.fallbackApiBaseUrl) {
@@ -67,7 +85,7 @@ export class BusinessIdeasApiService {
   private async requestText(
     url: string,
     method: 'GET' | 'POST',
-    payload?: { name: string; businessType: BusinessType }
+    payload?: unknown
   ): Promise<HttpResponse<string>> {
     if (method === 'POST') {
       return firstValueFrom(

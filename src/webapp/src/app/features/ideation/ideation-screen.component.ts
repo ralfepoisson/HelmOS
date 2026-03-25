@@ -40,8 +40,11 @@ import { StrategyCopilotShellComponent } from '../strategy-copilot/strategy-copi
         [placeholder]="placeholder"
         [messages]="messages"
         [isSending]="isSendingAgentMessage"
+        [resendAvailable]="canResendLastUserMessage"
+        [showStrategySidebar]="shouldShowStrategySidebar"
         (workspaceChange)="handleWorkspaceSelection($event)"
         (messageSend)="handleAgentMessage($event)"
+        (resendLastMessage)="handleResendLastMessage()"
       >
         <app-ideation-workspace
           [title]="pageTitle"
@@ -130,6 +133,15 @@ export class IdeationScreenComponent implements OnInit {
   isSendingAgentMessage = false;
   screenReady = false;
   private backendIdeasAvailable = false;
+  private lastFailedUserMessage: string | null = null;
+
+  get canResendLastUserMessage(): boolean {
+    return !this.isSendingAgentMessage && this.lastFailedUserMessage !== null;
+  }
+
+  get shouldShowStrategySidebar(): boolean {
+    return Number(this.overview?.completeness ?? 0) >= 50;
+  }
 
   constructor(
     private readonly route: ActivatedRoute,
@@ -170,23 +182,77 @@ export class IdeationScreenComponent implements OnInit {
   }
 
   async handleAgentMessage(message: string): Promise<void> {
-    this.messages = [
-      ...this.messages,
-      {
-        id: this.messages.length + 1,
-        role: 'user',
-        author: 'You',
-        content: message,
-        timestamp: 'Now'
-      }
-    ];
+    await this.sendMessageToAgent(message, { appendUserMessage: true });
+  }
+
+  async handleResendLastMessage(): Promise<void> {
+    if (!this.lastFailedUserMessage) {
+      return;
+    }
     this.isSendingAgentMessage = true;
 
     try {
+      if (this.backendIdeasAvailable && this.selectedWorkspaceId && this.selectedWorkspaceId !== this.shell.newIdeaOption.id) {
+        const strategyCopilot = await this.businessIdeasApi.resendLastIdeationMessage(this.selectedWorkspaceId);
+        this.applyStrategyCopilotData(strategyCopilot);
+        this.lastFailedUserMessage = null;
+        this.changeDetectorRef.detectChanges();
+        return;
+      }
+
+      await this.sendMessageToAgent(this.lastFailedUserMessage, { appendUserMessage: false });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'The ideation agent could not be reached.';
+      this.messages = [
+        ...this.messages,
+        {
+          id: this.messages.length + 1,
+          role: 'agent',
+          author: 'HelmOS Agent',
+          content: `I still could not resend that message successfully. ${detail}`,
+          timestamp: 'Now'
+        }
+      ];
+      this.changeDetectorRef.detectChanges();
+    } finally {
+      this.isSendingAgentMessage = false;
+      this.changeDetectorRef.detectChanges();
+    }
+  }
+
+  private async sendMessageToAgent(message: string, options: { appendUserMessage: boolean }): Promise<void> {
+    if (options.appendUserMessage) {
+      this.messages = [
+        ...this.messages,
+        {
+          id: this.messages.length + 1,
+          role: 'user',
+          author: 'You',
+          content: message,
+          timestamp: 'Now'
+        }
+      ];
+    }
+
+    this.lastFailedUserMessage = null;
+    this.isSendingAgentMessage = true;
+
+    try {
+      if (this.backendIdeasAvailable && this.selectedWorkspaceId && this.selectedWorkspaceId !== this.shell.newIdeaOption.id) {
+        const strategyCopilot = await this.businessIdeasApi.sendIdeationMessage(this.selectedWorkspaceId, message);
+        this.applyStrategyCopilotData(strategyCopilot);
+        this.lastFailedUserMessage = null;
+        this.changeDetectorRef.detectChanges();
+        return;
+      }
+
       const run = await this.agentGatewayApi.startIdeationRun(message, this.pageTitle);
       const summary = await this.agentGatewayApi.waitForRunCompletion(run.id);
       this.applyRunSummary(summary);
+      this.lastFailedUserMessage = null;
+      this.changeDetectorRef.detectChanges();
     } catch (error) {
+      this.lastFailedUserMessage = message;
       const detail = error instanceof Error ? error.message : 'The ideation agent could not be reached.';
       this.messages = [
         ...this.messages,
@@ -198,8 +264,10 @@ export class IdeationScreenComponent implements OnInit {
           timestamp: 'Now'
         }
       ];
+      this.changeDetectorRef.detectChanges();
     } finally {
       this.isSendingAgentMessage = false;
+      this.changeDetectorRef.detectChanges();
     }
   }
 
@@ -257,11 +325,14 @@ export class IdeationScreenComponent implements OnInit {
     this.completionHintTitle = strategyCopilot.workspace.completionHintTitle;
     this.completionHint = strategyCopilot.workspace.completionHint;
     this.overview = strategyCopilot.workspace.overview;
-    this.sections = strategyCopilot.workspace.sections;
+    this.sections = this.buildCompleteSectionSet(strategyCopilot.workspace.sections);
     this.panelTitle = strategyCopilot.chat.panelTitle;
     this.panelSubtitle = strategyCopilot.chat.panelSubtitle;
     this.placeholder = strategyCopilot.chat.placeholder;
-    this.messages = strategyCopilot.chat.messages;
+    this.messages = strategyCopilot.chat.messages.length > 0 ? strategyCopilot.chat.messages : this.chat.getMessages();
+    this.lastFailedUserMessage = strategyCopilot.chat.resendAvailable
+      ? [...this.messages].reverse().find((message) => message.role === 'user')?.content ?? null
+      : null;
   }
 
   private applyRunSummary(summary: RunSummaryResponse): void {
@@ -532,7 +603,7 @@ export class IdeationScreenComponent implements OnInit {
     this.completionHintTitle = this.workspace.completionHintTitle;
     this.completionHint = this.workspace.completionHint;
     this.overview = this.workspace.getOverview();
-    this.sections = this.workspace.getSections();
+    this.sections = this.buildCompleteSectionSet(this.workspace.getSections());
     this.panelTitle = this.chat.panelTitle;
     this.panelSubtitle = this.chat.panelSubtitle;
     this.placeholder = this.chat.placeholder;

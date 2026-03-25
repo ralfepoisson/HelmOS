@@ -41,6 +41,8 @@ class AgentExecutionOutput(BaseModel):
     agent_key: str
     version: str
     artifact: ArtifactPayload
+    structured_output: dict | None = None
+    debug: dict = Field(default_factory=dict)
     intermediate_notes: list[str] = Field(default_factory=list)
     citations: list[dict] = Field(default_factory=list)
     next_actions: list[str] = Field(default_factory=list)

@@ -1,59 +1,62 @@
-# HelmosWebapp
+# HelmOS Webapp
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.3.
+This Angular application is the founder-facing HelmOS product surface.
 
-## Development server
+## Local development
 
-To start a local development server, run:
-
-```bash
-ng serve
-```
-
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
-
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+Start the frontend:
 
 ```bash
-ng generate component component-name
+cd src/webapp
+npm start
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+The dev server runs on `http://127.0.0.1:4200/` by default.
 
-```bash
-ng generate --help
-```
+### Dev proxy
 
-## Building
+Angular dev proxying is enabled through [proxy.conf.json](/Users/ralfe/Dev/HelmOS/src/webapp/proxy.conf.json).
 
-To build the project run:
+Local routes are forwarded like this:
+
+- `/api` -> Node control-plane API on `http://127.0.0.1:3001`
+- `/api/v1` -> FastAPI Agent Gateway on `http://127.0.0.1:8000`
+
+This keeps frontend code on same-origin paths during local work, avoids browser CORS issues, and removes the need for the ideation screen to depend on dev-server HTML fallback behavior.
+
+## Typical full-stack local setup
+
+Run these services together when testing the ideation agent end to end:
+
+1. Node control plane on `3001`
+2. FastAPI Agent Gateway on `8000`
+3. LiteLLM proxy on `4000`
+4. Angular webapp on `4200`
+
+With that stack up, the ideation workspace can create agent runs through `/api/v1/runs` and still load business-idea workspace data through `/api`.
+
+## Build and test
+
+Build the app:
 
 ```bash
 ng build
 ```
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+Type-check the app:
 
-## Running unit tests
+```bash
+./node_modules/.bin/tsc -p tsconfig.app.json --noEmit
+```
 
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
+Run unit tests:
 
 ```bash
 ng test
 ```
 
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
+Run Playwright UI tests:
 
 ```bash
-ng e2e
+npm run ui:test
 ```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.

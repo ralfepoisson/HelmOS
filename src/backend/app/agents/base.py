@@ -1,6 +1,7 @@
 """Base specialist agent interface."""
 
 from abc import ABC, abstractmethod
+import json
 
 import structlog
 
@@ -35,13 +36,39 @@ class SpecialistAgent(ABC):
         return self.descriptor.allowed_tools
 
     def build_prompt(self, execution_input: AgentExecutionInput) -> str:
+        chat_history = execution_input.context.get(
+            "chat_history",
+            execution_input.context.get("recent_messages", []),
+        )
+        ideation_page_state = execution_input.context.get("ideation_page_state")
+        if not isinstance(ideation_page_state, dict):
+            ideation_page_state = {
+                key: value
+                for key, value in execution_input.context.items()
+                if key not in {"recent_messages", "chat_history", "latest_user_message"}
+            }
+        prompt_context = {
+            "prompt": execution_input.prompt,
+            "context": execution_input.context,
+            "constraints": execution_input.constraints,
+            "context_json": json.dumps(execution_input.context, ensure_ascii=False, indent=2, sort_keys=True),
+            "chat_history_json": json.dumps(chat_history, ensure_ascii=False, indent=2, sort_keys=True),
+            "ideation_page_state_json": json.dumps(
+                ideation_page_state,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+            "constraints_json": json.dumps(
+                execution_input.constraints,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+        }
         return self.template_renderer.render(
             self.instruction_template,
-            {
-                "prompt": execution_input.prompt,
-                "context": execution_input.context,
-                "constraints": execution_input.constraints,
-            },
+            prompt_context,
         )
 
     async def generate_text(

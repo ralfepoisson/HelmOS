@@ -11,39 +11,70 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { FaIconComponent } from '@fortawesome/angular-fontawesome';
+import { faRotateRight, faSpinner, faUserAstronaut } from '@fortawesome/free-solid-svg-icons';
 
 import { ChatMessage } from './ideation.models';
 
 @Component({
   selector: 'app-agent-chat-panel',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, FaIconComponent],
   template: `
     <aside class="chat-panel">
       <header class="chat-header">
         <div class="chat-title-wrap">
-          <div class="agent-avatar">AI</div>
           <div>
-          <span class="chat-kicker">Persistent collaborator</span>
-          <h2 class="chat-title">{{ title }}</h2>
-          <p class="chat-subtitle mb-0">{{ subtitle }}</p>
+            <span class="chat-kicker">Persistent collaborator</span>
+            <div class="chat-title-row">
+              <div class="agent-avatar" aria-hidden="true">
+                <fa-icon [icon]="userAstronautIcon"></fa-icon>
+              </div>
+              <h2 class="chat-title">{{ title }}</h2>
+            </div>
+            <p class="chat-subtitle mb-0">{{ subtitle }}</p>
           </div>
         </div>
         <span class="agent-presence">Live</span>
       </header>
 
-      <section class="message-history">
+      <section #messageHistoryRef class="message-history">
         <article
-          *ngFor="let message of visibleMessages; trackBy: trackByMessageId"
+          *ngFor="let message of visibleMessages; let messageIndex = index; trackBy: trackByMessageId"
           class="message-bubble"
           [class.agent-message]="message.role === 'agent'"
           [class.user-message]="message.role === 'user'"
+          [class.retryable-message]="isRetryableMessage(message, messageIndex)"
         >
           <div class="message-meta">
             <span class="message-author">{{ message.author }}</span>
             <span>{{ message.timestamp }}</span>
           </div>
           <p class="message-copy mb-0">{{ message.content }}</p>
+          <button
+            *ngIf="isRetryableMessage(message, messageIndex)"
+            type="button"
+            class="retry-message-button"
+            [disabled]="isSending"
+            aria-label="Resend last message"
+            title="Resend last message"
+            (click)="resendLastMessage.emit()"
+          >
+            <fa-icon [icon]="rotateRightIcon"></fa-icon>
+          </button>
+        </article>
+
+        <article *ngIf="isSending" class="message-bubble agent-message pending-agent-message" aria-live="polite">
+          <div class="message-meta">
+            <span class="message-author">HelmOS Agent</span>
+            <span>Thinking...</span>
+          </div>
+          <div class="pending-agent-copy">
+            <span class="pending-agent-spinner" aria-hidden="true">
+              <fa-icon [icon]="spinnerIcon"></fa-icon>
+            </span>
+            <span>Shaping the next response...</span>
+          </div>
         </article>
       </section>
 
@@ -54,6 +85,7 @@ import { ChatMessage } from './ideation.models';
           class="form-control chat-input"
           rows="3"
           [placeholder]="placeholder"
+          (keydown)="handleComposerKeydown($event)"
         ></textarea>
         <div class="d-flex justify-content-between align-items-center mt-3 gap-3">
           <span class="input-hint">
@@ -106,16 +138,23 @@ import { ChatMessage } from './ideation.models';
         gap: 0.8rem;
       }
 
+      .chat-title-row {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin: 0.3rem 0 0.15rem;
+      }
+
       .agent-avatar {
-        width: 2.25rem;
-        height: 2.25rem;
+        width: 2.85rem;
+        height: 2.85rem;
         border-radius: 0.85rem;
         display: grid;
         place-items: center;
         flex: 0 0 auto;
         background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 52%, #c084fc 100%);
         color: #fff;
-        font-size: 0.8rem;
+        font-size: 1.15rem;
         font-weight: 800;
         letter-spacing: 0.04em;
         box-shadow: 0 10px 22px rgba(124, 58, 237, 0.24);
@@ -131,7 +170,7 @@ import { ChatMessage } from './ideation.models';
       }
 
       .chat-title {
-        margin: 0.35rem 0 0.15rem;
+        margin: 0;
         font-size: 1.05rem;
         font-weight: 700;
       }
@@ -165,6 +204,7 @@ import { ChatMessage } from './ideation.models';
         border-radius: 1rem;
         padding: 0.9rem 1rem;
         border: 1px solid var(--helmos-border);
+        position: relative;
       }
 
       .agent-message {
@@ -194,6 +234,70 @@ import { ChatMessage } from './ideation.models';
 
       .message-copy {
         line-height: 1.6;
+      }
+
+      .retryable-message {
+        padding-bottom: 2.45rem;
+      }
+
+      .retry-message-button {
+        position: absolute;
+        right: 0.8rem;
+        bottom: 0.75rem;
+        width: 2rem;
+        height: 2rem;
+        border: 0;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background: rgba(124, 58, 237, 0.12);
+        color: #7c3aed;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(2px);
+        transition:
+          opacity 140ms ease,
+          transform 140ms ease,
+          background-color 140ms ease;
+      }
+
+      .retryable-message:hover .retry-message-button,
+      .retryable-message:focus-within .retry-message-button,
+      .retry-message-button:focus-visible {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+      }
+
+      .retry-message-button:hover:not(:disabled),
+      .retry-message-button:focus-visible {
+        background: rgba(124, 58, 237, 0.2);
+      }
+
+      .retry-message-button:disabled {
+        opacity: 0.45;
+      }
+
+      .pending-agent-message {
+        min-height: 6.4rem;
+      }
+
+      .pending-agent-copy {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.65rem;
+        color: var(--helmos-text);
+      }
+
+      .pending-agent-spinner {
+        display: inline-grid;
+        place-items: center;
+        width: 1.8rem;
+        height: 1.8rem;
+        border-radius: 999px;
+        background: rgba(124, 58, 237, 0.1);
+        color: #7c3aed;
+        animation: spin 0.95s linear infinite;
       }
 
       .chat-input-wrap {
@@ -268,6 +372,16 @@ import { ChatMessage } from './ideation.models';
         }
       }
 
+      @keyframes spin {
+        from {
+          transform: rotate(0deg);
+        }
+
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
       @media (max-width: 1199.98px) {
         .chat-panel {
           position: static;
@@ -281,13 +395,19 @@ import { ChatMessage } from './ideation.models';
   ]
 })
 export class AgentChatPanelComponent implements OnChanges, AfterViewInit {
+  readonly userAstronautIcon = faUserAstronaut;
+  readonly rotateRightIcon = faRotateRight;
+  readonly spinnerIcon = faSpinner;
   @Input({ required: true }) title!: string;
   @Input({ required: true }) subtitle!: string;
   @Input({ required: true }) placeholder!: string;
   @Input({ required: true }) messages: ChatMessage[] = [];
   @Input() isSending = false;
+  @Input() resendAvailable = false;
   @Output() readonly messageSend = new EventEmitter<string>();
+  @Output() readonly resendLastMessage = new EventEmitter<void>();
   @ViewChild('chatInput') chatInputRef?: ElementRef<HTMLTextAreaElement>;
+  @ViewChild('messageHistoryRef') messageHistoryRef?: ElementRef<HTMLElement>;
 
   draftMessage = '';
   hasSentFirstMessage = false;
@@ -300,12 +420,18 @@ export class AgentChatPanelComponent implements OnChanges, AfterViewInit {
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['messages']) {
       this.visibleMessages = [...this.messages];
+      this.queueScrollToBottom();
+    }
+
+    if (changes['isSending']) {
+      this.queueScrollToBottom();
     }
   }
 
   ngAfterViewInit(): void {
     queueMicrotask(() => {
       this.chatInputRef?.nativeElement.focus();
+      this.scrollToBottom();
     });
   }
 
@@ -327,10 +453,46 @@ export class AgentChatPanelComponent implements OnChanges, AfterViewInit {
     ];
     this.hasSentFirstMessage = true;
     this.draftMessage = '';
+    this.queueScrollToBottom();
     this.messageSend.emit(outgoingMessage);
   }
 
   trackByMessageId(_: number, message: ChatMessage): number {
     return message.id;
+  }
+
+  handleComposerKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Enter' || event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+    this.sendMessage();
+  }
+
+  isRetryableMessage(message: ChatMessage, messageIndex: number): boolean {
+    if (!this.resendAvailable || message.role !== 'user') {
+      return false;
+    }
+
+    const latestUserIndex = [...this.visibleMessages]
+      .map((entry, index) => ({ entry, index }))
+      .reverse()
+      .find(({ entry }) => entry.role === 'user')?.index;
+
+    return latestUserIndex === messageIndex;
+  }
+
+  private queueScrollToBottom(): void {
+    queueMicrotask(() => this.scrollToBottom());
+  }
+
+  private scrollToBottom(): void {
+    const messageHistory = this.messageHistoryRef?.nativeElement;
+    if (!messageHistory) {
+      return;
+    }
+
+    messageHistory.scrollTop = messageHistory.scrollHeight;
   }
 }

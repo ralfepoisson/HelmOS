@@ -1,9 +1,17 @@
 @startuml
 package "Agent Experience Layer" {
   [Angular UI]
+  [Angular Dev Proxy]
+  [Auth Callback & Route Guards]
   [Node Control Plane API]
   [Agent Gateway API (FastAPI)]
   [Agent Admin Screen]
+}
+
+package "Identity & Access Layer" {
+  [Life2 Auth Service]
+  [JWT Session Bootstrap]
+  [RBAC Policy]
 }
 
 package "Orchestration Layer (LangGraph)" {
@@ -52,9 +60,16 @@ package "AgentOps & Observability" {
   [Prompt Registry]
 }
 
-[Angular UI] --> [Node Control Plane API]
+[Angular UI] --> [Angular Dev Proxy] : local /api and /api/v1
+[Angular UI] --> [Auth Callback & Route Guards] : restore session, route gating
+[Auth Callback & Route Guards] --> [Life2 Auth Service] : delegated sign-in / sign-out
+[Auth Callback & Route Guards] --> [JWT Session Bootstrap] : capture hash-route token before app bootstrap
+[Angular Dev Proxy] --> [Node Control Plane API] : /api
+[Angular Dev Proxy] --> [Agent Gateway API (FastAPI)] : /api/v1
 [Angular UI] --> [Agent Admin Screen]
 [Agent Admin Screen] --> [Node Control Plane API] : create/update agent registry
+[Node Control Plane API] --> [RBAC Policy] : verify JWT, derive user context, enforce access
+[RBAC Policy] --> [PostgreSQL] : upsert local user, tenant link, app role
 [Node Control Plane API] --> [Agent Gateway API (FastAPI)] : runtime snapshot
 [Node Control Plane API] --> [Agent Registry] : create/update definitions
 [Node Control Plane API] --> [Prompt Registry] : create/update active prompts

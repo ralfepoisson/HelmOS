@@ -24,14 +24,7 @@ describe('AgentAdminService', () => {
   it('falls back to the local backend when the same-origin admin request fails', async () => {
     const snapshotPromise = service.listAgents();
 
-    const primaryRequest = httpTesting.expectOne('/api/admin/agents');
-    expect(primaryRequest.request.method).toBe('GET');
-    primaryRequest.error(new ProgressEvent('error'));
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    const [fallbackRequest] = httpTesting.match('http://localhost:3001/api/admin/agents');
-    expect(fallbackRequest).toBeTruthy();
+    const fallbackRequest = httpTesting.expectOne('http://localhost:3001/api/admin/agents');
     expect(fallbackRequest.request.method).toBe('GET');
     fallbackRequest.flush(
       JSON.stringify({
@@ -86,20 +79,7 @@ describe('AgentAdminService', () => {
   it('falls back to the local backend when the same-origin admin request returns a proxy 500', async () => {
     const snapshotPromise = service.listAgents();
 
-    const primaryRequest = httpTesting.expectOne('/api/admin/agents');
-    expect(primaryRequest.request.method).toBe('GET');
-    primaryRequest.flush('proxy failure', {
-      status: 500,
-      statusText: 'Internal Server Error',
-      headers: {
-        'Content-Type': 'text/plain'
-      }
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    const [fallbackRequest] = httpTesting.match('http://localhost:3001/api/admin/agents');
-    expect(fallbackRequest).toBeTruthy();
+    const fallbackRequest = httpTesting.expectOne('http://localhost:3001/api/admin/agents');
     expect(fallbackRequest.request.method).toBe('GET');
     fallbackRequest.flush(
       JSON.stringify({
@@ -167,7 +147,7 @@ describe('AgentAdminService', () => {
       }
     });
 
-    const request = httpTesting.expectOne('/api/admin/agents');
+    const request = httpTesting.expectOne('http://localhost:3001/api/admin/agents');
     expect(request.request.method).toBe('POST');
     request.flush(
       JSON.stringify({

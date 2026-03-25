@@ -13,7 +13,9 @@
     "db:status": "prisma migrate status",
     "db:validate": "prisma validate",
     "db:studio": "prisma studio",
-    "test:backend": "node --test src/backend/tests/**/*.test.js"
+    "test:backend": "node --test src/backend/tests/**/*.test.js",
+    "test:backend:smoke": "./scripts/test_backend_smoke.sh",
+    "test:backend:verify": "./scripts/test_backend_smoke.sh"
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",

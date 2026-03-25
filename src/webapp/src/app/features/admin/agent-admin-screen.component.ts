@@ -15,10 +15,20 @@ import {
 
 interface EditableAgentRecord extends AgentAdminRecord {
   description: string;
+  purpose: string;
+  scopeNotes: string;
   defaultModel: string;
   selectedTools: string[];
   promptVersionText: string;
-  promptTemplateText: string;
+  promptRoleText: string;
+  promptInstructionsText: string;
+  promptConstraintsText: string;
+  promptOutputFormatText: string;
+  temperatureText: string;
+  maxStepsText: string;
+  timeoutSecondsText: string;
+  retryPolicy: RetryPolicy;
+  reasoningMode: ReasoningMode;
   promptConfigText: string;
   saving: boolean;
   saveError: string | null;
@@ -341,38 +351,118 @@ const RETRY_OPTIONS: Array<{ value: RetryPolicy; label: string; description: str
             </div>
           </header>
 
-          <div class="agent-grid-fields">
-            <label class="field-block">
-              <span>Name</span>
-              <input [(ngModel)]="agent.name" class="form-control" [name]="'name-' + agent.id" />
-            </label>
+          <section class="create-section">
+            <div class="section-heading">
+              <div>
+                <div class="section-kicker">Identity & Scope</div>
+                <h3>Keep the agent role explicit</h3>
+              </div>
+            </div>
+
+            <div class="agent-grid-fields compact-grid">
+              <label class="field-block">
+                <span>Name</span>
+                <input [(ngModel)]="agent.name" class="form-control" [name]="'name-' + agent.id" />
+              </label>
+
+              <label class="field-block">
+                <span>Version</span>
+                <input [(ngModel)]="agent.version" class="form-control" [name]="'version-' + agent.id" />
+              </label>
+
+              <label class="field-block field-wide">
+                <span>Purpose / Primary objective</span>
+                <textarea
+                  [(ngModel)]="agent.purpose"
+                  class="form-control"
+                  rows="2"
+                  [name]="'purpose-' + agent.id"
+                ></textarea>
+              </label>
+
+              <label class="field-block field-wide">
+                <span>Scope notes</span>
+                <textarea
+                  [(ngModel)]="agent.scopeNotes"
+                  class="form-control"
+                  rows="2"
+                  [name]="'scope-' + agent.id"
+                ></textarea>
+              </label>
+            </div>
+          </section>
+
+          <section class="create-section">
+            <div class="section-heading">
+              <div>
+                <div class="section-kicker">Model & Execution</div>
+                <h3>Keep runtime behavior aligned with creation settings</h3>
+              </div>
+            </div>
+
+            <div class="agent-grid-fields compact-grid execution-grid">
+              <label class="field-block">
+                <span>Lifecycle state</span>
+                <select
+                  class="form-select"
+                  [ngModel]="agent.active ? 'active' : 'draft'"
+                  (ngModelChange)="setAgentLifecycle(agent, $event)"
+                  [name]="'lifecycle-' + agent.id"
+                >
+                  <option value="draft">Draft</option>
+                  <option value="active">Active</option>
+                </select>
+              </label>
+
+              <label class="field-block">
+                <span>Default model</span>
+                <select [(ngModel)]="agent.defaultModel" class="form-select" [name]="'model-' + agent.id">
+                  <option value="">No default model</option>
+                  <option *ngFor="let model of modelOptions" [value]="model.value">{{ model.label }}</option>
+                </select>
+                <span class="field-help">{{ describeModel(agent.defaultModel) }}</span>
+              </label>
+
+              <label class="field-block">
+                <span>Temperature</span>
+                <input [(ngModel)]="agent.temperatureText" class="form-control" [name]="'temperature-' + agent.id" />
+              </label>
+
+              <label class="field-block">
+                <span>Max steps</span>
+                <input [(ngModel)]="agent.maxStepsText" class="form-control" [name]="'max-steps-' + agent.id" />
+              </label>
+
+              <label class="field-block">
+                <span>Timeout (seconds)</span>
+                <input [(ngModel)]="agent.timeoutSecondsText" class="form-control" [name]="'timeout-' + agent.id" />
+              </label>
+
+              <label class="field-block">
+                <span>Retry policy</span>
+                <select [(ngModel)]="agent.retryPolicy" class="form-select" [name]="'retry-' + agent.id">
+                  <option *ngFor="let policy of retryOptions" [value]="policy.value">{{ policy.label }}</option>
+                </select>
+              </label>
+
+              <label class="field-block">
+                <span>Reasoning mode</span>
+                <select [(ngModel)]="agent.reasoningMode" class="form-select" [name]="'reasoning-' + agent.id">
+                  <option *ngFor="let mode of reasoningOptions" [value]="mode.value">{{ mode.label }}</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="create-section">
+            <div class="section-heading">
+              <div>
+                <div class="section-kicker">Tool Permissions</div>
+                <h3>Keep permissions aligned with the registered specialist</h3>
+              </div>
+            </div>
 
             <label class="field-block">
-              <span>Version</span>
-              <input [(ngModel)]="agent.version" class="form-control" [name]="'version-' + agent.id" />
-            </label>
-
-            <label class="field-block field-wide">
-              <span>Description</span>
-              <textarea
-                [(ngModel)]="agent.description"
-                class="form-control"
-                rows="3"
-                [name]="'description-' + agent.id"
-              ></textarea>
-            </label>
-
-            <label class="field-block">
-              <span>Default model</span>
-              <select [(ngModel)]="agent.defaultModel" class="form-select" [name]="'model-' + agent.id">
-                <option value="">No default model</option>
-                <option *ngFor="let model of modelOptions" [value]="model.value">{{ model.label }}</option>
-              </select>
-              <span class="field-help">{{ describeModel(agent.defaultModel) }}</span>
-            </label>
-
-            <label class="field-block field-wide">
-              <span>Allowed tools</span>
               <span class="field-help">Select the infrastructure capabilities this agent is permitted to use.</span>
               <div class="choice-grid">
                 <label *ngFor="let tool of toolOptions" class="choice-card">
@@ -389,22 +479,21 @@ const RETRY_OPTIONS: Array<{ value: RetryPolicy; label: string; description: str
                 </label>
               </div>
             </label>
-          </div>
+          </section>
 
           <section class="prompt-panel">
             <div class="panel-heading">
               <div>
-                <div class="section-kicker">Execution prompt</div>
+                <div class="section-kicker">Prompt configuration</div>
                 <h3>{{ agent.promptConfig?.key ?? agent.key + '.default' }}</h3>
                 <p class="field-help prompt-copy">
-                  This instruction set is used when the runtime executes the agent. The template is
-                  the main directive, and the JSON field is for structured settings such as
-                  temperature or artifact kind.
+                  These are the same structured execution settings used when the agent was first
+                  created.
                 </p>
               </div>
             </div>
 
-            <div class="agent-grid-fields">
+            <div class="agent-grid-fields compact-grid">
               <label class="field-block">
                 <span>Prompt version</span>
                 <input
@@ -415,17 +504,47 @@ const RETRY_OPTIONS: Array<{ value: RetryPolicy; label: string; description: str
               </label>
 
               <label class="field-block field-wide">
-                <span>Instruction template</span>
+                <span>Role / Persona</span>
                 <textarea
-                  [(ngModel)]="agent.promptTemplateText"
+                  [(ngModel)]="agent.promptRoleText"
                   class="form-control"
-                  rows="4"
-                  [name]="'prompt-template-' + agent.id"
+                  rows="3"
+                  [name]="'prompt-role-' + agent.id"
                 ></textarea>
               </label>
 
               <label class="field-block field-wide">
-                <span>Structured config (JSON)</span>
+                <span>Task Instructions</span>
+                <textarea
+                  [(ngModel)]="agent.promptInstructionsText"
+                  class="form-control"
+                  rows="4"
+                  [name]="'prompt-instructions-' + agent.id"
+                ></textarea>
+              </label>
+
+              <label class="field-block">
+                <span>Constraints</span>
+                <textarea
+                  [(ngModel)]="agent.promptConstraintsText"
+                  class="form-control"
+                  rows="4"
+                  [name]="'prompt-constraints-' + agent.id"
+                ></textarea>
+              </label>
+
+              <label class="field-block">
+                <span>Output Format</span>
+                <textarea
+                  [(ngModel)]="agent.promptOutputFormatText"
+                  class="form-control"
+                  rows="4"
+                  [name]="'prompt-output-' + agent.id"
+                ></textarea>
+              </label>
+
+              <label class="field-block field-wide">
+                <span>Additional structured config (JSON)</span>
                 <textarea
                   [(ngModel)]="agent.promptConfigText"
                   class="form-control code-field"
@@ -1685,6 +1804,10 @@ export class AgentAdminScreenComponent implements OnInit {
     this.selectedAgentId = agentId;
   }
 
+  setAgentLifecycle(agent: EditableAgentRecord, value: LifecycleState): void {
+    agent.active = value === 'active';
+  }
+
   toggleGatewayDetails(): void {
     this.showGatewayDetails = !this.showGatewayDetails;
   }
@@ -1853,14 +1976,28 @@ export class AgentAdminScreenComponent implements OnInit {
   }
 
   private toEditableRecord(agent: AgentAdminRecord): EditableAgentRecord {
+    const configJson = this.asRecord(agent.promptConfig?.configJson);
+    const descriptionFields = this.extractDescriptionFields(agent.description);
+    const promptSections = this.extractPromptSections(agent.promptConfig?.promptTemplate, configJson);
+
     return {
       ...agent,
       description: agent.description ?? '',
+      purpose: this.readString(configJson['purpose']) || descriptionFields.purpose,
+      scopeNotes: this.readString(configJson['scopeNotes']) || descriptionFields.scopeNotes,
       defaultModel: agent.defaultModel ?? '',
       selectedTools: [...agent.allowedTools],
       promptVersionText: agent.promptConfig?.version ?? '1.0.0',
-      promptTemplateText: agent.promptConfig?.promptTemplate ?? '',
-      promptConfigText: JSON.stringify(agent.promptConfig?.configJson ?? {}, null, 2),
+      promptRoleText: promptSections.rolePersona,
+      promptInstructionsText: promptSections.taskInstructions,
+      promptConstraintsText: promptSections.constraints,
+      promptOutputFormatText: promptSections.outputFormat,
+      temperatureText: this.toNumericText(configJson['temperature'], '0.2'),
+      maxStepsText: this.toNumericText(configJson['maxSteps'], '8'),
+      timeoutSecondsText: this.toNumericText(configJson['timeoutSeconds'], '180'),
+      retryPolicy: this.asRetryPolicy(configJson['retryPolicy']),
+      reasoningMode: this.asReasoningMode(configJson['reasoningMode']),
+      promptConfigText: JSON.stringify(this.extractAdditionalPromptConfig(configJson), null, 2),
       saving: false,
       saveError: null
     };
@@ -1916,7 +2053,6 @@ export class AgentAdminScreenComponent implements OnInit {
   }
 
   private buildUpdatePayload(agent: EditableAgentRecord) {
-    const promptTemplate = agent.promptTemplateText.trim();
     const promptVersion = agent.promptVersionText.trim();
     const promptKey = agent.promptConfig?.key ?? `${agent.key}.default`;
     const payload: {
@@ -1935,18 +2071,18 @@ export class AgentAdminScreenComponent implements OnInit {
     } = {
       name: agent.name.trim(),
       version: agent.version.trim(),
-      description: agent.description?.trim() || null,
+      description: this.composeDescriptionFromFields(agent),
       allowedTools: [...agent.selectedTools],
       defaultModel: agent.defaultModel?.trim() || null,
       active: agent.active
     };
 
-    if (promptTemplate && promptVersion) {
+    if (promptVersion) {
       payload.promptConfig = {
         key: promptKey,
         version: promptVersion,
-        promptTemplate,
-        configJson: this.parsePromptConfigJson(agent.promptConfigText)
+        promptTemplate: this.composePromptTemplateFromFields(agent),
+        configJson: this.buildEditPromptConfig(agent)
       };
     }
 
@@ -2096,6 +2232,22 @@ export class AgentAdminScreenComponent implements OnInit {
     return sections.join('\n\n');
   }
 
+  private composeDescriptionFromFields(source: { purpose: string; scopeNotes: string }): string | null {
+    const purpose = source.purpose.trim();
+    const scopeNotes = source.scopeNotes.trim();
+    const sections: string[] = [];
+
+    if (purpose) {
+      sections.push(`Purpose: ${purpose}`);
+    }
+
+    if (scopeNotes) {
+      sections.push(`Scope: ${scopeNotes}`);
+    }
+
+    return sections.length > 0 ? sections.join('\n\n') : null;
+  }
+
   private composePromptTemplate(draft: CreateAgentDraft, intent: CreateIntent): string {
     if (intent === 'draft') {
       return [
@@ -2163,6 +2315,166 @@ export class AgentAdminScreenComponent implements OnInit {
         };
       })
     };
+  }
+
+  private composePromptTemplateFromFields(source: {
+    promptRoleText: string;
+    promptInstructionsText: string;
+    promptConstraintsText: string;
+    promptOutputFormatText: string;
+  }): string {
+    return [
+      'Role / Persona:',
+      source.promptRoleText.trim(),
+      '',
+      'Task Instructions:',
+      source.promptInstructionsText.trim(),
+      '',
+      'Constraints:',
+      source.promptConstraintsText.trim(),
+      '',
+      'Output Format:',
+      source.promptOutputFormatText.trim()
+    ].join('\n');
+  }
+
+  private buildEditPromptConfig(agent: EditableAgentRecord): Record<string, unknown> {
+    const additionalConfig = this.parsePromptConfigJson(agent.promptConfigText);
+
+    return {
+      ...additionalConfig,
+      purpose: agent.purpose.trim(),
+      scopeNotes: agent.scopeNotes.trim() || null,
+      lifecycleState: agent.active ? 'active' : 'draft',
+      reasoningMode: agent.reasoningMode,
+      retryPolicy: agent.retryPolicy,
+      temperature: this.parseNumberInput(agent.temperatureText, 0.2),
+      maxSteps: this.parseIntegerInput(agent.maxStepsText, 8),
+      timeoutSeconds: this.parseIntegerInput(agent.timeoutSecondsText, 180),
+      promptSections: {
+        rolePersona: agent.promptRoleText.trim(),
+        taskInstructions: agent.promptInstructionsText.trim(),
+        constraints: agent.promptConstraintsText.trim(),
+        outputFormat: agent.promptOutputFormatText.trim()
+      },
+      toolPermissions: agent.selectedTools.map((toolKey) => {
+        const tool = this.toolOptions.find((entry) => entry.value === toolKey);
+
+        return {
+          key: toolKey,
+          label: tool?.label ?? toolKey,
+          access: tool?.accessLabel ?? 'Configured',
+          scopePreview: tool?.scopePreview ?? '',
+          policyFlags: tool?.policyFlags ?? []
+        };
+      })
+    };
+  }
+
+  private extractDescriptionFields(description: string | null | undefined): { purpose: string; scopeNotes: string } {
+    const value = description?.trim() ?? '';
+
+    if (!value) {
+      return { purpose: '', scopeNotes: '' };
+    }
+
+    const purposeMatch = value.match(/Purpose:\s*([\s\S]*?)(?:\n\s*\nScope:|$)/i);
+    const scopeMatch = value.match(/Scope:\s*([\s\S]*?)$/i);
+
+    return {
+      purpose: purposeMatch?.[1]?.trim() ?? '',
+      scopeNotes: scopeMatch?.[1]?.trim() ?? ''
+    };
+  }
+
+  private extractPromptSections(
+    promptTemplate: string | null | undefined,
+    configJson: Record<string, unknown>
+  ): { rolePersona: string; taskInstructions: string; constraints: string; outputFormat: string } {
+    const promptSections = this.asRecord(configJson['promptSections']);
+
+    const fromConfig = {
+      rolePersona: this.readString(promptSections['rolePersona']),
+      taskInstructions: this.readString(promptSections['taskInstructions']),
+      constraints: this.readString(promptSections['constraints']),
+      outputFormat: this.readString(promptSections['outputFormat'])
+    };
+
+    if (fromConfig.rolePersona || fromConfig.taskInstructions || fromConfig.constraints || fromConfig.outputFormat) {
+      return fromConfig;
+    }
+
+    return {
+      rolePersona: this.extractPromptSection(promptTemplate, 'Role / Persona'),
+      taskInstructions: this.extractPromptSection(promptTemplate, 'Task Instructions'),
+      constraints: this.extractPromptSection(promptTemplate, 'Constraints'),
+      outputFormat: this.extractPromptSection(promptTemplate, 'Output Format')
+    };
+  }
+
+  private extractPromptSection(template: string | null | undefined, heading: string): string {
+    const value = template?.trim() ?? '';
+
+    if (!value) {
+      return '';
+    }
+
+    const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const sectionPattern = new RegExp(`${escapedHeading}:\\n([\\s\\S]*?)(?:\\n\\n(?:Role \\/ Persona|Task Instructions|Constraints|Output Format):|$)`);
+    return value.match(sectionPattern)?.[1]?.trim() ?? '';
+  }
+
+  private extractAdditionalPromptConfig(configJson: Record<string, unknown>): Record<string, unknown> {
+    const {
+      purpose,
+      scopeNotes,
+      lifecycleState,
+      reasoningMode,
+      retryPolicy,
+      temperature,
+      maxSteps,
+      timeoutSeconds,
+      promptSections,
+      toolPermissions,
+      ...additionalConfig
+    } = configJson;
+
+    void purpose;
+    void scopeNotes;
+    void lifecycleState;
+    void reasoningMode;
+    void retryPolicy;
+    void temperature;
+    void maxSteps;
+    void timeoutSeconds;
+    void promptSections;
+    void toolPermissions;
+
+    return additionalConfig;
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+
+    return {};
+  }
+
+  private readString(value: unknown): string {
+    return typeof value === 'string' ? value : '';
+  }
+
+  private toNumericText(value: unknown, fallback: string): string {
+    return typeof value === 'number' && Number.isFinite(value) ? String(value) : fallback;
+  }
+
+  private asRetryPolicy(value: unknown): RetryPolicy {
+    return value === 'none' || value === 'standard' || value === 'aggressive' ? value : 'standard';
+  }
+
+  private asReasoningMode(value: unknown): ReasoningMode {
+    return value === 'light' || value === 'balanced' || value === 'deep' ? value : 'balanced';
   }
 
   private parsePromptConfigJson(value: string): Record<string, unknown> {

@@ -88,24 +88,56 @@ export class AgentGatewayApiService {
   private async request<T>(url: string, method: 'GET' | 'POST', payload?: unknown): Promise<T> {
     const response =
       method === 'POST'
-        ? await firstValueFrom(this.http.post<ApiEnvelope<T>>(url, payload, { observe: 'response' }))
-        : await firstValueFrom(this.http.get<ApiEnvelope<T>>(url, { observe: 'response' }));
+        ? await firstValueFrom(this.http.post<ApiEnvelope<T> | T>(url, payload, { observe: 'response' }))
+        : await firstValueFrom(this.http.get<ApiEnvelope<T> | T>(url, { observe: 'response' }));
 
     return this.unwrapResponse(response, url);
   }
 
-  private unwrapResponse<T>(response: HttpResponse<ApiEnvelope<T>>, url: string): T {
-    if (!response.body?.data) {
+  private unwrapResponse<T>(response: HttpResponse<ApiEnvelope<T> | T>, url: string): T {
+    const body = response.body;
+
+    if (!body || typeof body !== 'object') {
       throw new Error(`The agent gateway returned an invalid response for ${url}.`);
     }
 
-    return response.body.data;
+    if (this.isApiEnvelope(body)) {
+      return body.data;
+    }
+
+    return body as T;
   }
 
   private shouldRetryAgainstFallback(error: unknown): boolean {
+    if (error instanceof Error && error.message.includes('invalid response')) {
+      return true;
+    }
+
+    if (error instanceof HttpErrorResponse) {
+      const errorBody =
+        typeof error.error === 'string'
+          ? error.error
+          : typeof error.error?.text === 'string'
+            ? error.error.text
+            : '';
+
+      return (
+        error.status === 0 ||
+        error.status === 404 ||
+        error.status === 200 ||
+        (error.status >= 500 && error.status < 600) ||
+        errorBody.trimStart().startsWith('<!doctype') ||
+        errorBody.includes('<html')
+      );
+    }
+
     return (
       error instanceof HttpErrorResponse &&
       (error.status === 0 || error.status === 404 || (error.status >= 500 && error.status < 600))
     );
+  }
+
+  private isApiEnvelope<T>(body: ApiEnvelope<T> | T): body is ApiEnvelope<T> {
+    return typeof body === 'object' && body !== null && 'data' in body;
   }
 }

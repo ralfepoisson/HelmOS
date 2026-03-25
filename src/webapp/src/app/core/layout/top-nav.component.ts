@@ -5,6 +5,7 @@ import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
 
+import { AuthService } from '../auth/auth.service';
 import { WorkspaceOption } from '../services/workspace-shell.service';
 
 @Component({
@@ -24,7 +25,7 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
 
         <div class="toolbar-cluster">
           <div *ngIf="showWorkspaceSwitcher" class="workspace-switcher d-none d-md-flex align-items-center gap-2">
-            <span class="text-uppercase switcher-label">Business idea</span>
+            <span class="text-uppercase switcher-label" style="width:110px">Business idea</span>
             <div class="workspace-select-wrap">
               <select
                 class="form-select form-select-sm workspace-select"
@@ -56,7 +57,7 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
               Strategy Copilot
             </a>
           </div>
-          <div class="admin-menu" [class.open]="adminMenuOpen">
+          <div *ngIf="resolvedShowAdminMenu" class="admin-menu" [class.open]="adminMenuOpen">
             <button
               type="button"
               class="admin-trigger"
@@ -80,13 +81,23 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
                 <span class="admin-link-title">Agent Admin</span>
                 <span class="admin-link-copy">Manage specialist registry, prompts, and runtime alignment.</span>
               </a>
+              <a
+                routerLink="/admin/logs"
+                routerLinkActive="admin-link-active"
+                class="admin-link"
+                role="menuitem"
+                (click)="closeAdminMenu()"
+              >
+                <span class="admin-link-title">Logs</span>
+                <span class="admin-link-copy">Search backend events, errors, and request context.</span>
+              </a>
             </div>
           </div>
           <div class="profile-pill">
-            <div class="profile-avatar">RA</div>
+            <div class="profile-avatar">{{ resolvedProfileInitials }}</div>
             <div class="d-none d-lg-block">
-              <div class="profile-name">Ralf</div>
-              <div class="profile-role">Founder</div>
+              <div class="profile-name">{{ resolvedProfileName }}</div>
+              <div class="profile-role">{{ resolvedProfileRoleLabel }}</div>
             </div>
           </div>
         </div>
@@ -288,6 +299,7 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
         border: 1px solid var(--helmos-border);
         border-radius: 999px;
         background: var(--helmos-surface);
+        padding-right: 20px;
       }
 
       .profile-avatar {
@@ -351,6 +363,7 @@ export class TopNavComponent {
   readonly chevronDown = faChevronDown;
   private readonly elementRef = inject(ElementRef<HTMLElement>);
   private readonly router = inject(Router);
+  private readonly auth = inject(AuthService);
 
   @Input({ required: true }) productName!: string;
   @Input() surfaceLabel = 'Strategy workspace';
@@ -358,6 +371,10 @@ export class TopNavComponent {
   @Input() selectedWorkspaceId = '';
   @Input({ required: true }) saveStatus!: string;
   @Input() showWorkspaceSwitcher = true;
+  @Input() showAdminMenu?: boolean;
+  @Input() profileInitials?: string;
+  @Input() profileName?: string;
+  @Input() profileRoleLabel?: string;
   @Output() readonly workspaceChange = new EventEmitter<string>();
 
   adminMenuOpen = false;
@@ -368,6 +385,22 @@ export class TopNavComponent {
 
   get isStrategyCopilotSection(): boolean {
     return this.router.url.startsWith('/strategy-copilot');
+  }
+
+  get resolvedShowAdminMenu(): boolean {
+    return this.showAdminMenu ?? this.auth.isAdmin();
+  }
+
+  get resolvedProfileInitials(): string {
+    return this.profileInitials ?? this.auth.getProfileInitials();
+  }
+
+  get resolvedProfileName(): string {
+    return this.profileName ?? this.auth.getProfileName();
+  }
+
+  get resolvedProfileRoleLabel(): string {
+    return this.profileRoleLabel ?? this.auth.getProfileRoleLabel();
   }
 
   toggleAdminMenu(): void {

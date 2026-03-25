@@ -23,7 +23,8 @@ test.describe('HelmOS ideation workspace', () => {
 
     await page.getByRole('link', { name: 'Open Ideation' }).click();
     await expect(page).toHaveURL(/\/strategy-copilot\/ideation(\?.*)?$/);
-    await expect(page.getByRole('heading', { name: 'Ideation: Define Your Business Concept' })).toBeVisible();
+    await expect(page.locator('h1.workspace-title')).toHaveText(/Ideation:/);
+    await expect(page.getByRole('combobox', { name: 'Business idea switcher' })).toBeVisible();
   });
 
   test('renders a stable desktop three-column workspace', async ({ page }) => {
@@ -227,9 +228,200 @@ test.describe('HelmOS ideation workspace', () => {
     await expect(page).toHaveURL(/\/strategy-copilot\/ideation\?workspaceId=workspace-created-1$/);
     await expect(page.getByRole('combobox', { name: 'Business idea switcher' })).toHaveValue('workspace-created-1');
     await expect(page.getByRole('heading', { name: 'Ideation: Signal Loom' })).toBeVisible();
+    await expect(page.getByTestId('strategy-column')).toHaveCount(0);
   });
 
   test('shows section health, update cues, and guided chat input behavior', async ({ page }) => {
+    const initialWorkspace = {
+      workspaceOption: {
+        id: 'workspace-existing-1',
+        name: 'Northstar Ventures',
+        businessType: 'PRODUCT',
+        businessTypeLabel: 'Product'
+      },
+      workspace: {
+        pageTitle: 'Ideation: Northstar Ventures',
+        pageStatus: 'Product business idea',
+        completionHintTitle: 'Next strategy step is waiting',
+        completionHint:
+          'When the concept becomes more consistent and evidence-backed, HelmOS can unlock Value Proposition design and recommend the next structured strategy tool.',
+        overview: {
+          completeness: 65,
+          readinessLabel: 'Needs refinement',
+          readinessTone: 'warning',
+          nextAction: 'Clarify the value proposition with the agent so the target customer pain and product promise connect more crisply.',
+          completionSummary:
+            'Three core sections are forming, but the proposition and audience still need sharper framing before the next tool unlocks.'
+        },
+        sections: [
+          {
+            id: 'problem-statement',
+            title: 'Problem Statement',
+            helper: 'Describe the pain, inefficiency, or unmet need the business should solve.',
+            content:
+              'Early draft: Independent consultants and small service firms often lose momentum after strategy workshops because ideas, notes, and decisions live across scattered documents. The result is slow execution and weak alignment.',
+            emphasis: 'primary',
+            statusLabel: 'Strong',
+            statusTone: 'success',
+            confidence: 'high',
+            updatedAgo: '6 min ago',
+            updatedBy: 'HelmOS Agent',
+            recentlyUpdated: false,
+            needsAttention: false
+          },
+          {
+            id: 'target-customer',
+            title: 'Target Customer',
+            helper: 'Clarify the first users or buyers who feel this problem most acutely.',
+            content:
+              'Working hypothesis: Boutique consultancies, digital agencies, and founder-led professional services teams with 5 to 50 people that need a lightweight way to turn strategic thinking into an actionable operating plan.',
+            emphasis: 'primary',
+            statusLabel: 'Needs refinement',
+            statusTone: 'warning',
+            confidence: 'medium',
+            updatedAgo: '4 min ago',
+            updatedBy: 'HelmOS Agent',
+            recentlyUpdated: false,
+            needsAttention: true
+          },
+          {
+            id: 'value-proposition',
+            title: 'Value Proposition',
+            helper: 'Explain why this concept is useful and what meaningful outcome it creates.',
+            content:
+              'Draft proposition: HelmOS gives early-stage strategy teams an AI-guided workspace that transforms rough business ideas into structured strategic artefacts, so teams can move from concept to execution faster with more confidence.',
+            emphasis: 'primary',
+            statusLabel: 'Needs refinement',
+            statusTone: 'warning',
+            confidence: 'medium',
+            updatedAgo: '2 min ago',
+            updatedBy: 'HelmOS Agent',
+            recentlyUpdated: true,
+            needsAttention: true
+          },
+          {
+            id: 'product-service-description',
+            title: 'Product / Service Description',
+            helper: 'Summarise what the product does today and what the user experiences on the platform.',
+            content:
+              'Emerging product description: HelmOS is a strategy operating workspace where a built-in agent helps founders and teams articulate a business concept, refine assumptions, and gradually expand into downstream strategy tools.',
+            emphasis: 'secondary',
+            statusLabel: 'Draft',
+            statusTone: 'info',
+            confidence: 'medium',
+            updatedAgo: '9 min ago',
+            updatedBy: 'HelmOS Agent',
+            recentlyUpdated: false,
+            needsAttention: false
+          },
+          {
+            id: 'differentiation',
+            title: 'Differentiation',
+            helper: 'Note what makes this offer distinct from consultants, canvases, or generic AI tools.',
+            content:
+              'Current angle: Instead of offering a blank document or generic chat interface, HelmOS progressively unlocks the right strategy tools in sequence, keeping the user focused while the agent continuously updates the shared workspace.',
+            emphasis: 'secondary',
+            statusLabel: 'Draft',
+            statusTone: 'info',
+            confidence: 'medium',
+            updatedAgo: '12 min ago',
+            updatedBy: 'HelmOS Agent',
+            recentlyUpdated: false,
+            needsAttention: false
+          },
+          {
+            id: 'early-monetisation-idea',
+            title: 'Early Monetisation Idea',
+            helper: 'Capture the first revenue model assumptions, even if they are tentative.',
+            content:
+              'Initial monetisation thought: Subscription pricing for small strategy teams, with a premium tier for collaborative workspaces, richer artefact generation, and guided progression into more advanced strategic planning modules.',
+            emphasis: 'secondary',
+            statusLabel: 'Too vague',
+            statusTone: 'muted',
+            confidence: 'low',
+            updatedAgo: '14 min ago',
+            updatedBy: 'HelmOS Agent',
+            recentlyUpdated: false,
+            needsAttention: true
+          }
+        ]
+      },
+      chat: {
+        panelTitle: 'HelmOS Agent',
+        panelSubtitle: 'Guided strategy collaboration',
+        placeholder: 'Ask the agent to refine, challenge, or summarise your concept...',
+        resendAvailable: false,
+        messages: [
+          {
+            id: 1,
+            role: 'agent',
+            author: 'HelmOS Agent',
+            content: 'Hi there. Please tell me about your business idea.',
+            timestamp: 'Now'
+          }
+        ]
+      }
+    };
+
+    const updatedWorkspace = {
+      ...initialWorkspace,
+      chat: {
+        ...initialWorkspace.chat,
+        resendAvailable: false,
+        messages: [
+          ...initialWorkspace.chat.messages,
+          {
+            id: 2,
+            role: 'user',
+            author: 'You',
+            content: 'Please sharpen the target-customer definition.',
+            timestamp: 'Now'
+          },
+          {
+            id: 3,
+            role: 'agent',
+            author: 'HelmOS Agent',
+            content: 'I tightened the target customer framing and highlighted it for follow-up.',
+            timestamp: 'Now'
+          }
+        ]
+      }
+    };
+
+    await page.route(/\/api\/business-ideas$/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            {
+              id: 'workspace-existing-1',
+              name: 'Northstar Ventures',
+              businessType: 'PRODUCT',
+              businessTypeLabel: 'Product'
+            }
+          ]
+        })
+      });
+    });
+
+    await page.route(/\/api\/business-ideas\/workspace-existing-1$/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: initialWorkspace })
+      });
+    });
+
+    await page.route(/\/api\/business-ideas\/workspace-existing-1\/ideation\/messages$/, async (route) => {
+      await page.waitForTimeout(250);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: updatedWorkspace })
+      });
+    });
+
     await page.goto('/strategy-copilot/ideation');
 
     await expect(page.getByRole('heading', { name: 'Problem Statement' })).toBeVisible();
@@ -238,22 +430,165 @@ test.describe('HelmOS ideation workspace', () => {
     await expect(page.getByText('Updated by HelmOS Agent 2 min ago', { exact: true })).toBeVisible();
     await expect(page.locator('.section-confidence').filter({ hasText: 'Agent confidence: medium' }).first()).toBeVisible();
 
-    await expect(page.getByText('What problem should this business solve first?')).toBeVisible();
-    await expect(page.getByText('I want to help small strategy teams stop losing momentum')).toBeVisible();
+    await expect(page.getByText('Hi there. Please tell me about your business idea.')).toBeVisible();
 
     const chatInput = page.getByPlaceholder('Ask the agent to refine, challenge, or summarise your concept...');
     const sendButton = page.getByRole('button', { name: 'Send' });
 
     await expect(chatInput).toBeVisible();
     await expect(sendButton).toBeDisabled();
-    await chatInput.fill('Please sharpen the target-customer definition.');
+    await chatInput.fill('Please sharpen');
+    await chatInput.press('Shift+Enter');
+    await chatInput.type('the target-customer definition.');
+    await expect(chatInput).toHaveValue('Please sharpen\nthe target-customer definition.');
     await expect(sendButton).toBeEnabled();
-    await sendButton.click();
-    await expect(page.getByText('Please sharpen the target-customer definition.')).toBeVisible();
+    await chatInput.press('Enter');
+    await expect(page.getByText('Shaping the next response...')).toBeVisible();
+    await expect(page.locator('.message-bubble').filter({ hasText: 'Please sharpen the target-customer definition.' }).first()).toBeVisible();
+    await expect(page.getByText('I tightened the target customer framing and highlighted it for follow-up.')).toBeVisible();
 
     const lockedBadge = page.locator('.lock-badge').first();
     await lockedBadge.hover();
     await expect(page.locator('.lock-tooltip').first()).toBeVisible();
+  });
+
+  test('allows resending the last user message after a delivery failure', async ({ page }) => {
+    const initialWorkspace = {
+      workspaceOption: {
+        id: 'workspace-existing-1',
+        name: 'Northstar Ventures',
+        businessType: 'PRODUCT',
+        businessTypeLabel: 'Product'
+      },
+      workspace: {
+        pageTitle: 'Ideation: Northstar Ventures',
+        pageStatus: 'Product business idea',
+        completionHintTitle: 'Next strategy step is waiting',
+        completionHint:
+          'When the concept becomes more consistent and evidence-backed, HelmOS can unlock Value Proposition design and recommend the next structured strategy tool.',
+        overview: {
+          completeness: 65,
+          readinessLabel: 'Needs refinement',
+          readinessTone: 'warning',
+          nextAction: 'Clarify the value proposition with the agent so the target customer pain and product promise connect more crisply.',
+          completionSummary:
+            'Three core sections are forming, but the proposition and audience still need sharper framing before the next tool unlocks.'
+        },
+        sections: []
+      },
+      chat: {
+        panelTitle: 'HelmOS Agent',
+        panelSubtitle: 'Guided strategy collaboration',
+        placeholder: 'Ask the agent to refine, challenge, or summarise your concept...',
+        messages: [
+          {
+            id: 1,
+            role: 'agent',
+            author: 'HelmOS Agent',
+            content: 'Hi there. Please tell me about your business idea.',
+            timestamp: 'Now'
+          }
+        ]
+      }
+    };
+
+    const updatedWorkspace = {
+      ...initialWorkspace,
+      chat: {
+        ...initialWorkspace.chat,
+        messages: [
+          ...initialWorkspace.chat.messages,
+          {
+            id: 2,
+            role: 'user',
+            author: 'You',
+            content: 'Please refine this founder brief.',
+            timestamp: 'Now'
+          },
+          {
+            id: 3,
+            role: 'agent',
+            author: 'HelmOS Agent',
+            content: 'I have refined the founder brief and updated the workspace draft.',
+            timestamp: 'Now'
+          }
+        ]
+      }
+    };
+
+    let sendAttempts = 0;
+    let retryAttempts = 0;
+
+    await page.route(/\/api\/business-ideas$/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            {
+              id: 'workspace-existing-1',
+              name: 'Northstar Ventures',
+              businessType: 'PRODUCT',
+              businessTypeLabel: 'Product'
+            }
+          ]
+        })
+      });
+    });
+
+    await page.route(/\/api\/business-ideas\/workspace-existing-1$/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: initialWorkspace })
+      });
+    });
+
+    await page.route(/\/api\/business-ideas\/workspace-existing-1\/ideation\/messages$/, async (route) => {
+      sendAttempts += 1;
+
+      if (sendAttempts === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'Service unavailable' })
+        });
+        return;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: updatedWorkspace })
+      });
+    });
+
+    await page.route(/\/api\/business-ideas\/workspace-existing-1\/ideation\/messages\/retry-last$/, async (route) => {
+      retryAttempts += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: updatedWorkspace })
+      });
+    });
+
+    await page.goto('/strategy-copilot/ideation?workspaceId=workspace-existing-1');
+
+    const chatInput = page.getByPlaceholder('Ask the agent to refine, challenge, or summarise your concept...');
+    await chatInput.fill('Please refine this founder brief.');
+    await page.getByRole('button', { name: 'Send' }).click();
+
+    const retryableBubble = page.locator('.message-bubble').filter({ hasText: 'Please refine this founder brief.' });
+    await expect(page.locator('.message-bubble').filter({ hasText: 'Please refine this founder brief.' })).toHaveCount(1);
+    await retryableBubble.hover();
+    await expect(page.getByRole('button', { name: 'Resend last message' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Resend last message' }).click();
+
+    expect(retryAttempts).toBe(1);
+    await expect(page.getByRole('button', { name: 'Resend last message' })).toHaveCount(0);
+    await expect(page.locator('.message-bubble').filter({ hasText: 'Please refine this founder brief.' })).toHaveCount(1);
+    await expect(page.getByText('I have refined the founder brief and updated the workspace draft.')).toBeVisible();
   });
 
   test('opens the Admin menu and navigates to Agent Admin', async ({ page }) => {
@@ -303,8 +638,23 @@ test.describe('HelmOS ideation workspace', () => {
                   id: 'prompt-1',
                   key: 'ideation.default',
                   version: '1.0.0',
-                  promptTemplate: 'Generate a founder-oriented idea brief from: {prompt}',
-                  configJson: { temperature: 0.2 },
+                  promptTemplate:
+                    'Role / Persona:\nYou are the HelmOS ideation specialist.\n\nTask Instructions:\nClarify the founder idea and identify assumptions.\n\nConstraints:\nDo not invent market evidence.\n\nOutput Format:\nReturn summary, risks, and next steps.',
+                  configJson: {
+                    purpose: 'Transforms founder input into structured idea briefs.',
+                    scopeNotes: 'Focus on early-stage idea clarification.',
+                    temperature: 0.2,
+                    maxSteps: 8,
+                    timeoutSeconds: 180,
+                    retryPolicy: 'standard',
+                    reasoningMode: 'balanced',
+                    promptSections: {
+                      rolePersona: 'You are the HelmOS ideation specialist.',
+                      taskInstructions: 'Clarify the founder idea and identify assumptions.',
+                      constraints: 'Do not invent market evidence.',
+                      outputFormat: 'Return summary, risks, and next steps.'
+                    }
+                  },
                   active: true,
                   updatedAt: '2026-03-22T08:06:00.000Z'
                 },
@@ -331,8 +681,23 @@ test.describe('HelmOS ideation workspace', () => {
                   id: 'prompt-2',
                   key: 'research.default',
                   version: '1.2.0',
-                  promptTemplate: 'Return a sourced research brief from: {prompt}',
-                  configJson: { temperature: 0.1 },
+                  promptTemplate:
+                    'Role / Persona:\nYou are the HelmOS research specialist.\n\nTask Instructions:\nCollect evidence and synthesize findings.\n\nConstraints:\nCite sources.\n\nOutput Format:\nReturn a research brief.',
+                  configJson: {
+                    purpose: 'Builds evidence-backed research briefs.',
+                    scopeNotes: 'Focus on product and market research.',
+                    temperature: 0.1,
+                    maxSteps: 10,
+                    timeoutSeconds: 240,
+                    retryPolicy: 'standard',
+                    reasoningMode: 'deep',
+                    promptSections: {
+                      rolePersona: 'You are the HelmOS research specialist.',
+                      taskInstructions: 'Collect evidence and synthesize findings.',
+                      constraints: 'Cite sources.',
+                      outputFormat: 'Return a research brief.'
+                    }
+                  },
                   active: true,
                   updatedAt: '2026-03-22T08:16:00.000Z'
                 },
@@ -366,6 +731,29 @@ test.describe('HelmOS ideation workspace', () => {
     await expect(page.getByRole('heading', { name: 'Agents' })).toBeVisible();
     await expect(page.getByRole('button', { name: /Research Agent/ })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'helmos-agent-gateway' })).toHaveCount(0);
+    await expect(
+      page.locator('.agent-card label').filter({ hasText: 'Purpose / Primary objective' }).locator('textarea')
+    ).toHaveValue(
+      'Transforms founder input into structured idea briefs.'
+    );
+    await expect(
+      page.locator('.agent-card label').filter({ hasText: 'Scope notes' }).locator('textarea')
+    ).toHaveValue(
+      'Focus on early-stage idea clarification.'
+    );
+    await expect(
+      page.locator('.agent-card label').filter({ hasText: 'Role / Persona' }).locator('textarea')
+    ).toHaveValue(
+      'You are the HelmOS ideation specialist.'
+    );
+    await expect(
+      page.locator('.agent-card label').filter({ hasText: 'Task Instructions' }).locator('textarea')
+    ).toHaveValue(
+      'Clarify the founder idea and identify assumptions.'
+    );
+    await expect(
+      page.locator('.agent-card label').filter({ hasText: 'Temperature' }).locator('input')
+    ).toHaveValue('0.2');
 
     const persistedCard = page.locator('.hero-stat').filter({ hasText: 'Persisted agents' });
     const runtimeCard = page.locator('.hero-stat').filter({ hasText: 'Runtime agents' });
@@ -396,6 +784,11 @@ test.describe('HelmOS ideation workspace', () => {
     const editorCard = page.locator('.agent-card').first();
     await expect(editorCard.getByRole('heading', { name: 'Research Agent' })).toBeVisible();
     await expect(editorCard.locator('.agent-key')).toHaveText('research');
+    await expect(
+      editorCard.locator('label').filter({ hasText: 'Role / Persona' }).locator('textarea')
+    ).toHaveValue(
+      'You are the HelmOS research specialist.'
+    );
 
     await page.getByRole('link', { name: 'Strategy Copilot' }).click();
     await expect(page).toHaveURL(/\/strategy-copilot(\?.*)?$/);

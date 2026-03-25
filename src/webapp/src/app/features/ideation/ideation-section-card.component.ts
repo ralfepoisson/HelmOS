@@ -1,13 +1,15 @@
 import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { FaIconComponent } from '@fortawesome/angular-fontawesome';
+import { faPenToSquare } from '@fortawesome/free-solid-svg-icons';
 
 import { IdeationSection } from './ideation.models';
 
 @Component({
   selector: 'app-ideation-section-card',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, FaIconComponent],
   template: `
     <article
       class="card border-0 helmos-card section-card"
@@ -29,16 +31,43 @@ import { IdeationSection } from './ideation.models';
           </div>
         </div>
 
-        <textarea
-          class="form-control section-editor"
-          rows="5"
-          [(ngModel)]="section.content"
-          [attr.aria-label]="section.title"
-        ></textarea>
+        <ng-container *ngIf="isEditing; else renderedView">
+          <textarea
+            class="form-control section-editor"
+            rows="7"
+            [(ngModel)]="draftContent"
+            [attr.aria-label]="section.title"
+          ></textarea>
+          <div class="section-edit-actions">
+            <button type="button" class="btn btn-primary btn-sm px-3" (click)="saveEdits()">Save</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm px-3" (click)="cancelEdits()">Cancel</button>
+          </div>
+        </ng-container>
+
+        <ng-template #renderedView>
+          <div class="section-content-markdown" [innerHTML]="renderMarkdown(section.content)"></div>
+        </ng-template>
 
         <div class="section-history">
           <span class="history-copy">Updated by {{ section.updatedBy }} {{ section.updatedAgo }}</span>
-          <button type="button" class="btn btn-outline-secondary btn-sm history-action">View changes</button>
+          <div class="history-actions">
+            <button
+              *ngIf="!isEditing"
+              type="button"
+              class="btn btn-outline-secondary btn-sm history-action"
+              (click)="startEditing()"
+            >
+              <fa-icon [icon]="editIcon"></fa-icon>
+              <span>Edit</span>
+            </button>
+            <button
+              *ngIf="!isEditing"
+              type="button"
+              class="btn btn-outline-secondary btn-sm history-action"
+            >
+              View changes
+            </button>
+          </div>
         </div>
       </div>
     </article>
@@ -134,6 +163,51 @@ import { IdeationSection } from './ideation.models';
         min-height: 190px;
       }
 
+      .section-content-markdown {
+        min-height: 150px;
+        border: 1px solid rgba(219, 228, 238, 0.96);
+        border-radius: 1rem;
+        padding: 1rem 1.05rem;
+        background: linear-gradient(180deg, #fcfdff 0%, #f8fbff 100%);
+        line-height: 1.7;
+        white-space: normal;
+      }
+
+      .primary-card .section-content-markdown {
+        min-height: 190px;
+      }
+
+      .section-content-markdown :is(p, ul) {
+        margin: 0 0 0.85rem;
+      }
+
+      .section-content-markdown p:last-child,
+      .section-content-markdown ul:last-child {
+        margin-bottom: 0;
+      }
+
+      .section-content-markdown ul {
+        padding-left: 1.2rem;
+      }
+
+      .section-content-markdown code {
+        border-radius: 0.45rem;
+        padding: 0.1rem 0.35rem;
+        background: rgba(108, 124, 148, 0.08);
+        color: #20314c;
+      }
+
+      .section-content-markdown .markdown-empty {
+        color: var(--helmos-muted);
+      }
+
+      .section-edit-actions {
+        margin-top: 0.75rem;
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.65rem;
+      }
+
       .section-history {
         margin-top: 0.85rem;
         display: flex;
@@ -147,12 +221,106 @@ import { IdeationSection } from './ideation.models';
         color: var(--helmos-muted);
       }
 
+      .history-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+      }
+
       .history-action {
         border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
       }
     `
   ]
 })
 export class IdeationSectionCardComponent {
+  readonly editIcon = faPenToSquare;
   @Input({ required: true }) section!: IdeationSection;
+  isEditing = false;
+  draftContent = '';
+
+  renderMarkdown(content: string): string {
+    const normalized = (content ?? '').replace(/\r\n/g, '\n').trim();
+    if (!normalized) {
+      return '<p class="markdown-empty">No draft yet. Use the agent to turn the first assumptions into a working section draft.</p>';
+    }
+
+    const lines = normalized.split('\n');
+    const blocks: string[] = [];
+    let paragraphLines: string[] = [];
+    let listItems: string[] = [];
+
+    const flushParagraph = (): void => {
+      if (!paragraphLines.length) {
+        return;
+      }
+      blocks.push(`<p>${this.applyInlineMarkdown(paragraphLines.join(' '))}</p>`);
+      paragraphLines = [];
+    };
+
+    const flushList = (): void => {
+      if (!listItems.length) {
+        return;
+      }
+      blocks.push(`<ul>${listItems.map((item) => `<li>${this.applyInlineMarkdown(item)}</li>`).join('')}</ul>`);
+      listItems = [];
+    };
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) {
+        flushParagraph();
+        flushList();
+        continue;
+      }
+
+      if (/^[-*]\s+/.test(line)) {
+        flushParagraph();
+        listItems.push(line.replace(/^[-*]\s+/, ''));
+        continue;
+      }
+
+      flushList();
+      paragraphLines.push(line);
+    }
+
+    flushParagraph();
+    flushList();
+
+    return blocks.join('');
+  }
+
+  startEditing(): void {
+    this.draftContent = this.section.content;
+    this.isEditing = true;
+  }
+
+  saveEdits(): void {
+    this.section.content = this.draftContent.trim();
+    this.isEditing = false;
+  }
+
+  cancelEdits(): void {
+    this.draftContent = this.section.content;
+    this.isEditing = false;
+  }
+
+  private applyInlineMarkdown(content: string): string {
+    return this.escapeHtml(content)
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  }
+
+  private escapeHtml(content: string): string {
+    return content
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 }

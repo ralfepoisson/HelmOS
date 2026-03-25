@@ -192,6 +192,15 @@ class OrchestrationRuntime:
             },
         )
         output = await agent.execute(agent_input)
+        for trace in output.debug.get("llm_traces", []):
+            await self.audit_service.log(
+                run_id=state["run_id"],
+                session_id=state["session_id"],
+                event_type=trace.get("event_type", "llm.completion"),
+                actor=trace.get("actor", "llm-gateway"),
+                payload=trace.get("payload", {}),
+                message=trace.get("message"),
+            )
         normalized = self.normalizer.normalize(output)
         state["normalized_output"] = normalized
         return state
