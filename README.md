@@ -219,6 +219,15 @@ PLAN → DESIGN → IMPLEMENT → TEST → EVALUATE → IMPROVE
 
 Agents should aim to minimise unnecessary human intervention.
 
+------------------------------------------------------------------------
+
+# Local Development
+
+The backend depends on the generated Prisma client matching the current
+schema. The `backend:start` and `backend:dev` scripts regenerate the
+client automatically before launching the Node API so newly added models
+such as the agent admin registry are available during local runs.
+
 Human input should be required mainly for:
 
 -   strategic direction
@@ -257,6 +266,30 @@ Capabilities:
 Goal:
 
 Launch a working **product development platform** powered by agents.
+
+------------------------------------------------------------------------
+
+# Backend API
+
+The repository now includes a Node.js backend in
+[src/backend](/Users/ralfe/Dev/HelmOS/src/backend) that exposes Prisma-
+backed REST endpoints for the current ERD models.
+
+Quick start:
+
+```bash
+npm install
+npm run backend:start
+```
+
+Useful commands:
+
+- `npm run backend:dev`
+- `npm run backend:start`
+- `npm run test:backend`
+
+API documentation and Docker usage are described in
+[docs/backend_api.md](/Users/ralfe/Dev/HelmOS/docs/backend_api.md).
 
 ------------------------------------------------------------------------
 

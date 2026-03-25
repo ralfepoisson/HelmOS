@@ -1,0 +1,98 @@
+@startuml
+package "Agent Experience Layer" {
+  [Angular UI]
+  [Node Control Plane API]
+  [Agent Gateway API (FastAPI)]
+  [Agent Admin Screen]
+}
+
+package "Orchestration Layer (LangGraph)" {
+  [Supervisor Agent]
+  [Planner / Router]
+  [Workflow Graph Engine]
+  [State & Checkpoint Manager]
+  [Policy / Guardrail Service]
+}
+
+package "Specialist Agents" {
+  [Ideation Agent]
+  [Research Agent]
+  [Roadmap Agent]
+  [Architecture Agent]
+  [Artifact Agent]
+}
+
+package "Deterministic Services" {
+  [Template Renderer]
+  [Rules Engine]
+  [Output Normaliser]
+  [Document Export Service]
+}
+
+package "Tool Layer" {
+  [Tool Registry]
+  [Web Search Adapter]
+  [Retrieval Adapter]
+  [Storage Adapter]
+  [External Integrations]
+}
+
+package "Data Layer" {
+  [PostgreSQL]
+  [pgvector]
+  [Redis]
+  [Object Storage]
+}
+
+package "AgentOps & Observability" {
+  [LangSmith]
+  [OpenTelemetry]
+  [Audit Logs]
+  [Agent Registry]
+  [Prompt Registry]
+}
+
+[Angular UI] --> [Node Control Plane API]
+[Angular UI] --> [Agent Admin Screen]
+[Agent Admin Screen] --> [Node Control Plane API] : create/update agent registry
+[Node Control Plane API] --> [Agent Gateway API (FastAPI)] : runtime snapshot
+[Node Control Plane API] --> [Agent Registry] : create/update definitions
+[Node Control Plane API] --> [Prompt Registry] : create/update active prompts
+[Agent Gateway API (FastAPI)] --> [Supervisor Agent]
+[Supervisor Agent] --> [Planner / Router]
+[Planner / Router] --> [Workflow Graph Engine]
+[Workflow Graph Engine] --> [State & Checkpoint Manager]
+[Workflow Graph Engine] --> [Policy / Guardrail Service]
+
+[Workflow Graph Engine] --> [Ideation Agent]
+[Workflow Graph Engine] --> [Research Agent]
+[Workflow Graph Engine] --> [Roadmap Agent]
+[Workflow Graph Engine] --> [Architecture Agent]
+[Workflow Graph Engine] --> [Artifact Agent]
+
+[Workflow Graph Engine] --> [Template Renderer]
+[Workflow Graph Engine] --> [Rules Engine]
+[Workflow Graph Engine] --> [Output Normaliser]
+[Workflow Graph Engine] --> [Document Export Service]
+
+[Ideation Agent] --> [Tool Registry]
+[Research Agent] --> [Tool Registry]
+[Roadmap Agent] --> [Tool Registry]
+
+[Tool Registry] --> [Web Search Adapter]
+[Tool Registry] --> [Retrieval Adapter]
+[Tool Registry] --> [Storage Adapter]
+[Tool Registry] --> [External Integrations]
+
+[State & Checkpoint Manager] --> [PostgreSQL]
+[Retrieval Adapter] --> [pgvector]
+[Workflow Graph Engine] --> [Redis]
+[Storage Adapter] --> [Object Storage]
+
+[Workflow Graph Engine] --> [LangSmith]
+[Workflow Graph Engine] --> [OpenTelemetry]
+[Workflow Graph Engine] --> [Audit Logs]
+[Workflow Graph Engine] --> [Agent Registry]
+[Workflow Graph Engine] --> [Prompt Registry]
+
+@enduml

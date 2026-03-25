@@ -1,0 +1,342 @@
+@startuml
+hide circle
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam defaultFontName Arial
+skinparam entity {
+  BackgroundColor white
+  BorderColor #6b7280
+  FontColor #111827
+}
+skinparam note {
+  BackgroundColor #f9fafb
+  BorderColor #9ca3af
+}
+
+title HelmOS MVP - Ideation Workspace Data Model ERD
+
+package "Identity & Ownership" {
+  entity "users" as users {
+    *id : UUID <<PK>>
+    --
+    email : VARCHAR(320) <<UK>>
+    display_name : VARCHAR(200)
+    avatar_url : TEXT
+    auth_provider : VARCHAR(50)
+    auth_provider_user_id : VARCHAR(255)
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+    last_seen_at : TIMESTAMP
+    is_active : BOOLEAN
+  }
+
+  entity "organisations" as organisations {
+    *id : UUID <<PK>>
+    --
+    name : VARCHAR(200)
+    slug : VARCHAR(120) <<UK>>
+    created_by_user_id : UUID <<FK>>
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
+  entity "organisation_members" as organisation_members {
+    *id : UUID <<PK>>
+    --
+    organisation_id : UUID <<FK>>
+    user_id : UUID <<FK>>
+    role : VARCHAR(50)
+    created_at : TIMESTAMP
+    --
+    UNIQUE(organisation_id, user_id)
+  }
+}
+
+package "Business Context" {
+  entity "companies" as companies {
+    *id : UUID <<PK>>
+    --
+    organisation_id : UUID <<FK>>
+    name : VARCHAR(200)
+    legal_name : VARCHAR(255)
+    slug : VARCHAR(120)
+    industry : VARCHAR(100)
+    website_url : TEXT
+    description : TEXT
+    branding : JSONB
+    created_by_user_id : UUID <<FK>>
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+    --
+    UNIQUE(organisation_id, slug)
+  }
+
+  entity "workspaces" as workspaces {
+    *id : UUID <<PK>>
+    --
+    company_id : UUID <<FK>>
+    name : VARCHAR(200)
+    workspace_type : VARCHAR(50)
+    status : VARCHAR(50)
+    current_stage : VARCHAR(50)
+    created_by_user_id : UUID <<FK>>
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+    archived_at : TIMESTAMP
+  }
+}
+
+package "Structured Strategy Document" {
+  entity "strategy_documents" as strategy_documents {
+    *id : UUID <<PK>>
+    --
+    workspace_id : UUID <<FK>>
+    document_type : VARCHAR(50)
+    title : VARCHAR(255)
+    status : VARCHAR(50)
+    completeness_percent : NUMERIC(5,2)
+    quality_state : VARCHAR(50)
+    agent_summary : TEXT
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+    --
+    UNIQUE(workspace_id, document_type)
+  }
+
+  entity "strategy_sections" as strategy_sections {
+    *id : UUID <<PK>>
+    --
+    document_id : UUID <<FK>>
+    section_key : VARCHAR(100)
+    title : VARCHAR(200)
+    description : TEXT
+    display_order : INTEGER
+    content : TEXT
+    status : VARCHAR(50)
+    refinement_state : VARCHAR(50)
+    agent_confidence : VARCHAR(50)
+    completion_percent : NUMERIC(5,2)
+    last_updated_by_type : VARCHAR(20)
+    last_updated_by_user_id : UUID <<FK>>
+    last_updated_at : TIMESTAMP
+    version_no : INTEGER
+    metadata : JSONB
+    --
+    UNIQUE(document_id, section_key)
+  }
+
+  entity "section_versions" as section_versions {
+    *id : UUID <<PK>>
+    --
+    section_id : UUID <<FK>>
+    version_no : INTEGER
+    content : TEXT
+    change_summary : TEXT
+    changed_by_type : VARCHAR(20)
+    changed_by_user_id : UUID <<FK>>
+    agent_run_id : UUID <<FK>>
+    created_at : TIMESTAMP
+    diff_json : JSONB
+    --
+    UNIQUE(section_id, version_no)
+  }
+
+  entity "document_insights" as document_insights {
+    *id : UUID <<PK>>
+    --
+    document_id : UUID <<FK>>
+    insight_type : VARCHAR(50)
+    title : VARCHAR(255)
+    body : TEXT
+    score : NUMERIC(5,2)
+    severity : VARCHAR(50)
+    generated_by_type : VARCHAR(20)
+    agent_run_id : UUID <<FK>>
+    created_at : TIMESTAMP
+    is_current : BOOLEAN
+  }
+
+  entity "stage_progress" as stage_progress {
+    *id : UUID <<PK>>
+    --
+    workspace_id : UUID <<FK>>
+    stage_key : VARCHAR(100)
+    display_order : INTEGER
+    status : VARCHAR(50)
+    unlock_state : VARCHAR(50)
+    unlock_reason : TEXT
+    completion_percent : NUMERIC(5,2)
+    quality_checks : JSONB
+    entered_at : TIMESTAMP
+    completed_at : TIMESTAMP
+    updated_at : TIMESTAMP
+    --
+    UNIQUE(workspace_id, stage_key)
+  }
+}
+
+package "Conversation & Agent Orchestration" {
+  entity "chat_threads" as chat_threads {
+    *id : UUID <<PK>>
+    --
+    workspace_id : UUID <<FK>>
+    document_id : UUID <<FK>>
+    title : VARCHAR(255)
+    status : VARCHAR(50)
+    created_by_user_id : UUID <<FK>>
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
+  entity "chat_messages" as chat_messages {
+    *id : UUID <<PK>>
+    --
+    thread_id : UUID <<FK>>
+    message_index : INTEGER
+    sender_type : VARCHAR(20)
+    sender_user_id : UUID <<FK>>
+    message_text : TEXT
+    message_format : VARCHAR(20)
+    created_at : TIMESTAMP
+    client_generated_id : VARCHAR(100)
+    status : VARCHAR(20)
+    metadata : JSONB
+    --
+    UNIQUE(thread_id, message_index)
+  }
+
+  entity "agent_runs" as agent_runs {
+    *id : UUID <<PK>>
+    --
+    thread_id : UUID <<FK>>
+    trigger_message_id : UUID <<FK>>
+    run_status : VARCHAR(20)
+    model_name : VARCHAR(100)
+    started_at : TIMESTAMP
+    completed_at : TIMESTAMP
+    input_tokens : INTEGER
+    output_tokens : INTEGER
+    summary : TEXT
+    error_message : TEXT
+    result_metadata : JSONB
+  }
+
+  entity "agent_run_effects" as agent_run_effects {
+    *id : UUID <<PK>>
+    --
+    agent_run_id : UUID <<FK>>
+    effect_type : VARCHAR(50)
+    target_entity_type : VARCHAR(50)
+    target_entity_id : UUID
+    details : JSONB
+    created_at : TIMESTAMP
+  }
+}
+
+package "Agent Registry & Admin" {
+  entity "agent_definitions" as agent_definitions {
+    *id : UUID <<PK>>
+    --
+    key : VARCHAR(100) <<UK>>
+    name : VARCHAR(255)
+    version : VARCHAR(50)
+    description : TEXT
+    allowed_tools : JSONB
+    default_model : VARCHAR(100)
+    active : BOOLEAN
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
+  entity "prompt_configs" as prompt_configs {
+    *id : UUID <<PK>>
+    --
+    key : VARCHAR(100)
+    version : VARCHAR(50)
+    prompt_template : TEXT
+    config_json : JSONB
+    active : BOOLEAN
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+    --
+    UNIQUE(key, version)
+  }
+}
+
+package "Audit" {
+  entity "activity_log" as activity_log {
+    *id : UUID <<PK>>
+    --
+    workspace_id : UUID <<FK>>
+    actor_type : VARCHAR(20)
+    actor_user_id : UUID <<FK>>
+    event_type : VARCHAR(100)
+    entity_type : VARCHAR(50)
+    entity_id : UUID
+    event_summary : TEXT
+    payload : JSONB
+    created_at : TIMESTAMP
+  }
+}
+
+organisations ||--o{ organisation_members
+users ||--o{ organisation_members
+users ||--o{ organisations : created_by
+organisations ||--o{ companies
+users ||--o{ companies : created_by
+companies ||--o{ workspaces
+users ||--o{ workspaces : created_by
+
+note bottom of prompt_configs
+Prompt configs are linked to agents by key convention
+for now, for example "ideation.default".
+end note
+
+workspaces ||--|| strategy_documents
+strategy_documents ||--o{ strategy_sections
+strategy_sections ||--o{ section_versions
+users ||--o{ strategy_sections : last_updated_by
+users ||--o{ section_versions : changed_by
+
+workspaces ||--o{ chat_threads
+strategy_documents ||--o{ chat_threads
+chat_threads ||--o{ chat_messages
+users ||--o{ chat_messages : sender
+chat_threads ||--o{ agent_runs
+chat_messages ||--o{ agent_runs : triggers
+agent_runs ||--o{ agent_run_effects
+
+workspaces ||--o{ stage_progress
+strategy_documents ||--o{ document_insights
+agent_runs ||--o{ document_insights
+workspaces ||--o{ activity_log
+users ||--o{ activity_log : actor
+
+agent_runs ||--o{ section_versions
+note right of strategy_sections
+Examples of section_key:
+- problem_statement
+- target_customer
+- value_proposition
+
+Authoritative state for the centre workspace UI
+should live here, not in chat_messages.
+end note
+
+note right of stage_progress
+Initial stage_key values:
+- ideation
+- value_proposition
+- customer_segments
+- business_model
+- market_research
+end note
+
+note bottom of agent_runs
+Captures one agent processing cycle:
+user message -> model run -> workspace updates
+end note
+
+@enduml

@@ -1,0 +1,47 @@
+"""FastAPI application entrypoint."""
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.api_router import api_router
+from app.config.logging import configure_logging
+from app.config.settings import get_cors_allowed_origins, get_settings
+from app.repositories.database import DatabaseManager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    database = DatabaseManager(settings)
+    app.state.settings = settings
+    app.state.database = database
+    await database.initialize()
+    try:
+        yield
+    finally:
+        await database.dispose()
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(
+        title="HelmOS Agent Gateway",
+        version="0.1.0",
+        description="Supervisor-oriented agent gateway for HelmOS.",
+        lifespan=lifespan,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=get_cors_allowed_origins(settings),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.include_router(api_router, prefix=settings.api_prefix)
+    return app
+
+
+app = create_app()

@@ -1,0 +1,27 @@
+{
+  "name": "helmos",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "prebackend:dev": "prisma generate",
+    "backend:dev": "node --watch src/backend/server.js",
+    "prebackend:start": "prisma generate",
+    "backend:start": "node src/backend/server.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:status": "prisma migrate status",
+    "db:validate": "prisma validate",
+    "db:studio": "prisma studio",
+    "test:backend": "node --test src/backend/tests/**/*.test.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.6.0",
+    "express": "^5.1.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "prisma": "^6.6.0",
+    "supertest": "^7.1.0"
+  }
+}

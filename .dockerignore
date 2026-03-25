@@ -1,0 +1,7 @@
+node_modules
+.git
+.gitignore
+.env
+coverage
+playwright-report
+.DS_Store

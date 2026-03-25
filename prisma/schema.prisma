@@ -1,0 +1,453 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum WorkspaceType {
+  IDEATION
+}
+
+enum BusinessType {
+  PRODUCT
+  SERVICE
+  RESEARCH_AND_DEVELOPMENT
+  MARKETPLACE
+  PLATFORM
+  AGENCY
+  OTHER
+}
+
+enum WorkspaceStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum WorkspaceStage {
+  IDEATION
+  VALUE_PROPOSITION
+  CUSTOMER_SEGMENTS
+  BUSINESS_MODEL
+  MARKET_RESEARCH
+}
+
+enum DocumentType {
+  IDEATION
+}
+
+enum DocumentStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum SectionStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETE
+}
+
+enum RefinementState {
+  EMPTY
+  DRAFT
+  NEEDS_REFINEMENT
+  GOOD
+  STRONG
+}
+
+enum AgentConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ActorType {
+  USER
+  AGENT
+  SYSTEM
+}
+
+enum StageStatus {
+  LOCKED
+  CURRENT
+  AVAILABLE
+  COMPLETED
+}
+
+enum UnlockState {
+  LOCKED
+  UNLOCKED
+}
+
+enum ThreadStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum MessageFormat {
+  PLAIN_TEXT
+  MARKDOWN
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum AgentRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id                  String               @id @default(uuid()) @db.Uuid
+  email               String               @unique @db.VarChar(320)
+  displayName         String?              @map("display_name") @db.VarChar(200)
+  avatarUrl           String?              @map("avatar_url")
+  authProvider        String               @map("auth_provider") @db.VarChar(50)
+  authProviderUserId  String               @map("auth_provider_user_id") @db.VarChar(255)
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  lastSeenAt          DateTime?            @map("last_seen_at")
+  isActive            Boolean              @default(true) @map("is_active")
+  createdOrganisations Organisation[]      @relation("OrganisationCreatedBy")
+  organisationMembers OrganisationMember[]
+  createdCompanies    Company[]            @relation("CompanyCreatedBy")
+  createdWorkspaces   Workspace[]          @relation("WorkspaceCreatedBy")
+  updatedSections     StrategySection[]    @relation("SectionUpdatedBy")
+  sectionVersions     SectionVersion[]     @relation("SectionVersionChangedBy")
+  createdThreads      ChatThread[]         @relation("ThreadCreatedBy")
+  sentMessages        ChatMessage[]        @relation("MessageSender")
+  activityEvents      ActivityLog[]        @relation("ActivityActor")
+
+  @@unique([authProvider, authProviderUserId], map: "users_auth_provider_auth_provider_user_id_key")
+  @@map("users")
+}
+
+model Organisation {
+  id              String               @id @default(uuid()) @db.Uuid
+  name            String               @db.VarChar(200)
+  slug            String               @unique @db.VarChar(120)
+  createdByUserId String               @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+  createdBy       User                 @relation("OrganisationCreatedBy", fields: [createdByUserId], references: [id])
+  members         OrganisationMember[]
+  companies       Company[]
+
+  @@map("organisations")
+}
+
+model OrganisationMember {
+  id             String       @id @default(uuid()) @db.Uuid
+  organisationId String       @map("organisation_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  role           MemberRole
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organisation   Organisation @relation(fields: [organisationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@unique([organisationId, userId])
+  @@index([userId])
+  @@map("organisation_members")
+}
+
+model Company {
+  id              String        @id @default(uuid()) @db.Uuid
+  organisationId  String        @map("organisation_id") @db.Uuid
+  name            String        @db.VarChar(200)
+  businessType    BusinessType  @default(PRODUCT) @map("business_type")
+  legalName       String?       @map("legal_name") @db.VarChar(255)
+  slug            String        @db.VarChar(120)
+  industry        String?       @db.VarChar(100)
+  websiteUrl      String?       @map("website_url")
+  description     String?
+  branding        Json?
+  createdByUserId String        @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  organisation    Organisation  @relation(fields: [organisationId], references: [id])
+  createdBy       User          @relation("CompanyCreatedBy", fields: [createdByUserId], references: [id])
+  workspaces      Workspace[]
+
+  @@unique([organisationId, slug])
+  @@index([createdByUserId])
+  @@map("companies")
+}
+
+model Workspace {
+  id              String             @id @default(uuid()) @db.Uuid
+  companyId       String             @map("company_id") @db.Uuid
+  name            String             @db.VarChar(200)
+  workspaceType   WorkspaceType      @default(IDEATION) @map("workspace_type")
+  status          WorkspaceStatus    @default(ACTIVE)
+  currentStage    WorkspaceStage     @default(IDEATION) @map("current_stage")
+  createdByUserId String             @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  archivedAt      DateTime?          @map("archived_at")
+  company         Company            @relation(fields: [companyId], references: [id])
+  createdBy       User               @relation("WorkspaceCreatedBy", fields: [createdByUserId], references: [id])
+  documents       StrategyDocument[]
+  chatThreads     ChatThread[]
+  stageProgress   StageProgress[]
+  activityLog     ActivityLog[]
+
+  @@index([companyId])
+  @@index([createdByUserId])
+  @@map("workspaces")
+}
+
+model StrategyDocument {
+  id                  String             @id @default(uuid()) @db.Uuid
+  workspaceId         String             @map("workspace_id") @db.Uuid
+  documentType        DocumentType       @default(IDEATION) @map("document_type")
+  title               String             @db.VarChar(255)
+  status              DocumentStatus     @default(ACTIVE)
+  completenessPercent Decimal            @default(0) @map("completeness_percent") @db.Decimal(5, 2)
+  qualityState        String?            @map("quality_state") @db.VarChar(50)
+  agentSummary        String?            @map("agent_summary")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  workspace           Workspace          @relation(fields: [workspaceId], references: [id])
+  sections            StrategySection[]
+  insights            DocumentInsight[]
+  chatThreads         ChatThread[]
+
+  @@unique([workspaceId, documentType])
+  @@index([workspaceId])
+  @@map("strategy_documents")
+}
+
+model StrategySection {
+  id                  String           @id @default(uuid()) @db.Uuid
+  documentId          String           @map("document_id") @db.Uuid
+  sectionKey          String           @map("section_key") @db.VarChar(100)
+  title               String           @db.VarChar(200)
+  description         String?
+  displayOrder        Int              @map("display_order")
+  content             String?
+  status              SectionStatus    @default(NOT_STARTED)
+  refinementState     RefinementState  @default(EMPTY) @map("refinement_state")
+  agentConfidence     AgentConfidence? @map("agent_confidence")
+  completionPercent   Decimal          @default(0) @map("completion_percent") @db.Decimal(5, 2)
+  lastUpdatedByType   ActorType        @default(SYSTEM) @map("last_updated_by_type")
+  lastUpdatedByUserId String?          @map("last_updated_by_user_id") @db.Uuid
+  lastUpdatedAt       DateTime?        @map("last_updated_at")
+  versionNo           Int              @default(1) @map("version_no")
+  metadata            Json?
+  document            StrategyDocument @relation(fields: [documentId], references: [id])
+  lastUpdatedBy       User?            @relation("SectionUpdatedBy", fields: [lastUpdatedByUserId], references: [id])
+  versions            SectionVersion[]
+
+  @@unique([documentId, sectionKey])
+  @@index([documentId, displayOrder])
+  @@index([lastUpdatedByUserId])
+  @@map("strategy_sections")
+}
+
+model SectionVersion {
+  id              String          @id @default(uuid()) @db.Uuid
+  sectionId       String          @map("section_id") @db.Uuid
+  versionNo       Int             @map("version_no")
+  content         String?
+  changeSummary   String?         @map("change_summary")
+  changedByType   ActorType       @default(SYSTEM) @map("changed_by_type")
+  changedByUserId String?         @map("changed_by_user_id") @db.Uuid
+  agentRunId      String?         @map("agent_run_id") @db.Uuid
+  createdAt       DateTime        @default(now()) @map("created_at")
+  diffJson        Json?           @map("diff_json")
+  section         StrategySection @relation(fields: [sectionId], references: [id])
+  changedBy       User?           @relation("SectionVersionChangedBy", fields: [changedByUserId], references: [id])
+  agentRun        AgentRun?       @relation(fields: [agentRunId], references: [id])
+
+  @@unique([sectionId, versionNo])
+  @@index([changedByUserId])
+  @@index([agentRunId])
+  @@map("section_versions")
+}
+
+model DocumentInsight {
+  id              String      @id @default(uuid()) @db.Uuid
+  documentId      String      @map("document_id") @db.Uuid
+  insightType     String      @map("insight_type") @db.VarChar(50)
+  title           String      @db.VarChar(255)
+  body            String
+  score           Decimal?    @db.Decimal(5, 2)
+  severity        String?     @db.VarChar(50)
+  generatedByType ActorType   @default(AGENT) @map("generated_by_type")
+  agentRunId      String?     @map("agent_run_id") @db.Uuid
+  createdAt       DateTime    @default(now()) @map("created_at")
+  isCurrent       Boolean     @default(true) @map("is_current")
+  document        StrategyDocument @relation(fields: [documentId], references: [id])
+  agentRun        AgentRun?   @relation(fields: [agentRunId], references: [id])
+
+  @@index([documentId, isCurrent])
+  @@index([agentRunId])
+  @@map("document_insights")
+}
+
+model StageProgress {
+  id                String         @id @default(uuid()) @db.Uuid
+  workspaceId       String         @map("workspace_id") @db.Uuid
+  stageKey          WorkspaceStage @map("stage_key")
+  displayOrder      Int            @map("display_order")
+  status            StageStatus
+  unlockState       UnlockState    @default(LOCKED) @map("unlock_state")
+  unlockReason      String?        @map("unlock_reason")
+  completionPercent Decimal        @default(0) @map("completion_percent") @db.Decimal(5, 2)
+  qualityChecks     Json?          @map("quality_checks")
+  enteredAt         DateTime?      @map("entered_at")
+  completedAt       DateTime?      @map("completed_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  workspace         Workspace      @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, stageKey])
+  @@index([workspaceId, displayOrder])
+  @@map("stage_progress")
+}
+
+model ChatThread {
+  id              String         @id @default(uuid()) @db.Uuid
+  workspaceId     String         @map("workspace_id") @db.Uuid
+  documentId      String?        @map("document_id") @db.Uuid
+  title           String?        @db.VarChar(255)
+  status          ThreadStatus   @default(ACTIVE)
+  createdByUserId String?        @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  workspace       Workspace      @relation(fields: [workspaceId], references: [id])
+  document        StrategyDocument? @relation(fields: [documentId], references: [id])
+  createdBy       User?          @relation("ThreadCreatedBy", fields: [createdByUserId], references: [id])
+  messages        ChatMessage[]
+  agentRuns       AgentRun[]
+
+  @@index([workspaceId])
+  @@index([documentId])
+  @@index([createdByUserId])
+  @@map("chat_threads")
+}
+
+model ChatMessage {
+  id                String        @id @default(uuid()) @db.Uuid
+  threadId          String        @map("thread_id") @db.Uuid
+  messageIndex      Int           @map("message_index")
+  senderType        ActorType     @map("sender_type")
+  senderUserId      String?       @map("sender_user_id") @db.Uuid
+  messageText       String        @map("message_text")
+  messageFormat     MessageFormat @default(MARKDOWN) @map("message_format")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  clientGeneratedId String?       @map("client_generated_id") @db.VarChar(100)
+  status            MessageStatus @default(SENT)
+  metadata          Json?
+  thread            ChatThread    @relation(fields: [threadId], references: [id])
+  sender            User?         @relation("MessageSender", fields: [senderUserId], references: [id])
+  triggeredRuns     AgentRun[]    @relation("TriggeredByMessage")
+
+  @@unique([threadId, messageIndex])
+  @@index([senderUserId])
+  @@unique([threadId, clientGeneratedId], map: "chat_messages_thread_id_client_generated_id_key")
+  @@map("chat_messages")
+}
+
+model AgentRun {
+  id               String            @id @default(uuid()) @db.Uuid
+  threadId         String            @map("thread_id") @db.Uuid
+  triggerMessageId String?           @map("trigger_message_id") @db.Uuid
+  runStatus        AgentRunStatus    @default(QUEUED) @map("run_status")
+  modelName        String?           @map("model_name") @db.VarChar(100)
+  startedAt        DateTime          @default(now()) @map("started_at")
+  completedAt      DateTime?         @map("completed_at")
+  inputTokens      Int?              @map("input_tokens")
+  outputTokens     Int?              @map("output_tokens")
+  summary          String?
+  errorMessage     String?           @map("error_message")
+  resultMetadata   Json?             @map("result_metadata")
+  thread           ChatThread        @relation(fields: [threadId], references: [id])
+  triggerMessage   ChatMessage?      @relation("TriggeredByMessage", fields: [triggerMessageId], references: [id])
+  effects          AgentRunEffect[]
+  sectionVersions  SectionVersion[]
+  documentInsights DocumentInsight[]
+
+  @@index([threadId, startedAt])
+  @@index([triggerMessageId])
+  @@map("agent_runs")
+}
+
+model AgentRunEffect {
+  id               String   @id @default(uuid()) @db.Uuid
+  agentRunId       String   @map("agent_run_id") @db.Uuid
+  effectType       String   @map("effect_type") @db.VarChar(50)
+  targetEntityType String   @map("target_entity_type") @db.VarChar(50)
+  targetEntityId   String?  @map("target_entity_id") @db.Uuid
+  details          Json?
+  createdAt        DateTime @default(now()) @map("created_at")
+  agentRun         AgentRun @relation(fields: [agentRunId], references: [id])
+
+  @@index([agentRunId])
+  @@index([targetEntityType, targetEntityId])
+  @@map("agent_run_effects")
+}
+
+model ActivityLog {
+  id           String    @id @default(uuid()) @db.Uuid
+  workspaceId  String    @map("workspace_id") @db.Uuid
+  actorType    ActorType @default(SYSTEM) @map("actor_type")
+  actorUserId  String?   @map("actor_user_id") @db.Uuid
+  eventType    String    @map("event_type") @db.VarChar(100)
+  entityType   String?   @map("entity_type") @db.VarChar(50)
+  entityId     String?   @map("entity_id") @db.Uuid
+  eventSummary String?   @map("event_summary")
+  payload      Json?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  workspace    Workspace @relation(fields: [workspaceId], references: [id])
+  actor        User?     @relation("ActivityActor", fields: [actorUserId], references: [id])
+
+  @@index([workspaceId, createdAt])
+  @@index([actorUserId])
+  @@index([eventType])
+  @@map("activity_log")
+}
+
+model AgentDefinition {
+  id           String   @id @default(uuid()) @db.Uuid
+  key          String   @unique @db.VarChar(100)
+  name         String   @db.VarChar(255)
+  version      String   @db.VarChar(50)
+  description  String?
+  allowedTools Json     @default("[]") @map("allowed_tools")
+  defaultModel String?  @map("default_model") @db.VarChar(100)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([active])
+  @@map("agent_definitions")
+}
+
+model PromptConfig {
+  id             String   @id @default(uuid()) @db.Uuid
+  key            String   @db.VarChar(100)
+  version        String   @db.VarChar(50)
+  promptTemplate String   @map("prompt_template")
+  configJson     Json     @default("{}") @map("config_json")
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([key, version])
+  @@index([key, active])
+  @@map("prompt_configs")
+}

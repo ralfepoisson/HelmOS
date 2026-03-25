@@ -1,0 +1,12 @@
+node_modules/
+.env
+.DS_Store
+dist/
+coverage/
+playwright-report/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+src/backend/.venv/
+src/backend/.env.litellm
