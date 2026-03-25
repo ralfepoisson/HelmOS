@@ -8,6 +8,20 @@ from app.services.runtime_log import persist_run_audit_log, persist_runtime_log
 logger = structlog.get_logger(__name__)
 
 
+def _json_safe(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+    if hasattr(value, "model_dump"):
+        return _json_safe(value.model_dump(mode="json"))
+    if hasattr(value, "dict"):
+        return _json_safe(value.dict())
+    return str(value)
+
+
 class LLMGateway:
     """OpenAI-compatible gateway client.
 
@@ -189,6 +203,8 @@ class LLMGateway:
             usage=getattr(response, "usage", None),
         )
         content = response.choices[0].message.content or ""
+        usage_payload = _json_safe(getattr(response, "usage", None))
+        response_payload = response.model_dump(mode="json") if hasattr(response, "model_dump") else None
         await persist_runtime_log(
             level="info",
             scope="llm-gateway",
@@ -200,7 +216,7 @@ class LLMGateway:
                 "model": model,
                 "temperature": temperature,
                 "metadata": metadata or {},
-                "usage": getattr(response, "usage", None),
+                "usage": usage_payload,
                 "response_preview": content,
             },
         )
@@ -217,9 +233,9 @@ class LLMGateway:
                 "temperature": temperature,
                 "metadata": metadata or {},
                 "request": request_payload,
-                "response": response.model_dump(mode="json") if hasattr(response, "model_dump") else None,
+                "response": response_payload,
                 "response_content": content,
-                "usage": getattr(response, "usage", None),
+                "usage": usage_payload,
             },
         )
         self._append_run_trace(
@@ -235,9 +251,9 @@ class LLMGateway:
                     "temperature": temperature,
                     "metadata": metadata or {},
                     "request": request_payload,
-                    "response": response.model_dump(mode="json") if hasattr(response, "model_dump") else None,
+                    "response": response_payload,
                     "response_content": content,
-                    "usage": getattr(response, "usage", None),
+                    "usage": usage_payload,
                 },
             },
         )
