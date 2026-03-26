@@ -4,6 +4,7 @@ const DEFAULT_TIMEOUT_MS = 2500;
 const DEFAULT_RUN_POLL_ATTEMPTS = 20;
 const DEFAULT_RUN_POLL_DELAY_MS = 1000;
 const MAX_LOG_PREVIEW_LENGTH = 4000;
+const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "cancelled", "waiting_for_approval"]);
 
 function normalizeBaseUrl(baseUrl) {
   if (typeof baseUrl !== "string") {
@@ -36,6 +37,10 @@ function toPreview(value) {
   }
 
   return value.length > MAX_LOG_PREVIEW_LENGTH ? `${value.slice(0, MAX_LOG_PREVIEW_LENGTH)}…` : value;
+}
+
+function normalizeRunStatus(status) {
+  return typeof status === "string" ? status.trim().toLowerCase() : "";
 }
 
 function createAgentGatewayClient({
@@ -256,16 +261,24 @@ function createAgentGatewayClient({
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         const summary = await this.getRunSummary(runId);
 
-        if (
-          ["completed", "failed", "cancelled", "waiting_for_approval"].includes(summary.status)
-        ) {
+        if (TERMINAL_RUN_STATUSES.has(normalizeRunStatus(summary.status))) {
           return summary;
         }
 
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
 
-      return this.getRunSummary(runId);
+      const summary = await this.getRunSummary(runId);
+      if (TERMINAL_RUN_STATUSES.has(normalizeRunStatus(summary.status))) {
+        return summary;
+      }
+
+      const error = new Error(
+        `Agent gateway run ${runId} did not reach a terminal state in time (last status: ${summary.status ?? "unknown"}).`
+      );
+      error.statusCode = 504;
+      error.summary = summary;
+      throw error;
     },
 
     async runIdeationWorkflow({

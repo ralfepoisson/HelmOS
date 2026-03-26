@@ -1,0 +1,841 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Foundational AWS resources for HelmOS production on helm-os.ai.
+
+Parameters:
+  DeploymentStage:
+    Type: String
+    Default: prod
+  RootDomain:
+    Type: String
+    Default: helm-os.ai
+  WwwDomain:
+    Type: String
+    Default: www.helm-os.ai
+  ApiDomain:
+    Type: String
+    Default: api.helm-os.ai
+  HostedZoneId:
+    Type: String
+  EdgeCertificateArn:
+    Type: String
+  VpcCidr:
+    Type: String
+    Default: 10.42.0.0/16
+  PublicSubnetOneCidr:
+    Type: String
+    Default: 10.42.0.0/24
+  PublicSubnetTwoCidr:
+    Type: String
+    Default: 10.42.1.0/24
+  PrivateSubnetOneCidr:
+    Type: String
+    Default: 10.42.10.0/24
+  PrivateSubnetTwoCidr:
+    Type: String
+    Default: 10.42.11.0/24
+  DatabaseName:
+    Type: String
+    Default: helmos
+  DatabaseUsername:
+    Type: String
+    Default: helmos
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+  DatabaseStorageGb:
+    Type: Number
+    Default: 20
+  CacheNodeType:
+    Type: String
+    Default: cache.t4g.micro
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub "helmos-${DeploymentStage}-vpc"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  VpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref Vpc
+
+  PublicSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref PublicSubnetOneCidr
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "helmos-${DeploymentStage}-public-a"
+
+  PublicSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Ref PublicSubnetTwoCidr
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "helmos-${DeploymentStage}-public-b"
+
+  PrivateSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref PrivateSubnetOneCidr
+      Tags:
+        - Key: Name
+          Value: !Sub "helmos-${DeploymentStage}-private-a"
+
+  PrivateSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Ref PrivateSubnetTwoCidr
+      Tags:
+        - Key: Name
+          Value: !Sub "helmos-${DeploymentStage}-private-b"
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetOneRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetOne
+
+  PublicSubnetTwoRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetTwo
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+
+  PrivateSubnetOneRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetOne
+
+  PrivateSubnetTwoRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetTwo
+
+  ApplicationLoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public ingress for the HelmOS ALB
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  EcsTaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Runtime traffic for HelmOS ECS services
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  AllowAlbToNodeApi:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EcsTaskSecurityGroup
+      IpProtocol: tcp
+      FromPort: 3001
+      ToPort: 3001
+      SourceSecurityGroupId: !Ref ApplicationLoadBalancerSecurityGroup
+
+  AllowAlbToAgentGateway:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EcsTaskSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8000
+      ToPort: 8000
+      SourceSecurityGroupId: !Ref ApplicationLoadBalancerSecurityGroup
+
+  AllowServiceToAgentGateway:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EcsTaskSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8000
+      ToPort: 8000
+      SourceSecurityGroupId: !Ref EcsTaskSecurityGroup
+
+  AllowServiceToLiteLLM:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EcsTaskSecurityGroup
+      IpProtocol: tcp
+      FromPort: 4000
+      ToPort: 4000
+      SourceSecurityGroupId: !Ref EcsTaskSecurityGroup
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgreSQL ingress for HelmOS
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref EcsTaskSecurityGroup
+
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Redis ingress for HelmOS
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref EcsTaskSecurityGroup
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets for the HelmOS database
+      SubnetIds:
+        - !Ref PrivateSubnetOne
+        - !Ref PrivateSubnetTwo
+
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Private subnets for Redis
+      SubnetIds:
+        - !Ref PrivateSubnetOne
+        - !Ref PrivateSubnetTwo
+
+  DatabaseCredentialsSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "helmos/${DeploymentStage}/database"
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"username":"${DatabaseUsername}"}'
+        GenerateStringKey: password
+        PasswordLength: 24
+        ExcludePunctuation: true
+
+  Life2JwtSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "helmos/${DeploymentStage}/life2-jwt-secret"
+      Description: Shared secret for HS256 Life2 JWT validation
+      SecretString: '{"value":""}'
+
+  Life2JwtPublicKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "helmos/${DeploymentStage}/life2-jwt-public-key"
+      Description: Public key for RS256 Life2 JWT validation
+      SecretString: '{"value":""}'
+
+  OpenAiApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "helmos/${DeploymentStage}/openai-api-key"
+      Description: OpenAI API key used by LiteLLM
+      SecretString: '{"value":""}'
+
+  AnthropicApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "helmos/${DeploymentStage}/anthropic-api-key"
+      Description: Anthropic API key used by LiteLLM research routing
+      SecretString: '{"value":""}'
+
+  LiteLlmMasterKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "helmos/${DeploymentStage}/litellm-master-key"
+      Description: Shared key between HelmOS services and LiteLLM
+      SecretString: '{"value":""}'
+
+  LangsmithApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "helmos/${DeploymentStage}/langsmith-api-key"
+      Description: LangSmith API key for agent observability
+      SecretString: '{"value":""}'
+
+  HelmOsDatabase:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: !Ref DatabaseStorageGb
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      DBInstanceIdentifier: !Sub "helmos-${DeploymentStage}"
+      DBName: !Ref DatabaseName
+      Engine: postgres
+      EngineVersion: "16.13"
+      MasterUsername: !Sub "{{resolve:secretsmanager:${DatabaseCredentialsSecret}:SecretString:username}}"
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${DatabaseCredentialsSecret}:SecretString:password}}"
+      PubliclyAccessible: false
+      StorageEncrypted: true
+      BackupRetentionPeriod: 7
+      DeletionProtection: true
+      MultiAZ: false
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+
+  HelmOsRedis:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      AutoMinorVersionUpgrade: true
+      CacheNodeType: !Ref CacheNodeType
+      Engine: redis
+      NumCacheNodes: 1
+      VpcSecurityGroupIds:
+        - !Ref RedisSecurityGroup
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "helmos-${DeploymentStage}-${AWS::AccountId}-${AWS::Region}-site"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "helmos-${DeploymentStage}-${AWS::AccountId}-${AWS::Region}-artifacts"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  CloudFrontOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "helmos-${DeploymentStage}-site-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  StaticCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub "helmos-${DeploymentStage}-static"
+        DefaultTTL: 86400
+        MaxTTL: 31536000
+        MinTTL: 0
+        ParametersInCacheKeyAndForwardedToOrigin:
+          CookiesConfig:
+            CookieBehavior: none
+          HeadersConfig:
+            HeaderBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+
+  SpaRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "helmos-${DeploymentStage}-spa-rewrite"
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Rewrite non-file, non-API requests to /index.html
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri || "/";
+
+          if (uri.startsWith("/api/")) {
+            return request;
+          }
+
+          if (uri === "/" || (!uri.includes(".") && !uri.endsWith("/"))) {
+            request.uri = "/index.html";
+            return request;
+          }
+
+          if (uri.endsWith("/")) {
+            request.uri = uri + "index.html";
+          }
+
+          return request;
+        }
+
+  ApiOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub "helmos-${DeploymentStage}-api"
+        CookiesConfig:
+          CookieBehavior: all
+        HeadersConfig:
+          HeaderBehavior: allViewer
+        QueryStringsConfig:
+          QueryStringBehavior: all
+
+  SiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${SiteBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+
+  NodeApiRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "helmos/${DeploymentStage}/node-api"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  AgentGatewayRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "helmos/${DeploymentStage}/agent-gateway"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  LiteLlmRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "helmos/${DeploymentStage}/litellm"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "helmos-${DeploymentStage}"
+
+  ServiceDiscoveryNamespace:
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties:
+      Name: helmos.local
+      Vpc: !Ref Vpc
+
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: read-application-secrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: "*"
+
+  AppTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: artifact-bucket-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub "${ArtifactBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !GetAtt ArtifactBucket.Arn
+
+  ApiCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref ApiDomain
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref ApiDomain
+          HostedZoneId: !Ref HostedZoneId
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "helmos-${DeploymentStage}"
+      Scheme: internet-facing
+      Type: application
+      SecurityGroups:
+        - !Ref ApplicationLoadBalancerSecurityGroup
+      Subnets:
+        - !Ref PublicSubnetOne
+        - !Ref PublicSubnetTwo
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Port: "443"
+            Protocol: HTTPS
+            StatusCode: HTTP_301
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref ApiCertificate
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            ContentType: application/json
+            MessageBody: '{"error":"not_found"}'
+            StatusCode: "404"
+
+  NodeApiTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckPath: /api/health
+      HealthCheckProtocol: HTTP
+      Matcher:
+        HttpCode: 200
+      Port: 3001
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref Vpc
+
+  AgentGatewayTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckPath: /api/v1/health
+      HealthCheckProtocol: HTTP
+      Matcher:
+        HttpCode: 200
+      Port: 8000
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref Vpc
+
+  NodeApiListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref HttpsListener
+      Priority: 10
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /api/*
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref NodeApiTargetGroup
+
+  AgentGatewayListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref HttpsListener
+      Priority: 5
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /api/v1/*
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref AgentGatewayTargetGroup
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases:
+          - !Ref RootDomain
+          - !Ref WwwDomain
+        Enabled: true
+        DefaultRootObject: index.html
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          AcmCertificateArn: !Ref EdgeCertificateArn
+          MinimumProtocolVersion: TLSv1.2_2021
+          SslSupportMethod: sni-only
+        Origins:
+          - Id: StaticOrigin
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            OriginAccessControlId: !Ref CloudFrontOriginAccessControl
+            S3OriginConfig: {}
+          - Id: ApiOrigin
+            DomainName: !GetAtt ApplicationLoadBalancer.DNSName
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: http-only
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachePolicyId: !Ref StaticCachePolicy
+          Compress: true
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt SpaRewriteFunction.FunctionARN
+          TargetOriginId: StaticOrigin
+          ViewerProtocolPolicy: redirect-to-https
+        CacheBehaviors:
+          - PathPattern: /api/v1/*
+            AllowedMethods:
+              - DELETE
+              - GET
+              - HEAD
+              - OPTIONS
+              - PATCH
+              - POST
+              - PUT
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: !Ref ApiOriginRequestPolicy
+            Compress: true
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: https-only
+          - PathPattern: /api/*
+            AllowedMethods:
+              - DELETE
+              - GET
+              - HEAD
+              - OPTIONS
+              - PATCH
+              - POST
+              - PUT
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: !Ref ApiOriginRequestPolicy
+            Compress: true
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: https-only
+  RootDomainRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref RootDomain
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+  WwwDomainRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref WwwDomain
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+  ApiDomainRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref ApiDomain
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApplicationLoadBalancer.DNSName
+        HostedZoneId: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+
+Outputs:
+  ClusterName:
+    Value: !Ref EcsCluster
+    Export:
+      Name: !Sub "${AWS::StackName}-ClusterName"
+  NamespaceId:
+    Value: !Ref ServiceDiscoveryNamespace
+    Export:
+      Name: !Sub "${AWS::StackName}-NamespaceId"
+  PublicSubnetIds:
+    Value: !Join [",", [!Ref PublicSubnetOne, !Ref PublicSubnetTwo]]
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetIds"
+  EcsTaskSecurityGroupId:
+    Value: !Ref EcsTaskSecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-EcsTaskSecurityGroupId"
+  NodeApiTargetGroupArn:
+    Value: !Ref NodeApiTargetGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-NodeApiTargetGroupArn"
+  AgentGatewayTargetGroupArn:
+    Value: !Ref AgentGatewayTargetGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-AgentGatewayTargetGroupArn"
+  ExecutionRoleArn:
+    Value: !GetAtt ExecutionRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ExecutionRoleArn"
+  AppTaskRoleArn:
+    Value: !GetAtt AppTaskRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-AppTaskRoleArn"
+  SiteBucketName:
+    Value: !Ref SiteBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-SiteBucketName"
+  ArtifactBucketName:
+    Value: !Ref ArtifactBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-ArtifactBucketName"
+  NodeApiRepositoryUri:
+    Value: !GetAtt NodeApiRepository.RepositoryUri
+    Export:
+      Name: !Sub "${AWS::StackName}-NodeApiRepositoryUri"
+  AgentGatewayRepositoryUri:
+    Value: !GetAtt AgentGatewayRepository.RepositoryUri
+    Export:
+      Name: !Sub "${AWS::StackName}-AgentGatewayRepositoryUri"
+  LiteLlmRepositoryUri:
+    Value: !GetAtt LiteLlmRepository.RepositoryUri
+    Export:
+      Name: !Sub "${AWS::StackName}-LiteLlmRepositoryUri"
+  DatabaseAddress:
+    Value: !GetAtt HelmOsDatabase.Endpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}-DatabaseAddress"
+  DatabaseName:
+    Value: !Ref DatabaseName
+    Export:
+      Name: !Sub "${AWS::StackName}-DatabaseName"
+  DatabaseCredentialsSecretArn:
+    Value: !Ref DatabaseCredentialsSecret
+    Export:
+      Name: !Sub "${AWS::StackName}-DatabaseCredentialsSecretArn"
+  Life2JwtSecretArn:
+    Value: !Ref Life2JwtSecret
+    Export:
+      Name: !Sub "${AWS::StackName}-Life2JwtSecretArn"
+  Life2JwtPublicKeySecretArn:
+    Value: !Ref Life2JwtPublicKeySecret
+    Export:
+      Name: !Sub "${AWS::StackName}-Life2JwtPublicKeySecretArn"
+  OpenAiApiKeySecretArn:
+    Value: !Ref OpenAiApiKeySecret
+    Export:
+      Name: !Sub "${AWS::StackName}-OpenAiApiKeySecretArn"
+  AnthropicApiKeySecretArn:
+    Value: !Ref AnthropicApiKeySecret
+    Export:
+      Name: !Sub "${AWS::StackName}-AnthropicApiKeySecretArn"
+  LiteLlmMasterKeySecretArn:
+    Value: !Ref LiteLlmMasterKeySecret
+    Export:
+      Name: !Sub "${AWS::StackName}-LiteLlmMasterKeySecretArn"
+  LangsmithApiKeySecretArn:
+    Value: !Ref LangsmithApiKeySecret
+    Export:
+      Name: !Sub "${AWS::StackName}-LangsmithApiKeySecretArn"
+  RedisEndpointAddress:
+    Value: !GetAtt HelmOsRedis.RedisEndpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}-RedisEndpointAddress"
+  CloudFrontDistributionId:
+    Value: !Ref CloudFrontDistribution
+    Export:
+      Name: !Sub "${AWS::StackName}-CloudFrontDistributionId"
+  CloudFrontDomainName:
+    Value: !GetAtt CloudFrontDistribution.DomainName
+  ApiDomainName:
+    Value: !Ref ApiDomain

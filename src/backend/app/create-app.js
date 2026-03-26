@@ -5,9 +5,22 @@ const { errorHandler } = require("./api/error-handler");
 const { buildRequestLogger } = require("./api/request-log-middleware");
 const { createAgentGatewayClient } = require("./services/agent-gateway-client");
 
-function isAllowedOrigin(origin) {
+function getAllowedOrigins() {
+  const configuredOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  return new Set(configuredOrigins);
+}
+
+function isAllowedOrigin(origin, allowedOrigins = getAllowedOrigins()) {
   if (typeof origin !== "string" || origin.length === 0) {
     return false;
+  }
+
+  if (allowedOrigins.has(origin)) {
+    return true;
   }
 
   try {
@@ -20,6 +33,7 @@ function isAllowedOrigin(origin) {
 
 function createApp({ prisma, agentGatewayClient }) {
   const app = express();
+  const allowedOrigins = getAllowedOrigins();
   const gatewayClient =
     agentGatewayClient ??
     createAgentGatewayClient({
@@ -31,7 +45,7 @@ function createApp({ prisma, agentGatewayClient }) {
   app.use((req, res, next) => {
     const origin = req.headers.origin;
 
-    if (isAllowedOrigin(origin)) {
+    if (isAllowedOrigin(origin, allowedOrigins)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Vary", "Origin");
       res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
@@ -62,4 +76,6 @@ function createApp({ prisma, agentGatewayClient }) {
 
 module.exports = {
   createApp,
+  getAllowedOrigins,
+  isAllowedOrigin,
 };

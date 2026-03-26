@@ -103,6 +103,8 @@ const BUSINESS_TYPE_LABELS = {
   [BusinessType.OTHER]: "Mixture",
 };
 
+const TERMINAL_GATEWAY_STATUSES = new Set(["completed", "failed", "cancelled", "waiting_for_approval"]);
+
 function slugify(value) {
   return value
     .toLowerCase()
@@ -110,6 +112,10 @@ function slugify(value) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 100);
+}
+
+function normalizeGatewayStatus(status) {
+  return typeof status === "string" ? status.trim().toLowerCase() : "";
 }
 
 function buildDefaultOrganisationSlug(currentUser) {
@@ -880,6 +886,14 @@ async function runIdeationWorkflow(prisma, agentGatewayClient, workspaceId, inpu
         gatewaySummary,
       },
     });
+
+    if (!TERMINAL_GATEWAY_STATUSES.has(normalizeGatewayStatus(gatewaySummary?.status))) {
+      const error = new Error(
+        `Agent gateway run did not complete in time (last status: ${gatewaySummary?.status ?? "unknown"}).`
+      );
+      error.statusCode = 504;
+      throw error;
+    }
   } catch (error) {
     await prisma.$transaction(async (tx) => {
       if (persistedRun?.id && typeof tx.agentRun?.update === "function") {

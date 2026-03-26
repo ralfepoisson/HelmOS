@@ -1,0 +1,354 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ECS Fargate services for HelmOS production workloads.
+
+Parameters:
+  FoundationStackName:
+    Type: String
+  RootDomain:
+    Type: String
+    Default: helm-os.ai
+  WwwDomain:
+    Type: String
+    Default: www.helm-os.ai
+  ApiDomain:
+    Type: String
+    Default: api.helm-os.ai
+  NodeApiImageUri:
+    Type: String
+  AgentGatewayImageUri:
+    Type: String
+  LiteLlmImageUri:
+    Type: String
+  NodeApiDesiredCount:
+    Type: Number
+    Default: 2
+  AgentGatewayDesiredCount:
+    Type: Number
+    Default: 2
+  LiteLlmDesiredCount:
+    Type: Number
+    Default: 1
+  NodeApiCpu:
+    Type: Number
+    Default: 512
+  NodeApiMemory:
+    Type: Number
+    Default: 1024
+  AgentGatewayCpu:
+    Type: Number
+    Default: 1024
+  AgentGatewayMemory:
+    Type: Number
+    Default: 2048
+  LiteLlmCpu:
+    Type: Number
+    Default: 512
+  LiteLlmMemory:
+    Type: Number
+    Default: 1024
+  HelmOsLogLevel:
+    Type: String
+    Default: INFO
+  HelmOsDefaultModel:
+    Type: String
+    Default: helmos-default
+  HelmOsSupervisorModel:
+    Type: String
+    Default: helmos-supervisor
+  HelmOsLangsmithEnabled:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
+Resources:
+  NodeApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/ecs/${FoundationStackName}/node-api"
+      RetentionInDays: 30
+
+  AgentGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/ecs/${FoundationStackName}/agent-gateway"
+      RetentionInDays: 30
+
+  LiteLlmLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/ecs/${FoundationStackName}/litellm"
+      RetentionInDays: 30
+
+  AgentGatewayDiscoveryService:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Name: agent-gateway
+      NamespaceId:
+        Fn::ImportValue: !Sub "${FoundationStackName}-NamespaceId"
+      DnsConfig:
+        DnsRecords:
+          - TTL: 10
+            Type: A
+
+  LiteLlmDiscoveryService:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Name: litellm
+      NamespaceId:
+        Fn::ImportValue: !Sub "${FoundationStackName}-NamespaceId"
+      DnsConfig:
+        DnsRecords:
+          - TTL: 10
+            Type: A
+
+  NodeApiTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${FoundationStackName}-node-api"
+      Cpu: !Ref NodeApiCpu
+      Memory: !Ref NodeApiMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub "${FoundationStackName}-ExecutionRoleArn"
+      TaskRoleArn:
+        Fn::ImportValue: !Sub "${FoundationStackName}-AppTaskRoleArn"
+      ContainerDefinitions:
+        - Name: node-api
+          Image: !Ref NodeApiImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 3001
+              Protocol: tcp
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            - Name: HOST
+              Value: 0.0.0.0
+            - Name: PORT
+              Value: "3001"
+            - Name: AGENT_GATEWAY_BASE_URL
+              Value: http://agent-gateway.helmos.local:8000/api/v1
+            - Name: CORS_ALLOWED_ORIGINS
+              Value: !Sub "https://${RootDomain},https://${WwwDomain},https://${ApiDomain}"
+            - Name: DATABASE_URL
+              Value: !Sub
+                - "postgresql://${DbUser}:${DbPassword}@${DbHost}:5432/${DbName}?schema=public"
+                - DbUser: !Sub "{{resolve:secretsmanager:${DbSecretArn}:SecretString:username}}"
+                  DbPassword: !Sub "{{resolve:secretsmanager:${DbSecretArn}:SecretString:password}}"
+                  DbHost:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseAddress"
+                  DbName:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseName"
+                  DbSecretArn:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseCredentialsSecretArn"
+          Secrets:
+            - Name: LIFE2_JWT_SECRET
+              ValueFrom: !Sub
+                - "${SecretArn}:value::"
+                - SecretArn:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-Life2JwtSecretArn"
+            - Name: LIFE2_JWT_PUBLIC_KEY
+              ValueFrom: !Sub
+                - "${SecretArn}:value::"
+                - SecretArn:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-Life2JwtPublicKeySecretArn"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref NodeApiLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  AgentGatewayTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${FoundationStackName}-agent-gateway"
+      Cpu: !Ref AgentGatewayCpu
+      Memory: !Ref AgentGatewayMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub "${FoundationStackName}-ExecutionRoleArn"
+      TaskRoleArn:
+        Fn::ImportValue: !Sub "${FoundationStackName}-AppTaskRoleArn"
+      ContainerDefinitions:
+        - Name: agent-gateway
+          Image: !Ref AgentGatewayImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: HELMOS_ENV
+              Value: production
+            - Name: HELMOS_LOG_LEVEL
+              Value: !Ref HelmOsLogLevel
+            - Name: HELMOS_DATABASE_URL
+              Value: !Sub
+                - "postgresql+psycopg://${DbUser}:${DbPassword}@${DbHost}:5432/${DbName}"
+                - DbUser: !Sub "{{resolve:secretsmanager:${DbSecretArn}:SecretString:username}}"
+                  DbPassword: !Sub "{{resolve:secretsmanager:${DbSecretArn}:SecretString:password}}"
+                  DbHost:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseAddress"
+                  DbName:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseName"
+                  DbSecretArn:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseCredentialsSecretArn"
+            - Name: HELMOS_REDIS_URL
+              Value: !Sub
+                - "redis://${RedisHost}:6379/0"
+                - RedisHost:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-RedisEndpointAddress"
+            - Name: HELMOS_S3_BUCKET
+              Value:
+                Fn::ImportValue: !Sub "${FoundationStackName}-ArtifactBucketName"
+            - Name: HELMOS_CORS_ALLOWED_ORIGINS
+              Value: !Sub "https://${RootDomain},https://${WwwDomain},https://${ApiDomain}"
+            - Name: HELMOS_LITELLM_PROXY_URL
+              Value: http://litellm.helmos.local:4000
+            - Name: HELMOS_DEFAULT_MODEL
+              Value: !Ref HelmOsDefaultModel
+            - Name: HELMOS_SUPERVISOR_MODEL
+              Value: !Ref HelmOsSupervisorModel
+            - Name: HELMOS_LANGSMITH_ENABLED
+              Value: !Ref HelmOsLangsmithEnabled
+          Secrets:
+            - Name: HELMOS_LITELLM_API_KEY
+              ValueFrom: !Sub
+                - "${SecretArn}:value::"
+                - SecretArn:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-LiteLlmMasterKeySecretArn"
+            - Name: HELMOS_LANGSMITH_API_KEY
+              ValueFrom: !Sub
+                - "${SecretArn}:value::"
+                - SecretArn:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-LangsmithApiKeySecretArn"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref AgentGatewayLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  LiteLlmTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${FoundationStackName}-litellm"
+      Cpu: !Ref LiteLlmCpu
+      Memory: !Ref LiteLlmMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub "${FoundationStackName}-ExecutionRoleArn"
+      TaskRoleArn:
+        Fn::ImportValue: !Sub "${FoundationStackName}-AppTaskRoleArn"
+      ContainerDefinitions:
+        - Name: litellm
+          Image: !Ref LiteLlmImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 4000
+              Protocol: tcp
+          Secrets:
+            - Name: OPENAI_API_KEY
+              ValueFrom: !Sub
+                - "${SecretArn}:value::"
+                - SecretArn:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-OpenAiApiKeySecretArn"
+            - Name: ANTHROPIC_API_KEY
+              ValueFrom: !Sub
+                - "${SecretArn}:value::"
+                - SecretArn:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-AnthropicApiKeySecretArn"
+            - Name: LITELLM_MASTER_KEY
+              ValueFrom: !Sub
+                - "${SecretArn}:value::"
+                - SecretArn:
+                    Fn::ImportValue: !Sub "${FoundationStackName}-LiteLlmMasterKeySecretArn"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LiteLlmLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  NodeApiService:
+    Type: AWS::ECS::Service
+    DependsOn: AgentGatewayService
+    Properties:
+      Cluster:
+        Fn::ImportValue: !Sub "${FoundationStackName}-ClusterName"
+      DesiredCount: !Ref NodeApiDesiredCount
+      EnableExecuteCommand: true
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - Fn::ImportValue: !Sub "${FoundationStackName}-EcsTaskSecurityGroupId"
+          Subnets: !Split
+            - ","
+            - Fn::ImportValue: !Sub "${FoundationStackName}-PublicSubnetIds"
+      LoadBalancers:
+        - ContainerName: node-api
+          ContainerPort: 3001
+          TargetGroupArn:
+            Fn::ImportValue: !Sub "${FoundationStackName}-NodeApiTargetGroupArn"
+      TaskDefinition: !Ref NodeApiTaskDefinition
+
+  AgentGatewayService:
+    Type: AWS::ECS::Service
+    DependsOn: LiteLlmService
+    Properties:
+      Cluster:
+        Fn::ImportValue: !Sub "${FoundationStackName}-ClusterName"
+      DesiredCount: !Ref AgentGatewayDesiredCount
+      EnableExecuteCommand: true
+      LaunchType: FARGATE
+      ServiceRegistries:
+        - RegistryArn: !GetAtt AgentGatewayDiscoveryService.Arn
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - Fn::ImportValue: !Sub "${FoundationStackName}-EcsTaskSecurityGroupId"
+          Subnets: !Split
+            - ","
+            - Fn::ImportValue: !Sub "${FoundationStackName}-PublicSubnetIds"
+      LoadBalancers:
+        - ContainerName: agent-gateway
+          ContainerPort: 8000
+          TargetGroupArn:
+            Fn::ImportValue: !Sub "${FoundationStackName}-AgentGatewayTargetGroupArn"
+      TaskDefinition: !Ref AgentGatewayTaskDefinition
+
+  LiteLlmService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster:
+        Fn::ImportValue: !Sub "${FoundationStackName}-ClusterName"
+      DesiredCount: !Ref LiteLlmDesiredCount
+      EnableExecuteCommand: true
+      LaunchType: FARGATE
+      ServiceRegistries:
+        - RegistryArn: !GetAtt LiteLlmDiscoveryService.Arn
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - Fn::ImportValue: !Sub "${FoundationStackName}-EcsTaskSecurityGroupId"
+          Subnets: !Split
+            - ","
+            - Fn::ImportValue: !Sub "${FoundationStackName}-PublicSubnetIds"
+      TaskDefinition: !Ref LiteLlmTaskDefinition
+
+Outputs:
+  NodeApiTaskDefinitionArn:
+    Value: !Ref NodeApiTaskDefinition
+  ClusterName:
+    Value:
+      Fn::ImportValue: !Sub "${FoundationStackName}-ClusterName"

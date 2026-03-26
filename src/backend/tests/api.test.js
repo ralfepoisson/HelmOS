@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 
 const request = require("supertest");
 
-const { createApp } = require("../app/create-app");
+const { createApp, getAllowedOrigins, isAllowedOrigin } = require("../app/create-app");
 const { resourceConfigs } = require("../app/api/resources");
 const { createAgentGatewayClient } = require("../app/services/agent-gateway-client");
 
@@ -40,6 +40,33 @@ function createSignedTestJwt(overrides = {}, { secret = null } = {}) {
 function withAuth(requestBuilder, overrides) {
   return requestBuilder.set("Authorization", `Bearer ${createTestJwt(overrides)}`);
 }
+
+test("node API allows explicitly configured production browser origins", async () => {
+  const originalOrigins = process.env.CORS_ALLOWED_ORIGINS;
+  process.env.CORS_ALLOWED_ORIGINS = "https://helm-os.ai,https://app.helm-os.ai";
+
+  try {
+    const allowedOrigins = getAllowedOrigins();
+
+    assert.equal(isAllowedOrigin("https://helm-os.ai", allowedOrigins), true);
+    assert.equal(isAllowedOrigin("https://app.helm-os.ai", allowedOrigins), true);
+    assert.equal(isAllowedOrigin("https://example.com", allowedOrigins), false);
+
+    const app = createApp({ prisma: {} });
+    const response = await request(app)
+      .options("/api/health")
+      .set("Origin", "https://helm-os.ai");
+
+    assert.equal(response.status, 204);
+    assert.equal(response.headers["access-control-allow-origin"], "https://helm-os.ai");
+  } finally {
+    if (originalOrigins == null) {
+      delete process.env.CORS_ALLOWED_ORIGINS;
+    } else {
+      process.env.CORS_ALLOWED_ORIGINS = originalOrigins;
+    }
+  }
+});
 
 const CRUD_FIXTURES = {
   users: {
@@ -1493,6 +1520,76 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages does not derive id
   assert.equal(strategyDocumentUpdates[0].completenessPercent, 0);
   assert.equal(response.body.data.workspace.overview.completeness, 0);
   assert.equal(response.body.data.workspace.sections[0].content, "");
+});
+
+test("POST /api/business-ideas/:workspaceId/ideation/messages rejects a pending gateway summary", async () => {
+  const initialWorkspace = buildStrategyHubWorkspaceRecord({
+    id: "workspace-existing-1",
+    name: "HelmOS",
+    businessType: "PRODUCT",
+  });
+
+  let workspaceFindCount = 0;
+  const agentRunUpdates = [];
+  const chatMessageUpdates = [];
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-idea-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    workspace: {
+      findUniqueOrThrow: async () => {
+        workspaceFindCount += 1;
+        return initialWorkspace;
+      },
+    },
+    chatMessage: {
+      create: async ({ data }) => ({ id: `message-created-${data.messageIndex}`, ...data }),
+      update: async ({ where, data }) => {
+        chatMessageUpdates.push({ where, data });
+        return { id: where.id, ...data };
+      },
+    },
+    agentRun: {
+      create: async ({ data }) => ({ id: "agent-run-local-pending", ...data }),
+      update: async ({ where, data }) => {
+        agentRunUpdates.push({ where, data });
+        return { id: where.id, ...data };
+      },
+    },
+    activityLog: {
+      create: async () => ({}),
+    },
+    logEntry: {
+      create: async () => ({}),
+    },
+    $transaction: async (callback) => callback(prisma),
+  };
+
+  const agentGatewayClient = {
+    runIdeationWorkflow: async () => ({
+      id: "gateway-run-pending",
+      status: "pending",
+      normalized_output: {},
+    }),
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(request(app)
+    .post("/api/business-ideas/workspace-existing-1/ideation/messages")
+    .send({
+      messageText: "Please refine the idea.",
+    }));
+
+  assert.equal(response.statusCode, 504);
+  assert.match(response.body.error, /did not complete in time/i);
+  assert.equal(agentRunUpdates.at(-1).data.runStatus, "FAILED");
+  assert.equal(chatMessageUpdates.at(-1).data.status, "FAILED");
 });
 
 for (const config of resourceConfigs) {

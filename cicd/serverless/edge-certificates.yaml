@@ -1,0 +1,30 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Edge ACM certificates for the HelmOS CloudFront distribution.
+
+Parameters:
+  RootDomain:
+    Type: String
+    Default: helm-os.ai
+  WwwDomain:
+    Type: String
+    Default: www.helm-os.ai
+  HostedZoneId:
+    Type: String
+
+Resources:
+  EdgeCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref RootDomain
+      SubjectAlternativeNames:
+        - !Ref WwwDomain
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref RootDomain
+          HostedZoneId: !Ref HostedZoneId
+        - DomainName: !Ref WwwDomain
+          HostedZoneId: !Ref HostedZoneId
+
+Outputs:
+  EdgeCertificateArn:
+    Value: !Ref EdgeCertificate

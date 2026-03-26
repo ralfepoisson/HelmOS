@@ -60,6 +60,21 @@ package "AgentOps & Observability" {
   [Prompt Registry]
 }
 
+package "AWS Production Deployment" {
+  [Route 53]
+  [ACM]
+  [CloudFront]
+  [S3 Static Site Bucket]
+  [Application Load Balancer]
+  [ECS Fargate - Node API]
+  [ECS Fargate - Agent Gateway]
+  [ECS Fargate - LiteLLM]
+  [ECR]
+  [RDS PostgreSQL]
+  [ElastiCache Redis]
+  [S3 Artifact Bucket]
+}
+
 [Angular UI] --> [Angular Dev Proxy] : local /api and /api/v1
 [Angular UI] --> [Auth Callback & Route Guards] : restore session, route gating
 [Auth Callback & Route Guards] --> [Life2 Auth Service] : delegated sign-in / sign-out
@@ -109,5 +124,21 @@ package "AgentOps & Observability" {
 [Workflow Graph Engine] --> [Audit Logs]
 [Workflow Graph Engine] --> [Agent Registry]
 [Workflow Graph Engine] --> [Prompt Registry]
+
+[Route 53] --> [ACM]
+[Route 53] --> [CloudFront]
+[CloudFront] --> [S3 Static Site Bucket]
+[CloudFront] --> [Application Load Balancer] : /api and /api/v1
+[Application Load Balancer] --> [ECS Fargate - Node API]
+[Application Load Balancer] --> [ECS Fargate - Agent Gateway]
+[ECS Fargate - Node API] --> [ECS Fargate - Agent Gateway]
+[ECS Fargate - Agent Gateway] --> [ECS Fargate - LiteLLM]
+[ECS Fargate - Node API] --> [RDS PostgreSQL]
+[ECS Fargate - Agent Gateway] --> [RDS PostgreSQL]
+[ECS Fargate - Agent Gateway] --> [ElastiCache Redis]
+[ECS Fargate - Agent Gateway] --> [S3 Artifact Bucket]
+[ECR] --> [ECS Fargate - Node API]
+[ECR] --> [ECS Fargate - Agent Gateway]
+[ECR] --> [ECS Fargate - LiteLLM]
 
 @enduml
