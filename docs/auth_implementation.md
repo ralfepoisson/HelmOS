@@ -8,7 +8,7 @@ Morning Briefing does not sign users in directly with Cognito.
 
 Instead:
 
-1. The SPA redirects unauthenticated users to the central Life2 auth UI.
+1. The SPA redirects unauthenticated users to a backend bootstrap endpoint.
 2. The auth service authenticates the user with Cognito.
 3. The auth service exchanges the Cognito token for a Life2 JWT.
 4. The auth service redirects back to the SPA callback route with that Life2 JWT.
@@ -149,11 +149,29 @@ Responsibilities:
 - restore session from `localStorage`
 - validate JWT payload shape and expiry
 - expose the current auth state to the SPA
-- build the central auth sign-in redirect
-- handle sign-out
+- build the backend auth bootstrap redirect
+- handle sign-out by clearing the stored JWT/session and routing to `/#/signed-out`
 - expose the stored bearer token for API requests
 - preserve a post-login return path
 - store the latest auth error for troubleshooting
+
+### Backend auth bootstrap
+
+HelmOS now routes sign-in initiation through the Node control plane:
+
+```text
+GET /api/auth/sign-in?redirect={APP_BASE_URL}/#/auth/callback
+```
+
+That backend route calls the Life2 auth service sign-in URL server-side and adds:
+
+```text
+Application-Token: {AUTH_SERVICE_TOKEN}
+```
+
+The backend uses `AUTH_SERVICE_SIGN_IN_URL` when present, otherwise
+`FRONTEND_AUTH_SERVICE_SIGN_IN_URL`, and finally falls back to
+`http://localhost:63431/signIn` for local development.
 
 Current local storage keys:
 
@@ -198,7 +216,9 @@ Files:
 Behavior:
 
 - callback page consumes the token and routes into the app
-- signed-out page shows the latest auth failure reason
+- signed-out page confirms that the local JWT session has been cleared
+- signed-out page shows the latest auth failure reason when one exists
+- signed-out page offers a CTA to start a fresh sign-in flow
 - signed-out page self-heals by redirecting into the app if a valid session already exists
 
 ### Current debug logging
@@ -417,7 +437,8 @@ Use this checklist when integrating the Life2 auth service into another SPA proj
 
 1. Add a dedicated SPA callback route: `/#/auth/callback`.
 2. Redirect unauthenticated users to the central auth UI.
-3. Pass `redirect={appBaseUrl}/#/auth/callback`.
+3. Navigate to `/api/auth/sign-in`.
+4. Pass `redirect={appBaseUrl}/#/auth/callback`.
 4. Ensure the auth service returns the exchanged Life2 JWT, not the raw Cognito token.
 5. Ensure the JWT includes user/account identity claims plus `exp`.
 6. Capture and store the token before the SPA router boots.
@@ -425,9 +446,10 @@ Use this checklist when integrating the Life2 auth service into another SPA proj
 8. On initial app load, restore the token from `localStorage` and reject expired sessions.
 9. Attach the token as `Authorization: Bearer <jwt>` on every protected backend API request.
 10. Validate the token again on the backend for every protected API request.
-11. Redirect authenticated users away from public auth routes such as `#/signed-out`.
-12. Surface the last auth error during rollout/debugging.
-13. Configure signature verification with `LIFE2_JWT_SECRET` or `LIFE2_JWT_PUBLIC_KEY`.
+11. For sign-out, clear the local JWT/session state and redirect to `/#/signed-out`.
+12. Redirect authenticated users away from public auth routes such as `#/signed-out`.
+13. Surface the last auth error during rollout/debugging.
+14. Configure signature verification with `LIFE2_JWT_SECRET` or `LIFE2_JWT_PUBLIC_KEY`.
 
 ## Files To Reuse As Reference
 

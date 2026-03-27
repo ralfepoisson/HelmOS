@@ -99,6 +99,7 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
               <div class="profile-name">{{ resolvedProfileName }}</div>
               <div class="profile-role">{{ resolvedProfileRoleLabel }}</div>
             </div>
+            <button type="button" class="sign-out-button" (click)="signOut()">Sign Out</button>
           </div>
         </div>
       </div>
@@ -324,6 +325,24 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
         font-weight: 700;
       }
 
+      .sign-out-button {
+        border: 0;
+        background: transparent;
+        color: var(--helmos-muted);
+        font-size: 0.8rem;
+        font-weight: 700;
+        padding: 0.35rem 0.6rem;
+        border-radius: 999px;
+        transition:
+          color 160ms ease,
+          background 160ms ease;
+      }
+
+      .sign-out-button:hover {
+        color: var(--helmos-text);
+        background: var(--helmos-accent-soft);
+      }
+
       @media (max-width: 991.98px) {
         .toolbar-cluster {
           margin-left: auto;
@@ -414,6 +433,11 @@ export class TopNavComponent {
 
   closeAdminMenu(): void {
     this.adminMenuOpen = false;
+  }
+
+  signOut(): void {
+    this.closeAdminMenu();
+    this.auth.signOut();
   }
 
   @HostListener('document:click', ['$event'])

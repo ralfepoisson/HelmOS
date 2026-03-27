@@ -4,6 +4,18 @@ function createHttpError(statusCode, message) {
   return error;
 }
 
+function getAuthServiceSignInUrl() {
+  return (
+    process.env.AUTH_SERVICE_SIGN_IN_URL?.trim() ||
+    process.env.FRONTEND_AUTH_SERVICE_SIGN_IN_URL?.trim() ||
+    "http://localhost:63431/signIn"
+  );
+}
+
+function getAuthServiceToken() {
+  return process.env.AUTH_SERVICE_TOKEN?.trim() || null;
+}
+
 function isTruthyBoolean(value) {
   if (typeof value === "boolean") {
     return value;
@@ -240,7 +252,50 @@ function requireAdmin(req, _res, next) {
   return next();
 }
 
+function createAuthServiceSignInHandler({ fetchImpl = globalThis.fetch } = {}) {
+  return async (req, res, next) => {
+    const redirectTarget = typeof req.query.redirect === "string" ? req.query.redirect.trim() : "";
+    const applicationToken = getAuthServiceToken();
+
+    if (!redirectTarget) {
+      return next(createHttpError(400, "A redirect target is required"));
+    }
+
+    if (!applicationToken) {
+      return next(createHttpError(500, "AUTH_SERVICE_TOKEN is not configured"));
+    }
+
+    try {
+      const signInUrl = new URL(getAuthServiceSignInUrl());
+      signInUrl.searchParams.set("redirect", redirectTarget);
+
+      const upstreamResponse = await fetchImpl(signInUrl, {
+        method: "GET",
+        redirect: "manual",
+        headers: {
+          "Application-Token": applicationToken,
+        },
+      });
+
+      const location = upstreamResponse.headers.get("location");
+      if (location) {
+        return res.redirect(upstreamResponse.status, location);
+      }
+
+      const contentType = upstreamResponse.headers.get("content-type");
+      if (contentType) {
+        res.setHeader("Content-Type", contentType);
+      }
+
+      return res.status(upstreamResponse.status).send(await upstreamResponse.text());
+    } catch (error) {
+      return next(error);
+    }
+  };
+}
+
 module.exports = {
+  createAuthServiceSignInHandler,
   createAuthMiddleware,
   createHttpError,
   parseAdminEmails,

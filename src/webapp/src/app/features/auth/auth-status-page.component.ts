@@ -12,12 +12,12 @@ import { AuthService } from '../../core/auth/auth.service';
     <main class="auth-status-shell">
       <section class="auth-status-card">
         <p class="auth-kicker">Signed out</p>
-        <h1>Sign back in to continue</h1>
+        <h1>You have been signed out</h1>
         <p class="auth-copy">
-          HelmOS uses the shared Life2 auth service. Start a new sign-in flow to return to your workspace.
+          Your HelmOS session token has been removed from this browser. Sign in again whenever you are ready to return to your workspace.
         </p>
         <p *ngIf="authError" class="auth-error">{{ authError }}</p>
-        <button class="btn btn-primary" type="button" (click)="signIn()">Sign in</button>
+        <button class="btn btn-primary" type="button" (click)="signIn()">Sign In Again</button>
       </section>
     </main>
   `,

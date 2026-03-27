@@ -82,27 +82,23 @@ export class AuthService {
 
   redirectToSignIn(): void {
     const callbackUrl = `${normalizeAppBaseUrl(this.config.appBaseUrl)}#/auth/callback`;
-    const signInUrl = new URL(this.config.authServiceSignInUrl);
+    const signInUrl = new URL(`${normalizeBaseUrl(this.config.apiBaseUrl)}/api/auth/sign-in`);
     signInUrl.searchParams.set('redirect', callbackUrl);
-    window.location.assign(signInUrl.toString());
+    this.navigateTo(signInUrl.toString());
   }
 
-  redirectToSignOut(): void {
-    const signedOutUrl = `${normalizeAppBaseUrl(this.config.appBaseUrl)}#/signed-out`;
-    const signOutUrl = new URL(this.config.authServiceSignOutUrl);
-    signOutUrl.searchParams.set('redirect', signedOutUrl);
-    window.location.assign(signOutUrl.toString());
+  redirectToSignedOut(): void {
+    this.navigateTo(`${normalizeAppBaseUrl(this.config.appBaseUrl)}/#/signed-out`);
   }
 
   signOut(reason?: string | null): void {
     clearStoredAuth();
-    localStorage.removeItem(AUTH_SESSION_KEY);
-    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_ERROR_KEY);
     if (reason) {
       localStorage.setItem(AUTH_ERROR_KEY, reason);
     }
     this.sessionState.set(null);
-    this.redirectToSignOut();
+    this.redirectToSignedOut();
   }
 
   handleUnauthorized(): void {
@@ -120,8 +116,16 @@ export class AuthService {
   clearAuthError(): void {
     localStorage.removeItem(AUTH_ERROR_KEY);
   }
+
+  private navigateTo(url: string): void {
+    window.location.assign(url);
+  }
 }
 
 function normalizeAppBaseUrl(value: string): string {
+  return value.endsWith('/') ? value.slice(0, -1) : value;
+}
+
+function normalizeBaseUrl(value: string): string {
   return value.endsWith('/') ? value.slice(0, -1) : value;
 }

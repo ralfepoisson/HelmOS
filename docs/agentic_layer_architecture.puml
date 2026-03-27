@@ -92,7 +92,9 @@ package "AWS Production Deployment" {
 [Angular UI] --> [Node Control Plane API] : load workspace unlock state and available strategy tools
 [Angular UI] --> [Value Proposition Screen]
 [Value Proposition Screen] --> [Node Control Plane API] : load value proposition canvas and persist chat-driven updates
-[Auth Callback & Route Guards] --> [Life2 Auth Service] : delegated sign-in / sign-out
+[Auth Callback & Route Guards] --> [Node Control Plane API] : initiate sign-in bootstrap
+[Node Control Plane API] --> [Life2 Auth Service] : delegated sign-in with Application-Token
+[Auth Callback & Route Guards] --> [Angular UI] : local sign-out clears stored JWT and routes to signed-out screen
 [Auth Callback & Route Guards] --> [JWT Session Bootstrap] : capture hash-route token before app bootstrap
 [Angular Dev Proxy] --> [Node Control Plane API] : /api
 [Angular Dev Proxy] --> [Agent Gateway API (FastAPI)] : /api/v1

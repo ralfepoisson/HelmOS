@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { vi } from 'vitest';
 
-import { AUTH_RETURN_PATH_KEY } from './bootstrap-auth';
+import { AUTH_ERROR_KEY, AUTH_RETURN_PATH_KEY, AUTH_SESSION_KEY, AUTH_TOKEN_KEY } from './bootstrap-auth';
 import { AuthService } from './auth.service';
 
 describe('AuthService', () => {
@@ -44,5 +44,44 @@ describe('AuthService', () => {
 
     expect(service.consumeReturnPath()).toBe('/strategy-copilot/my-business-ideas');
     expect(localStorage.getItem(AUTH_RETURN_PATH_KEY)).toBeNull();
+  });
+
+  it('routes sign-in through the backend auth bootstrap endpoint', () => {
+    const service = TestBed.inject(AuthService);
+    const navigateSpy = vi.spyOn(service as AuthService & { navigateTo: (url: string) => void }, 'navigateTo');
+
+    service.redirectToSignIn();
+
+    expect(navigateSpy).toHaveBeenCalledWith(
+      `${window.location.origin}/api/auth/sign-in?redirect=${encodeURIComponent(`${window.location.origin}#/auth/callback`)}`
+    );
+  });
+
+  it('clears stored auth state and routes to the signed-out page', () => {
+    const service = TestBed.inject(AuthService);
+    const navigateSpy = vi.spyOn(service as AuthService & { navigateTo: (url: string) => void }, 'navigateTo');
+    localStorage.setItem(AUTH_TOKEN_KEY, 'jwt-token');
+    localStorage.setItem(
+      AUTH_SESSION_KEY,
+      JSON.stringify({
+        userId: 'user-1',
+        accountId: 'account-1',
+        email: 'user@example.com',
+        displayName: 'User Example',
+        avatarUrl: null,
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        appRole: 'USER'
+      })
+    );
+    localStorage.setItem(AUTH_RETURN_PATH_KEY, '/strategy-copilot');
+    localStorage.setItem(AUTH_ERROR_KEY, 'Previous auth error');
+
+    service.signOut();
+
+    expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBeNull();
+    expect(localStorage.getItem(AUTH_SESSION_KEY)).toBeNull();
+    expect(localStorage.getItem(AUTH_RETURN_PATH_KEY)).toBeNull();
+    expect(localStorage.getItem(AUTH_ERROR_KEY)).toBeNull();
+    expect(navigateSpy).toHaveBeenCalledWith(`${window.location.origin}/#/signed-out`);
   });
 });

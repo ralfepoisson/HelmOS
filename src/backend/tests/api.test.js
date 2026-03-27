@@ -480,6 +480,55 @@ test("GET /api/health returns a healthy status", async () => {
   });
 });
 
+test("GET /api/auth/sign-in forwards the application token to the auth service", async () => {
+  const originalToken = process.env.AUTH_SERVICE_TOKEN;
+  const originalSignInUrl = process.env.AUTH_SERVICE_SIGN_IN_URL;
+  const fetchCalls = [];
+  const fetchImpl = async (url, options) => {
+    fetchCalls.push({ url, options });
+    return {
+      status: 302,
+      headers: new Headers({
+        location: "https://auth.life-sqrd.com/authorize?state=test-state",
+      }),
+      text: async () => "",
+    };
+  };
+
+  process.env.AUTH_SERVICE_TOKEN = "test-app-token";
+  process.env.AUTH_SERVICE_SIGN_IN_URL = "https://auth.life-sqrd.com/signIn";
+
+  try {
+    const app = createApp({ prisma: {}, fetchImpl });
+    const response = await request(app)
+      .get("/api/auth/sign-in")
+      .query({ redirect: "http://localhost:4200/#/auth/callback" });
+
+    assert.equal(response.statusCode, 302);
+    assert.equal(response.headers.location, "https://auth.life-sqrd.com/authorize?state=test-state");
+    assert.equal(fetchCalls.length, 1);
+    assert.equal(
+      fetchCalls[0].url.toString(),
+      "https://auth.life-sqrd.com/signIn?redirect=http%3A%2F%2Flocalhost%3A4200%2F%23%2Fauth%2Fcallback",
+    );
+    assert.equal(fetchCalls[0].options.method, "GET");
+    assert.equal(fetchCalls[0].options.redirect, "manual");
+    assert.equal(fetchCalls[0].options.headers["Application-Token"], "test-app-token");
+  } finally {
+    if (originalToken == null) {
+      delete process.env.AUTH_SERVICE_TOKEN;
+    } else {
+      process.env.AUTH_SERVICE_TOKEN = originalToken;
+    }
+
+    if (originalSignInUrl == null) {
+      delete process.env.AUTH_SERVICE_SIGN_IN_URL;
+    } else {
+      process.env.AUTH_SERVICE_SIGN_IN_URL = originalSignInUrl;
+    }
+  }
+});
+
 test("POST /api/users creates a user record", async () => {
   const prisma = {
     user: {
@@ -1497,6 +1546,10 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages sends the exact ag
           sender: "AGENT",
           content: "I drafted an initial idea brief for HelmOS.",
         },
+        {
+          sender: "USER",
+          content: "What should I do next?",
+        },
       ],
       ideation_page_state: {
         workspace_id: "workspace-existing-1",
@@ -1532,6 +1585,10 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages sends the exact ag
         {
           sender: "AGENT",
           content: "I drafted an initial idea brief for HelmOS.",
+        },
+        {
+          sender: "USER",
+          content: "What should I do next?",
         },
       ],
     },

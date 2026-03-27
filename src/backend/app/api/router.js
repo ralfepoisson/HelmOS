@@ -1,12 +1,12 @@
 const express = require("express");
 
-const { createAuthMiddleware, requireAdmin } = require("./auth");
+const { createAuthMiddleware, createAuthServiceSignInHandler, requireAdmin } = require("./auth");
 const { createAdminRouter } = require("./admin-router");
 const { createBusinessIdeasRouter } = require("./business-ideas-router");
 const { createCrudRouter } = require("./create-crud-router");
 const { prismaEnums, resourceConfigs } = require("./resources");
 
-function createApiRouter({ prisma, agentGatewayClient }) {
+function createApiRouter({ prisma, agentGatewayClient, fetchImpl }) {
   const router = express.Router();
   const authenticate = createAuthMiddleware({ prisma });
 
@@ -27,6 +27,8 @@ function createApiRouter({ prisma, agentGatewayClient }) {
       },
     });
   });
+
+  router.get("/auth/sign-in", createAuthServiceSignInHandler({ fetchImpl }));
 
   router.use("/admin", authenticate, requireAdmin, createAdminRouter({ prisma, agentGatewayClient }));
   router.use("/business-ideas", authenticate, createBusinessIdeasRouter({ prisma, agentGatewayClient }));

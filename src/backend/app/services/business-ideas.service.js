@@ -791,6 +791,35 @@ function calculateIdeationCompleteness(existingSections, nextSectionCompletionBy
   return Math.round(totalCompletion / IDEATION_SECTION_BLUEPRINTS.length);
 }
 
+function buildChatHistoryWithLatestUserMessage(threadMessages, userMessageText, existingMessageId = null) {
+  const history = (threadMessages ?? []).map((message) => ({
+    sender: message.senderType,
+    content: message.messageText,
+  }));
+
+  if (existingMessageId) {
+    return history;
+  }
+
+  const nextUserMessage = String(userMessageText ?? "").trim();
+  if (!nextUserMessage) {
+    return history;
+  }
+
+  const lastMessage = history.at(-1);
+  if (lastMessage?.sender === ActorType.USER && lastMessage.content === nextUserMessage) {
+    return history;
+  }
+
+  return [
+    ...history,
+    {
+      sender: ActorType.USER,
+      content: nextUserMessage,
+    },
+  ];
+}
+
 function mapCompletionToSectionStatus(completionPercent, hasContent) {
   if (!hasContent || completionPercent <= 0) {
     return SectionStatus.NOT_STARTED;
@@ -1381,10 +1410,11 @@ async function runIdeationWorkflow(prisma, agentGatewayClient, workspaceId, inpu
 
   let gatewaySummary;
   try {
-    const chatHistory = (initialThread.messages ?? []).slice(-8).map((message) => ({
-      sender: message.senderType,
-      content: message.messageText,
-    }));
+    const chatHistory = buildChatHistoryWithLatestUserMessage(
+      (initialThread.messages ?? []).slice(-8),
+      userMessageText,
+      input.existingMessageId,
+    );
     const ideationPageState = {
       workspace_id: workspaceId,
       workspace_name: initialWorkspace.company.name,
@@ -1923,10 +1953,11 @@ async function runValuePropositionWorkflow(prisma, agentGatewayClient, workspace
 
   let gatewaySummary;
   try {
-    const chatHistory = (initialThread.messages ?? []).slice(-8).map((message) => ({
-      sender: message.senderType,
-      content: message.messageText,
-    }));
+    const chatHistory = buildChatHistoryWithLatestUserMessage(
+      (initialThread.messages ?? []).slice(-8),
+      userMessageText,
+      input.existingMessageId,
+    );
     const canvasState = {
       workspace_id: workspaceId,
       workspace_name: initialWorkspace.company.name,
