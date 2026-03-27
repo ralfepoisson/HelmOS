@@ -28,6 +28,7 @@ class ArtifactKind(str, Enum):
 
 class AgentKind(str, Enum):
     IDEATION = "ideation"
+    VALUE_PROPOSITION = "value_proposition"
     RESEARCH = "research"
     ROADMAP = "roadmap"
     SUPERVISOR = "supervisor"

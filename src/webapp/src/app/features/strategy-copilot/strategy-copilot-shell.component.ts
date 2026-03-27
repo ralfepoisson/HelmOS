@@ -26,7 +26,11 @@ import { AgentChatPanelComponent } from '../ideation/agent-chat-panel.component'
       <div class="row g-0 shell-grid">
         <div
           *ngIf="showStrategySidebar"
-          class="col-12 col-lg-4 col-xl-3 strategy-column"
+          class="strategy-column"
+          [class.col-12]="!isStrategySidebarCollapsed"
+          [class.col-lg-4]="!isStrategySidebarCollapsed"
+          [class.col-xl-3]="!isStrategySidebarCollapsed"
+          [class.strategy-column-collapsed]="isStrategySidebarCollapsed"
           data-testid="strategy-column"
         >
           <app-strategy-sidebar
@@ -41,11 +45,25 @@ import { AgentChatPanelComponent } from '../ideation/agent-chat-panel.component'
         <div
           class="workspace-column"
           [class.col-12]="true"
-          [class.col-lg-8]="showStrategySidebar"
-          [class.col-xl-6]="showStrategySidebar"
-          [class.col-xl-9]="!showStrategySidebar"
+          [class.col-lg-8]="showStrategySidebar && !isStrategySidebarCollapsed"
+          [class.col-xl-6]="showStrategySidebar && !isStrategySidebarCollapsed"
+          [class.col-lg-12]="!showStrategySidebar || isStrategySidebarCollapsed"
+          [class.col-xl-9]="!showStrategySidebar || isStrategySidebarCollapsed"
           data-testid="workspace-column"
         >
+          <div *ngIf="showStrategySidebar" class="workspace-toolbar">
+            <button
+              type="button"
+              class="btn btn-outline-secondary workspace-sidebar-toggle"
+              data-testid="strategy-sidebar-toggle"
+              [attr.aria-expanded]="!isStrategySidebarCollapsed"
+              [attr.aria-label]="isStrategySidebarCollapsed ? 'Expand strategy menu' : 'Collapse strategy menu'"
+              (click)="toggleStrategySidebar()"
+            >
+              <span class="toggle-icon" aria-hidden="true">{{ isStrategySidebarCollapsed ? '>' : '<' }}</span>
+              <span>{{ isStrategySidebarCollapsed ? 'Show menu' : 'Hide menu' }}</span>
+            </button>
+          </div>
           <ng-content />
         </div>
 
@@ -83,11 +101,60 @@ import { AgentChatPanelComponent } from '../ideation/agent-chat-panel.component'
         align-self: stretch;
       }
 
+      .strategy-column {
+        transition:
+          width 0.24s ease,
+          max-width 0.24s ease,
+          flex-basis 0.24s ease,
+          opacity 0.18s ease;
+        overflow: hidden;
+      }
+
+      .strategy-column-collapsed {
+        flex: 0 0 0;
+        width: 0;
+        max-width: 0;
+        opacity: 0;
+      }
+
       .workspace-column {
         padding: 1.5rem;
         height: calc(100vh - 68px);
         overflow-y: auto;
         overscroll-behavior: contain;
+      }
+
+      .workspace-toolbar {
+        display: flex;
+        justify-content: flex-start;
+        margin-bottom: 0.85rem;
+      }
+
+      .workspace-sidebar-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        border-radius: 999px;
+        padding: 0.45rem 0.8rem;
+        background: rgba(255, 255, 255, 0.92);
+        border-color: rgba(148, 163, 184, 0.42);
+        color: #475569;
+        font-weight: 600;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+      }
+
+      .workspace-sidebar-toggle:hover {
+        background: rgba(248, 250, 252, 0.98);
+      }
+
+      .toggle-icon {
+        display: inline-grid;
+        place-items: center;
+        width: 1.2rem;
+        height: 1.2rem;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.14);
+        font-size: 0.78rem;
       }
 
       @media (min-width: 992px) {
@@ -111,11 +178,18 @@ import { AgentChatPanelComponent } from '../ideation/agent-chat-panel.component'
           height: auto;
           overflow: visible;
         }
+
+        .workspace-toolbar {
+          margin-bottom: 0.7rem;
+        }
       }
     `
   ]
 })
 export class StrategyCopilotShellComponent {
+  private readonly sidebarStorageKey = 'helmos.strategySidebarCollapsed';
+  isStrategySidebarCollapsed = this.readStoredSidebarState();
+
   @Input({ required: true }) productName!: string;
   @Input() surfaceLabel = 'Strategy Copilot';
   @Input() workspaces: WorkspaceOption[] = [];
@@ -137,4 +211,20 @@ export class StrategyCopilotShellComponent {
   @Output() readonly workspaceChange = new EventEmitter<string>();
   @Output() readonly messageSend = new EventEmitter<string>();
   @Output() readonly resendLastMessage = new EventEmitter<void>();
+
+  toggleStrategySidebar(): void {
+    this.isStrategySidebarCollapsed = !this.isStrategySidebarCollapsed;
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(this.sidebarStorageKey, String(this.isStrategySidebarCollapsed));
+    }
+  }
+
+  private readStoredSidebarState(): boolean {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    return window.localStorage.getItem(this.sidebarStorageKey) === 'true';
+  }
 }

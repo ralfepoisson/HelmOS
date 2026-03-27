@@ -410,10 +410,7 @@ export class IdeationScreenComponent implements OnInit {
 
     if (payload.ideation_overview) {
       this.overview = {
-        completeness:
-          typeof payload.ideation_overview.completeness_percent === 'number'
-            ? payload.ideation_overview.completeness_percent
-            : this.overview.completeness,
+        completeness: this.overview.completeness,
         readinessLabel: this.normalizeReadinessLabel(payload.ideation_overview.readiness?.label) ?? this.overview.readinessLabel,
         readinessTone:
           this.normalizeReadinessTone(payload.ideation_overview.readiness?.label) ?? this.overview.readinessTone,

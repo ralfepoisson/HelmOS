@@ -5,9 +5,12 @@ const { BusinessType } = require("@prisma/client");
 const {
   createBusinessIdea,
   getBusinessIdea,
+  getBusinessIdeaForTool,
   listBusinessIdeas,
   sendIdeationMessage,
+  sendValuePropositionMessage,
   resendLastIdeationMessage,
+  resendLastValuePropositionMessage,
 } = require("../services/business-ideas.service");
 
 const createBusinessIdeaSchema = z
@@ -60,6 +63,47 @@ function createBusinessIdeasRouter({ prisma, agentGatewayClient }) {
 
   router.post("/:workspaceId/ideation/messages/retry-last", async (req, res) => {
     const idea = await resendLastIdeationMessage(
+      prisma,
+      agentGatewayClient,
+      req.params.workspaceId,
+      req.auth.currentUser,
+    );
+
+    res.json({
+      data: idea,
+    });
+  });
+
+  router.get("/:workspaceId/value-proposition", async (req, res) => {
+    const idea = await getBusinessIdeaForTool(
+      prisma,
+      req.params.workspaceId,
+      "value-proposition",
+      req.auth.currentUser
+    );
+
+    res.json({
+      data: idea,
+    });
+  });
+
+  router.post("/:workspaceId/value-proposition/messages", async (req, res) => {
+    const payload = ideationMessageSchema.parse(req.body);
+    const idea = await sendValuePropositionMessage(
+      prisma,
+      agentGatewayClient,
+      req.params.workspaceId,
+      payload,
+      req.auth.currentUser,
+    );
+
+    res.json({
+      data: idea,
+    });
+  });
+
+  router.post("/:workspaceId/value-proposition/messages/retry-last", async (req, res) => {
+    const idea = await resendLastValuePropositionMessage(
       prisma,
       agentGatewayClient,
       req.params.workspaceId,

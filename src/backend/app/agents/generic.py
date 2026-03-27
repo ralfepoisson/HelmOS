@@ -18,7 +18,6 @@ logger = structlog.get_logger(__name__)
 DEFAULT_IDEATION_OUTPUT_SCHEMA = {
     "reply_to_user": {"content": ""},
     "ideation_overview": {
-        "completeness_percent": 0,
         "readiness": {
             "label": "",
             "reason": "",
@@ -32,7 +31,6 @@ DEFAULT_IDEATION_OUTPUT_SCHEMA = {
             "label": "",
             "tone": "",
             "agent_confidence": "",
-            "score": 0,
             "explanation": "",
         },
         "ui_hints": {"highlight": False, "needs_attention": False},
@@ -44,7 +42,6 @@ DEFAULT_IDEATION_OUTPUT_SCHEMA = {
             "label": "",
             "tone": "",
             "agent_confidence": "",
-            "score": 0,
             "explanation": "",
         },
         "ui_hints": {"highlight": False, "needs_attention": False},
@@ -57,7 +54,6 @@ DEFAULT_IDEATION_OUTPUT_SCHEMA = {
             "label": "",
             "tone": "",
             "agent_confidence": "",
-            "score": 0,
             "explanation": "",
         },
         "ui_hints": {"highlight": False, "needs_attention": False},
@@ -69,7 +65,6 @@ DEFAULT_IDEATION_OUTPUT_SCHEMA = {
             "label": "",
             "tone": "",
             "agent_confidence": "",
-            "score": 0,
             "explanation": "",
         },
         "ui_hints": {"highlight": False, "needs_attention": False},
@@ -81,7 +76,6 @@ DEFAULT_IDEATION_OUTPUT_SCHEMA = {
             "label": "",
             "tone": "",
             "agent_confidence": "",
-            "score": 0,
             "explanation": "",
         },
         "ui_hints": {"highlight": False, "needs_attention": False},
@@ -93,11 +87,69 @@ DEFAULT_IDEATION_OUTPUT_SCHEMA = {
             "label": "",
             "tone": "",
             "agent_confidence": "",
-            "score": 0,
             "explanation": "",
         },
         "ui_hints": {"highlight": False, "needs_attention": False},
     },
+}
+
+
+def _sanitize_ideation_output_schema(schema: dict | None) -> dict:
+    base_schema = schema if isinstance(schema, dict) else DEFAULT_IDEATION_OUTPUT_SCHEMA
+    sanitized = json.loads(json.dumps(base_schema))
+    overview = sanitized.get("ideation_overview")
+    if isinstance(overview, dict):
+        overview.pop("completeness_percent", None)
+
+    for key in (
+        "problem_statement",
+        "target_customer",
+        "Value Proposition",
+        "product_service_description",
+        "differentiation",
+        "early_monitization_idea",
+        "early_monetization_idea",
+    ):
+        section = sanitized.get(key)
+        if not isinstance(section, dict):
+            continue
+        status = section.get("status")
+        if isinstance(status, dict):
+            status.pop("score", None)
+
+    return sanitized
+
+DEFAULT_VALUE_PROPOSITION_OUTPUT_SCHEMA = {
+    "customer_profile": {
+        "segments": [""],
+        "jobs": {
+            "functional": [""],
+            "emotional": [""],
+            "social": [""],
+        },
+        "pains": [""],
+        "gains": [""],
+    },
+    "value_map": {
+        "products_services": [""],
+        "pain_relievers": [""],
+        "gain_creators": [""],
+    },
+    "analysis": {
+        "weakest_area": "",
+        "issues": [""],
+        "inconsistencies": [""],
+        "recommendations": [""],
+    },
+    "scoring": {
+        "customer_clarity": "",
+        "problem_depth": "",
+        "value_definition": "",
+        "pain_gain_relevance": "",
+        "fit_consistency": "",
+        "overall": "",
+    },
+    "next_question": "",
 }
 
 
@@ -148,9 +200,7 @@ class GenericSpecialistAgent(SpecialistAgent):
             constraints = (
                 prompt_sections.constraints.strip() if prompt_sections and prompt_sections.constraints else ""
             )
-            output_format = (
-                prompt_sections.outputFormat.strip() if prompt_sections and prompt_sections.outputFormat else ""
-            )
+            output_format = self._render_output_format_for_prompt()
             purpose = self.config.purpose.strip() if self.config.purpose else ""
             scope_notes = self.config.scopeNotes.strip() if self.config.scopeNotes else ""
 
@@ -212,6 +262,26 @@ class GenericSpecialistAgent(SpecialistAgent):
 
         return "\n\n".join(section for section in sections if section.strip())
 
+    def _render_output_format_for_prompt(self) -> str:
+        prompt_sections = self.config.promptSections
+        output_format = (
+            prompt_sections.outputFormat.strip()
+            if prompt_sections and prompt_sections.outputFormat
+            else ""
+        )
+        if not output_format:
+            return ""
+
+        if self.descriptor.key != "ideation":
+            return output_format
+
+        try:
+            parsed = json.loads(output_format)
+        except json.JSONDecodeError:
+            return json.dumps(DEFAULT_IDEATION_OUTPUT_SCHEMA, ensure_ascii=False, indent=2)
+
+        return json.dumps(_sanitize_ideation_output_schema(parsed), ensure_ascii=False, indent=2)
+
     @staticmethod
     def _extract_json_object(raw_text: str | None) -> dict | None:
         if not raw_text:
@@ -231,21 +301,24 @@ class GenericSpecialistAgent(SpecialistAgent):
         return parsed if isinstance(parsed, dict) else None
 
     def _expected_output_schema(self) -> dict | None:
-        prompt_sections = self.config.promptSections
-        output_format = (
-            prompt_sections.outputFormat.strip()
-            if prompt_sections and prompt_sections.outputFormat
-            else ""
-        )
+        output_format = self._render_output_format_for_prompt()
         if not output_format:
             return None
         try:
             parsed = json.loads(output_format)
         except json.JSONDecodeError:
-            return DEFAULT_IDEATION_OUTPUT_SCHEMA if self.descriptor.key == "ideation" else None
+            if self.descriptor.key == "ideation":
+                return _sanitize_ideation_output_schema(DEFAULT_IDEATION_OUTPUT_SCHEMA)
+            if self.descriptor.key == "value_proposition":
+                return DEFAULT_VALUE_PROPOSITION_OUTPUT_SCHEMA
+            return None
         if isinstance(parsed, dict):
-            return parsed
-        return DEFAULT_IDEATION_OUTPUT_SCHEMA if self.descriptor.key == "ideation" else None
+            return _sanitize_ideation_output_schema(parsed) if self.descriptor.key == "ideation" else parsed
+        if self.descriptor.key == "ideation":
+            return _sanitize_ideation_output_schema(DEFAULT_IDEATION_OUTPUT_SCHEMA)
+        if self.descriptor.key == "value_proposition":
+            return DEFAULT_VALUE_PROPOSITION_OUTPUT_SCHEMA
+        return None
 
     @staticmethod
     def _matches_expected_type(expected, actual) -> bool:
@@ -334,9 +407,6 @@ class GenericSpecialistAgent(SpecialistAgent):
             return False, "reply_to_user.content must be a string."
 
         overview = payload.get("ideation_overview", {})
-        if not isinstance(overview.get("completeness_percent"), (int, float)):
-            return False, "ideation_overview.completeness_percent must be numeric."
-
         readiness = overview.get("readiness")
         if not isinstance(readiness, dict):
             return False, "ideation_overview.readiness must be an object."
@@ -405,7 +475,7 @@ class GenericSpecialistAgent(SpecialistAgent):
                 "Return valid JSON only.\n"
                 "Do not include markdown fences or explanatory text.\n"
                 "The response must conform exactly to this JSON structure:\n"
-                f"{self.config.promptSections.outputFormat if self.config.promptSections and self.config.promptSections.outputFormat else json.dumps(schema or DEFAULT_IDEATION_OUTPUT_SCHEMA, ensure_ascii=False, indent=2)}\n\n"
+                f"{self._render_output_format_for_prompt() or json.dumps(schema or DEFAULT_IDEATION_OUTPUT_SCHEMA, ensure_ascii=False, indent=2)}\n\n"
                 "Validation error:\n"
                 f"{error_message}\n"
             ),
@@ -488,7 +558,7 @@ class GenericSpecialistAgent(SpecialistAgent):
             llm_error = llm_output.removeprefix("[llm_unavailable] ").strip()
             llm_output = None
         structured_output = None
-        if self.descriptor.key == "ideation" and llm_output:
+        if self.descriptor.key in {"ideation", "value_proposition"} and llm_output:
             structured_output, llm_output = await self._coerce_ideation_structured_output(
                 execution_input=execution_input,
                 system_prompt=self.system_prompt,

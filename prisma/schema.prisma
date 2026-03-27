@@ -48,6 +48,7 @@ enum WorkspaceStage {
 
 enum DocumentType {
   IDEATION
+  VALUE_PROPOSITION
 }
 
 enum DocumentStatus {

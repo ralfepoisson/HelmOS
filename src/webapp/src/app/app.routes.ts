@@ -9,6 +9,7 @@ import { AgentAdminScreenComponent } from './features/admin/agent-admin-screen.c
 import { AdminLogsScreenComponent } from './features/admin/admin-logs-screen.component';
 import { NewIdeaPageComponent } from './features/ideation/new-idea-page.component';
 import { IdeationScreenComponent } from './features/ideation/ideation-screen.component';
+import { ValuePropositionScreenComponent } from './features/value-proposition/value-proposition-screen.component';
 import { MyBusinessIdeasPageComponent } from './features/strategy-copilot/my-business-ideas-page.component';
 import { StrategyCopilotHomeComponent } from './features/strategy-copilot/strategy-copilot-home.component';
 
@@ -54,6 +55,12 @@ export const routes: Routes = [
     component: IdeationScreenComponent,
     canActivate: [authGuard],
     title: 'HelmOS Strategy Copilot Ideation'
+  },
+  {
+    path: 'strategy-copilot/value-proposition',
+    component: ValuePropositionScreenComponent,
+    canActivate: [authGuard],
+    title: 'HelmOS Strategy Copilot Value Proposition'
   },
   {
     path: 'ideation',

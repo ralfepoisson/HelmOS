@@ -237,6 +237,8 @@ async def test_runtime_registry_builds_agent_from_database_records():
     assert "Constraints:" in agent.system_prompt
     assert "Output Format:" in agent.system_prompt
     assert "Permitted Tools:" in agent.system_prompt
+    assert "\"completeness_percent\"" not in agent.system_prompt
+    assert "\"score\"" not in agent.system_prompt
     assert descriptors[0].key == "ideation"
 
 
@@ -279,6 +281,8 @@ async def test_runtime_registry_builds_composite_system_prompt_from_database_con
     assert "Output Format:\n{" in agent.system_prompt
     assert "\"reply_to_user\": {" in agent.system_prompt
     assert "\"early_monitization_idea\": {" in agent.system_prompt
+    assert "\"completeness_percent\"" not in agent.system_prompt
+    assert "\"score\"" not in agent.system_prompt
     assert "Execution Context:\nDefault model alias: helmos-default" in agent.system_prompt
     assert "Lifecycle state: active" in agent.system_prompt
     assert "- Retrieval (retrieval): Read context; Read access to approved embeddings, documents, and metadata stores.; policy flags: Scoped indexes, Citation-safe" in agent.system_prompt

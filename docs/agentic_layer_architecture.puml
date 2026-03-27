@@ -6,6 +6,7 @@ package "Agent Experience Layer" {
   [Auth Callback & Route Guards]
   [Root Idea Selection Redirect]
   [My Business Ideas Page]
+  [Value Proposition Screen]
   [Node Control Plane API]
   [Agent Gateway API (FastAPI)]
   [Agent Admin Screen]
@@ -27,6 +28,7 @@ package "Orchestration Layer (LangGraph)" {
 
 package "Specialist Agents" {
   [Ideation Agent]
+  [Value Proposition Agent]
   [Research Agent]
   [Roadmap Agent]
   [Architecture Agent]
@@ -88,6 +90,8 @@ package "AWS Production Deployment" {
 [Angular UI] --> [My Business Ideas Page]
 [My Business Ideas Page] --> [Node Control Plane API] : list business ideas and select active workspace
 [Angular UI] --> [Node Control Plane API] : load workspace unlock state and available strategy tools
+[Angular UI] --> [Value Proposition Screen]
+[Value Proposition Screen] --> [Node Control Plane API] : load value proposition canvas and persist chat-driven updates
 [Auth Callback & Route Guards] --> [Life2 Auth Service] : delegated sign-in / sign-out
 [Auth Callback & Route Guards] --> [JWT Session Bootstrap] : capture hash-route token before app bootstrap
 [Angular Dev Proxy] --> [Node Control Plane API] : /api
@@ -107,6 +111,7 @@ package "AWS Production Deployment" {
 [Workflow Graph Engine] --> [Policy / Guardrail Service]
 
 [Workflow Graph Engine] --> [Ideation Agent]
+[Workflow Graph Engine] --> [Value Proposition Agent]
 [Workflow Graph Engine] --> [Research Agent]
 [Workflow Graph Engine] --> [Roadmap Agent]
 [Workflow Graph Engine] --> [Architecture Agent]
@@ -118,6 +123,7 @@ package "AWS Production Deployment" {
 [Workflow Graph Engine] --> [Document Export Service]
 
 [Ideation Agent] --> [Tool Registry]
+[Value Proposition Agent] --> [Tool Registry]
 [Research Agent] --> [Tool Registry]
 [Roadmap Agent] --> [Tool Registry]
 

@@ -306,6 +306,32 @@ function createAgentGatewayClient({
 
       return this.waitForRunCompletion(run.id);
     },
+
+    async runValuePropositionWorkflow({
+      inputText,
+      sessionTitle,
+      sessionId,
+      founderId,
+      tenantId,
+      metadata,
+      context,
+    }) {
+      const run = await this.startRun({
+        input_text: inputText,
+        request_type: "value_proposition_chat",
+        requested_agent: "value_proposition",
+        session: {
+          ...(sessionId ? { id: sessionId } : {}),
+          ...(sessionTitle ? { title: sessionTitle } : {}),
+          ...(founderId ? { founder_id: founderId } : {}),
+          ...(tenantId ? { tenant_id: tenantId } : {}),
+          metadata: metadata ?? {},
+        },
+        context: context ?? {},
+      });
+
+      return this.waitForRunCompletion(run.id);
+    },
   };
 }
 

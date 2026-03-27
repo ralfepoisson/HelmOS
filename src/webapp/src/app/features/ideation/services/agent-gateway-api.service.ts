@@ -55,6 +55,16 @@ export class AgentGatewayApiService {
     });
   }
 
+  async startValuePropositionRun(inputText: string, sessionTitle?: string): Promise<RunStatusResponse> {
+    return this.requestWithFallback<RunStatusResponse>('/runs', 'POST', {
+      input_text: inputText,
+      request_type: 'value_proposition_chat',
+      requested_agent: 'value_proposition',
+      session: sessionTitle ? { title: sessionTitle } : undefined,
+      context: {}
+    });
+  }
+
   async getRunSummary(runId: string): Promise<RunSummaryResponse> {
     return this.requestWithFallback<RunSummaryResponse>(`/runs/${runId}/summary`);
   }

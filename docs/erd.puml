@@ -15,7 +15,7 @@ skinparam note {
   BorderColor #9ca3af
 }
 
-title HelmOS MVP - Ideation Workspace Data Model ERD
+title HelmOS MVP - Strategy Workspace Data Model ERD
 
 package "Identity & Ownership" {
   entity "users" as users {
@@ -186,6 +186,12 @@ package "Structured Strategy Document" {
     UNIQUE(workspace_id, stage_key)
   }
 }
+
+note right of strategy_documents
+One workspace can hold multiple structured strategy documents,
+including IDEATION and VALUE_PROPOSITION.
+Each document keeps its own chat thread and section set.
+end note
 
 package "Conversation & Agent Orchestration" {
   entity "chat_threads" as chat_threads {

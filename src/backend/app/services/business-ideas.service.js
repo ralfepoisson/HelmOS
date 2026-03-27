@@ -78,6 +78,97 @@ const IDEATION_PAYLOAD_FIELD_TO_SECTION_KEY = {
   early_monetization_idea: "early_monetisation_idea",
 };
 
+const VALUE_PROPOSITION_SECTION_SEEDS = [
+  {
+    sectionKey: "customer_segments",
+    title: "Customer Segments",
+    description: "Identify the most specific customer groups this canvas is designed around.",
+    displayOrder: 1,
+    emphasis: "primary",
+  },
+  {
+    sectionKey: "customer_jobs",
+    title: "Customer Jobs",
+    description: "Capture the functional, emotional, and social jobs the customer is trying to get done.",
+    displayOrder: 2,
+    emphasis: "primary",
+  },
+  {
+    sectionKey: "customer_pains",
+    title: "Customer Pains",
+    description: "List the frictions, risks, blockers, and frustrations that slow the customer down.",
+    displayOrder: 3,
+    emphasis: "primary",
+  },
+  {
+    sectionKey: "customer_gains",
+    title: "Customer Gains",
+    description: "Describe the outcomes, benefits, and aspirations the customer values most.",
+    displayOrder: 4,
+    emphasis: "primary",
+  },
+];
+
+const VALUE_PROPOSITION_SECTION_BLUEPRINTS = [
+  ...VALUE_PROPOSITION_SECTION_SEEDS,
+  {
+    sectionKey: "products_services",
+    title: "Products & Services",
+    description: "Outline the products or services that create value for this customer.",
+    displayOrder: 5,
+    emphasis: "secondary",
+  },
+  {
+    sectionKey: "pain_relievers",
+    title: "Pain Relievers",
+    description: "Explain how the offer reduces or removes the most meaningful customer pains.",
+    displayOrder: 6,
+    emphasis: "secondary",
+  },
+  {
+    sectionKey: "gain_creators",
+    title: "Gain Creators",
+    description: "Show how the offer creates the gains the customer actually cares about.",
+    displayOrder: 7,
+    emphasis: "secondary",
+  },
+  {
+    sectionKey: "fit_assessment",
+    title: "Fit Assessment",
+    description: "Summarise the strength of customer clarity, value definition, and fit consistency.",
+    displayOrder: 8,
+    emphasis: "secondary",
+  },
+  {
+    sectionKey: "analysis",
+    title: "Analysis",
+    description: "Call out the weakest area, issues, inconsistencies, and the highest-value recommendations.",
+    displayOrder: 9,
+    emphasis: "secondary",
+  },
+];
+
+const VALUE_PROPOSITION_SECTION_BLUEPRINT_BY_KEY = new Map(
+  VALUE_PROPOSITION_SECTION_BLUEPRINTS.map((section) => [section.sectionKey, section])
+);
+
+const VALUE_PROPOSITION_PAYLOAD_FIELD_TO_SECTION_KEY = {
+  customer_segments: "customer_segments",
+  customer_jobs: "customer_jobs",
+  customer_pains: "customer_pains",
+  customer_gains: "customer_gains",
+  products_services: "products_services",
+  pain_relievers: "pain_relievers",
+  gain_creators: "gain_creators",
+  fit_assessment: "fit_assessment",
+  analysis: "analysis",
+};
+
+const DOCUMENT_TYPES = {
+  IDEATION: "IDEATION",
+  VALUE_PROPOSITION: "VALUE_PROPOSITION",
+};
+
 const SECTION_UI_IDS = {
   problem_statement: "problem-statement",
   target_customer: "target-customer",
@@ -85,6 +176,62 @@ const SECTION_UI_IDS = {
   product_service_description: "product-service-description",
   differentiation: "differentiation",
   early_monetisation_idea: "early-monetisation-idea",
+  customer_segments: "customer-segments",
+  customer_jobs: "customer-jobs",
+  customer_pains: "customer-pains",
+  customer_gains: "customer-gains",
+  products_services: "products-services",
+  pain_relievers: "pain-relievers",
+  gain_creators: "gain-creators",
+  fit_assessment: "fit-assessment",
+  analysis: "analysis",
+};
+
+const STRATEGY_TOOL_DEFINITIONS = {
+  ideation: {
+    toolId: "ideation",
+    agentKey: "ideation",
+    requestType: "ideation_chat",
+    documentType: DOCUMENT_TYPES.IDEATION,
+    stageKey: WorkspaceStage.IDEATION,
+    threadTitle: "Ideation thread",
+    pageTitlePrefix: "Ideation",
+    pageDescription:
+      "Shape the business concept in conversation with the agent. Each section is editable and evolves as the discussion becomes more concrete.",
+    panelTitle: "HelmOS Agent",
+    panelSubtitle: "Guided strategy collaboration",
+    placeholder: "Ask the agent to refine, challenge, or summarise your concept...",
+    completionMetricLabel: "Ideation completeness",
+    sectionSeeds: IDEATION_SECTION_SEEDS,
+    sectionBlueprints: IDEATION_SECTION_BLUEPRINTS,
+    sectionBlueprintByKey: IDEATION_SECTION_BLUEPRINT_BY_KEY,
+    stageLockedHint:
+      "When the concept becomes more consistent and evidence-backed, HelmOS can unlock Value Proposition design and recommend the next structured strategy tool.",
+    stageUnlockedHint:
+      "HelmOS has unlocked the next structured strategy tools for this business idea. You can continue from ideation into Value Proposition and the other downstream strategy views.",
+  },
+  "value-proposition": {
+    toolId: "value-proposition",
+    agentKey: "value_proposition",
+    requestType: "value_proposition_chat",
+    documentType: DOCUMENT_TYPES.VALUE_PROPOSITION,
+    stageKey: WorkspaceStage.VALUE_PROPOSITION,
+    threadTitle: "Value Proposition thread",
+    pageTitlePrefix: "Value Proposition",
+    pageDescription:
+      "Build a rigorous Value Proposition Canvas by clarifying customer jobs, pains, gains, and how the offer creates measurable fit.",
+    panelTitle: "Value Proposition Agent",
+    panelSubtitle: "Canvas design collaboration",
+    placeholder: "Ask the agent to tighten the canvas, challenge weak fit, or sharpen customer-value alignment...",
+    completionMetricLabel: "Canvas quality",
+    sectionSeeds: VALUE_PROPOSITION_SECTION_SEEDS,
+    sectionBlueprints: VALUE_PROPOSITION_SECTION_BLUEPRINTS,
+    sectionBlueprintByKey: VALUE_PROPOSITION_SECTION_BLUEPRINT_BY_KEY,
+    stageLockedHint:
+      "This tool opens once the ideation draft is strong enough. Use ideation to tighten the problem, customer, and value proposition first.",
+    stageUnlockedHint:
+      "Use this canvas to test whether the value you plan to create really matches customer jobs, pains, and gains.",
+  },
 };
 
 const STAGE_SEEDS = [
@@ -221,6 +368,30 @@ function getAvailableToolIds(workspaceRecord) {
   return availableToolIds;
 }
 
+function getToolDefinition(toolId) {
+  return STRATEGY_TOOL_DEFINITIONS[toolId] ?? STRATEGY_TOOL_DEFINITIONS.ideation;
+}
+
+function findDocumentByType(workspaceRecord, documentType) {
+  return (workspaceRecord?.documents ?? []).find((document) => document.documentType === documentType) ?? null;
+}
+
+function findThreadForDocument(workspaceRecord, documentId) {
+  return (workspaceRecord?.chatThreads ?? []).find((thread) => thread.documentId === documentId) ?? null;
+}
+
+function formatMarkdownList(items, { empty = "No draft yet." } = {}) {
+  const normalizedItems = Array.isArray(items)
+    ? items.map((item) => String(item ?? "").trim()).filter(Boolean)
+    : [];
+
+  if (normalizedItems.length === 0) {
+    return empty;
+  }
+
+  return normalizedItems.map((item) => `- ${item}`).join("\n");
+}
+
 function buildDefaultOrganisationSlug(currentUser) {
   return `workspace-${slugify(currentUser.email || currentUser.id)}-${currentUser.id}`.slice(0, 120);
 }
@@ -322,7 +493,7 @@ function mapConfidence(section) {
   return "medium";
 }
 
-function mapOverview(document, sections, company, workspaceRecord) {
+function mapOverview(document, sections, company, workspaceRecord, toolId) {
   const completeness = Number(document?.completenessPercent ?? 0);
   const strategyToolsUnlocked = isStrategyToolsUnlocked(workspaceRecord);
   const readiness = getReadinessLabel({
@@ -337,17 +508,25 @@ function mapOverview(document, sections, company, workspaceRecord) {
     completeness,
     ...readiness,
     nextAction:
-      strategyToolsUnlocked
-        ? "Open the Value Proposition tool to turn this ideation draft into a sharper strategic narrative."
-        : completedSections === 0
-        ? `Start by defining the core problem ${company.name} should solve before expanding into customer and value framing.`
-        : `Refine the weakest ideation section so the problem, customer, and promise connect more clearly.`,
+      toolId === "value-proposition"
+        ? completedSections === 0
+          ? `Start by defining the most important customer segment for ${company.name}, then map the jobs, pains, and gains that matter most.`
+          : `Strengthen the weakest part of the canvas so the customer profile and value map fit more tightly together.`
+        : strategyToolsUnlocked
+          ? "Open the Value Proposition tool to turn this ideation draft into a sharper strategic narrative."
+          : completedSections === 0
+            ? `Start by defining the core problem ${company.name} should solve before expanding into customer and value framing.`
+            : `Refine the weakest ideation section so the problem, customer, and promise connect more clearly.`,
     completionSummary:
-      strategyToolsUnlocked
-        ? "The ideation agent marked this business idea ready, so the next structured strategy tools are now unlocked."
-        : completedSections === 0
-        ? "No ideation sections have been developed yet. Begin with the problem statement to anchor the rest of the strategy."
-        : `${completedSections} of ${totalSections} ideation sections now contain working content. Keep sharpening the weak spots before unlocking the next tool.`,
+      toolId === "value-proposition"
+        ? completedSections === 0
+          ? "This value proposition canvas is still empty. Start with the customer profile before drafting the value map."
+          : `${completedSections} of ${totalSections} value proposition sections contain working content. Keep refining the weak fit areas.`
+        : strategyToolsUnlocked
+          ? "The ideation agent marked this business idea ready, so the next structured strategy tools are now unlocked."
+          : completedSections === 0
+            ? "No ideation sections have been developed yet. Begin with the problem statement to anchor the rest of the strategy."
+            : `${completedSections} of ${totalSections} ideation sections now contain working content. Keep sharpening the weak spots before unlocking the next tool.`,
   };
 }
 
@@ -369,6 +548,156 @@ function normalizeIdeationPayload(rawPayload) {
   }
 
   return rawPayload;
+}
+
+function normalizeValuePropositionPayload(rawPayload) {
+  if (typeof rawPayload === "string") {
+    try {
+      return normalizeValuePropositionPayload(JSON.parse(rawPayload));
+    } catch {
+      return {};
+    }
+  }
+
+  if (!rawPayload || typeof rawPayload !== "object") {
+    return {};
+  }
+
+  const payload = rawPayload;
+  const jobs = payload.customer_profile?.jobs ?? {};
+  const scoring = payload.scoring ?? {};
+
+  return {
+    customer_segments: deriveSectionPayload({
+      content: formatMarkdownList(payload.customer_profile?.segments, {
+        empty: "No customer segments have been captured yet.",
+      }),
+      priority: "primary",
+      label: "Draft",
+      tone: "info",
+      confidence: "medium",
+      score: scoring.customer_clarity === "High" ? 0.85 : scoring.customer_clarity === "Medium" ? 0.6 : 0.35,
+      explanation: "Customer segment clarity inferred from the current canvas draft.",
+    }),
+    customer_jobs: deriveSectionPayload({
+      content: [
+        "Functional jobs:",
+        formatMarkdownList(jobs.functional, { empty: "No functional jobs yet." }),
+        "",
+        "Emotional jobs:",
+        formatMarkdownList(jobs.emotional, { empty: "No emotional jobs yet." }),
+        "",
+        "Social jobs:",
+        formatMarkdownList(jobs.social, { empty: "No social jobs yet." }),
+      ].join("\n"),
+      priority: "primary",
+      label: "Draft",
+      tone: "info",
+      confidence: "medium",
+      score: scoring.problem_depth === "High" ? 0.82 : scoring.problem_depth === "Medium" ? 0.58 : 0.34,
+      explanation: "Customer jobs captured from the current value proposition canvas.",
+    }),
+    customer_pains: deriveSectionPayload({
+      content: formatMarkdownList(payload.customer_profile?.pains, { empty: "No pains captured yet." }),
+      priority: "primary",
+      label: "Draft",
+      tone: "info",
+      confidence: "medium",
+      score: scoring.problem_depth === "High" ? 0.8 : scoring.problem_depth === "Medium" ? 0.56 : 0.32,
+      explanation: "Customer pains captured from the current value proposition canvas.",
+    }),
+    customer_gains: deriveSectionPayload({
+      content: formatMarkdownList(payload.customer_profile?.gains, { empty: "No gains captured yet." }),
+      priority: "primary",
+      label: "Draft",
+      tone: "info",
+      confidence: "medium",
+      score: scoring.pain_gain_relevance === "High" ? 0.84 : scoring.pain_gain_relevance === "Medium" ? 0.6 : 0.36,
+      explanation: "Customer gains captured from the current value proposition canvas.",
+    }),
+    products_services: deriveSectionPayload({
+      content: formatMarkdownList(payload.value_map?.products_services, {
+        empty: "No products or services mapped yet.",
+      }),
+      priority: "secondary",
+      label: "Draft",
+      tone: "info",
+      confidence: "medium",
+      score: scoring.value_definition === "High" ? 0.84 : scoring.value_definition === "Medium" ? 0.62 : 0.38,
+      explanation: "Products and services mapped from the current value proposition canvas.",
+    }),
+    pain_relievers: deriveSectionPayload({
+      content: formatMarkdownList(payload.value_map?.pain_relievers, { empty: "No pain relievers mapped yet." }),
+      priority: "secondary",
+      label: "Draft",
+      tone: "info",
+      confidence: "medium",
+      score: scoring.fit_consistency === "High" ? 0.84 : scoring.fit_consistency === "Medium" ? 0.6 : 0.34,
+      explanation: "Pain relievers mapped from the current value proposition canvas.",
+    }),
+    gain_creators: deriveSectionPayload({
+      content: formatMarkdownList(payload.value_map?.gain_creators, { empty: "No gain creators mapped yet." }),
+      priority: "secondary",
+      label: "Draft",
+      tone: "info",
+      confidence: "medium",
+      score: scoring.fit_consistency === "High" ? 0.84 : scoring.fit_consistency === "Medium" ? 0.6 : 0.34,
+      explanation: "Gain creators mapped from the current value proposition canvas.",
+    }),
+    fit_assessment: deriveSectionPayload({
+      content: [
+        `- Customer clarity: ${scoring.customer_clarity ?? "Low"}`,
+        `- Problem depth: ${scoring.problem_depth ?? "Low"}`,
+        `- Value definition: ${scoring.value_definition ?? "Low"}`,
+        `- Pain/gain relevance: ${scoring.pain_gain_relevance ?? "Low"}`,
+        `- Fit consistency: ${scoring.fit_consistency ?? "Low"}`,
+        `- Overall: ${scoring.overall ?? "Weak"}`,
+      ].join("\n"),
+      priority: "secondary",
+      label:
+        scoring.overall === "Strong" ? "Strong" : scoring.overall === "Emerging" ? "Needs refinement" : "Too vague",
+      tone:
+        scoring.overall === "Strong" ? "success" : scoring.overall === "Emerging" ? "warning" : "muted",
+      confidence: "medium",
+      score: scoring.overall === "Strong" ? 0.86 : scoring.overall === "Emerging" ? 0.58 : 0.22,
+      explanation: "Overall fit assessment across the current value proposition canvas.",
+    }),
+    analysis: deriveSectionPayload({
+      content: [
+        `Weakest area: ${String(payload.analysis?.weakest_area ?? "Not identified").trim() || "Not identified"}`,
+        "",
+        "Issues:",
+        formatMarkdownList(payload.analysis?.issues, { empty: "No issues called out yet." }),
+        "",
+        "Inconsistencies:",
+        formatMarkdownList(payload.analysis?.inconsistencies, { empty: "No inconsistencies called out yet." }),
+        "",
+        "Recommendations:",
+        formatMarkdownList(payload.analysis?.recommendations, { empty: "No recommendations yet." }),
+      ].join("\n"),
+      priority: "secondary",
+      label: payload.analysis?.weakest_area ? "Needs refinement" : "Draft",
+      tone: payload.analysis?.weakest_area ? "warning" : "info",
+      confidence: "medium",
+      score: scoring.overall === "Strong" ? 0.78 : scoring.overall === "Emerging" ? 0.56 : 0.32,
+      explanation: "Diagnostic analysis generated from the current canvas.",
+    }),
+    next_question: String(payload.next_question ?? "").trim(),
+    value_proposition_overview: {
+      completeness_percent:
+        scoring.overall === "Strong" ? 85 : scoring.overall === "Emerging" ? 60 : payload.next_question ? 30 : 0,
+      readiness: {
+        label: scoring.overall === "Strong" ? "Ready for next tool" : scoring.overall === "Emerging" ? "Needs refinement" : "In progress",
+        reason:
+          scoring.overall === "Strong"
+            ? "The value proposition canvas is coherent and the fit between customer needs and value delivery looks strong."
+            : scoring.overall === "Emerging"
+              ? "The canvas is taking shape, but some areas still need refinement before the fit is convincing."
+              : "The canvas still needs clearer customer detail and tighter value mapping before the fit is credible.",
+        next_best_action: String(payload.next_question ?? "").trim() || "Strengthen the weakest area and tighten the fit between customer needs and the value map.",
+      },
+    },
+  };
 }
 
 function mapStatusLabelToRefinementState(label, hasContent) {
@@ -411,16 +740,8 @@ function mapConfidenceToken(token) {
   return AgentConfidence.MEDIUM;
 }
 
-function scoreToCompletionPercent(score, fallbackLabel, hasContent) {
-  if (typeof score === "number" && Number.isFinite(score)) {
-    if (score <= 1) {
-      return Math.max(0, Math.min(100, Math.round(score * 100)));
-    }
-
-    return Math.max(0, Math.min(100, Math.round(score)));
-  }
-
-  const normalized = String(fallbackLabel ?? "")
+function labelToCompletionPercent(label, hasContent) {
+  const normalized = String(label ?? "")
     .trim()
     .toLowerCase();
 
@@ -441,6 +762,33 @@ function scoreToCompletionPercent(score, fallbackLabel, hasContent) {
   }
 
   return hasContent ? 40 : 0;
+}
+
+function scoreToCompletionPercent(score, fallbackLabel, hasContent) {
+  if (typeof score === "number" && Number.isFinite(score)) {
+    if (score <= 1) {
+      return Math.max(0, Math.min(100, Math.round(score * 100)));
+    }
+
+    return Math.max(0, Math.min(100, Math.round(score)));
+  }
+
+  return labelToCompletionPercent(fallbackLabel, hasContent);
+}
+
+function calculateIdeationCompleteness(existingSections, nextSectionCompletionByKey = new Map()) {
+  const persistedCompletionByKey = new Map(
+    (existingSections ?? []).map((section) => [section.sectionKey, Math.max(0, Math.min(100, Number(section.completionPercent ?? 0)))])
+  );
+
+  const totalCompletion = IDEATION_SECTION_BLUEPRINTS.reduce((sum, section) => {
+    const computedCompletion = nextSectionCompletionByKey.has(section.sectionKey)
+      ? nextSectionCompletionByKey.get(section.sectionKey)
+      : persistedCompletionByKey.get(section.sectionKey) ?? 0;
+    return sum + Math.max(0, Math.min(100, Number(computedCompletion ?? 0)));
+  }, 0);
+
+  return Math.round(totalCompletion / IDEATION_SECTION_BLUEPRINTS.length);
 }
 
 function mapCompletionToSectionStatus(completionPercent, hasContent) {
@@ -465,6 +813,30 @@ function extractSectionUpdates(normalizedOutput) {
     }
 
     const blueprint = IDEATION_SECTION_BLUEPRINT_BY_KEY.get(sectionKey);
+    if (!blueprint) {
+      continue;
+    }
+
+    updates.push({
+      sectionKey,
+      blueprint,
+      payload,
+    });
+  }
+
+  return updates;
+}
+
+function extractValuePropositionSectionUpdates(normalizedOutput) {
+  const updates = [];
+
+  for (const [payloadKey, sectionKey] of Object.entries(VALUE_PROPOSITION_PAYLOAD_FIELD_TO_SECTION_KEY)) {
+    const payload = normalizedOutput[payloadKey];
+    if (!payload || typeof payload !== "object") {
+      continue;
+    }
+
+    const blueprint = VALUE_PROPOSITION_SECTION_BLUEPRINT_BY_KEY.get(sectionKey);
     if (!blueprint) {
       continue;
     }
@@ -664,9 +1036,30 @@ function buildAgentReplyFromArtifact(normalizedOutput, companyName) {
   return "";
 }
 
-function mapStrategyCopilot(workspaceRecord) {
-  const latestThread = workspaceRecord.chatThreads[0] ?? null;
-  const document = workspaceRecord.documents[0] ?? null;
+function buildValuePropositionReply(normalizedOutput, companyName) {
+  const scoring = normalizedOutput?.scoring ?? {};
+  const overall = String(scoring.overall ?? "").trim();
+  const weakestArea = String(normalizedOutput?.analysis?.weakest_area ?? "").trim();
+  const nextQuestion = String(normalizedOutput?.next_question ?? "").trim();
+
+  const summaryParts = [`I updated the value proposition canvas for ${companyName}.`];
+  if (overall) {
+    summaryParts.push(`Overall fit is currently ${overall.toLowerCase()}.`);
+  }
+  if (weakestArea) {
+    summaryParts.push(`The weakest area is ${weakestArea.toLowerCase()}.`);
+  }
+  if (nextQuestion) {
+    summaryParts.push(nextQuestion);
+  }
+
+  return summaryParts.join(" ");
+}
+
+function mapStrategyCopilot(workspaceRecord, toolId = "ideation") {
+  const toolDefinition = getToolDefinition(toolId);
+  const document = findDocumentByType(workspaceRecord, toolDefinition.documentType);
+  const latestThread = document ? findThreadForDocument(workspaceRecord, document.id) : null;
   const sections = (document?.sections ?? []).map((section) => {
     const sectionStatus = mapSectionStatus(section);
     const updatedAt = section.lastUpdatedAt ?? section.updatedAt ?? workspaceRecord.updatedAt;
@@ -687,7 +1080,7 @@ function mapStrategyCopilot(workspaceRecord) {
     };
   });
 
-  const messages = (workspaceRecord.chatThreads[0]?.messages ?? []).map((message, index) => ({
+  const messages = (latestThread?.messages ?? []).map((message, index) => ({
     id: index + 1,
     role: message.senderType === ActorType.USER ? "user" : "agent",
     author: message.senderType === ActorType.USER ? "You" : "HelmOS Agent",
@@ -696,7 +1089,7 @@ function mapStrategyCopilot(workspaceRecord) {
   }));
 
   const company = workspaceRecord.company;
-  const overview = mapOverview(document, document?.sections ?? [], company, workspaceRecord);
+  const overview = mapOverview(document, document?.sections ?? [], company, workspaceRecord, toolId);
   const availableToolIds = getAvailableToolIds(workspaceRecord);
   const strategyToolsUnlocked = isStrategyToolsUnlocked(workspaceRecord);
 
@@ -708,20 +1101,20 @@ function mapStrategyCopilot(workspaceRecord) {
       businessTypeLabel: BUSINESS_TYPE_LABELS[company.businessType],
     },
     workspace: {
-      pageTitle: `Ideation: ${company.name}`,
+      pageTitle: `${toolDefinition.pageTitlePrefix}: ${company.name}`,
       pageStatus: `${BUSINESS_TYPE_LABELS[company.businessType]} business idea`,
       completionHintTitle: strategyToolsUnlocked ? "Next strategy tools unlocked" : "Next strategy step is waiting",
       completionHint: strategyToolsUnlocked
-        ? "HelmOS has unlocked the next structured strategy tools for this business idea. You can continue from ideation into Value Proposition and the other downstream strategy views."
-        : "When the concept becomes more consistent and evidence-backed, HelmOS can unlock Value Proposition design and recommend the next structured strategy tool.",
+        ? toolDefinition.stageUnlockedHint
+        : toolDefinition.stageLockedHint,
       overview,
       availableToolIds,
       sections,
     },
     chat: {
-      panelTitle: "HelmOS Agent",
-      panelSubtitle: "Guided strategy collaboration",
-      placeholder: "Ask the agent to refine, challenge, or summarise your concept...",
+      panelTitle: toolDefinition.panelTitle,
+      panelSubtitle: toolDefinition.panelSubtitle,
+      placeholder: toolDefinition.placeholder,
       messages,
       resendAvailable: isRetryableLatestUserMessage(latestThread),
     },
@@ -764,7 +1157,6 @@ const STRATEGY_COPILOT_WORKSPACE_INCLUDE = {
     orderBy: {
       updatedAt: "desc",
     },
-    take: 1,
   },
 };
 
@@ -857,7 +1249,6 @@ async function loadWorkspaceWithChatContext(prisma, workspaceId) {
         orderBy: {
           updatedAt: "desc",
         },
-        take: 1,
       },
     },
   });
@@ -873,14 +1264,14 @@ async function runIdeationWorkflow(prisma, agentGatewayClient, workspaceId, inpu
   const initialWorkspace = await loadWorkspaceWithChatContext(prisma, workspaceId);
   assertWorkspaceAccess(initialWorkspace, currentUser);
 
-  const initialDocument = initialWorkspace.documents[0] ?? null;
+  const initialDocument = findDocumentByType(initialWorkspace, DOCUMENT_TYPES.IDEATION);
   if (!initialDocument) {
     const error = new Error("The ideation workspace is missing its primary document.");
     error.statusCode = 409;
     throw error;
   }
 
-  const initialThread = initialWorkspace.chatThreads[0] ?? null;
+  const initialThread = findThreadForDocument(initialWorkspace, initialDocument.id);
   if (!initialThread) {
     const error = new Error("The ideation workspace is missing its active chat thread.");
     error.statusCode = 409;
@@ -916,13 +1307,18 @@ async function runIdeationWorkflow(prisma, agentGatewayClient, workspaceId, inpu
           orderBy: {
             updatedAt: "desc",
           },
-          take: 1,
         },
       },
     });
 
-    const document = latestWorkspace.documents[0];
-    const thread = latestWorkspace.chatThreads[0];
+    const document = findDocumentByType(latestWorkspace, DOCUMENT_TYPES.IDEATION);
+    const thread = document ? findThreadForDocument(latestWorkspace, document.id) : null;
+
+    if (!document || !thread) {
+      const error = new Error("The ideation workspace is missing its active document thread.");
+      error.statusCode = 409;
+      throw error;
+    }
     let triggerMessageId = input.existingMessageId ?? null;
 
     if (input.existingMessageId) {
@@ -1070,7 +1466,6 @@ async function runIdeationWorkflow(prisma, agentGatewayClient, workspaceId, inpu
   const normalizedOutput = normalizeIdeationPayload(gatewaySummary.normalized_output);
   const ideationOverview = normalizedOutput.ideation_overview ?? {};
   const ideationReadiness = ideationOverview.readiness ?? {};
-  const shouldUnlockStrategyTools = normalizeReadinessToken(ideationReadiness.label) === "ready for next tool";
   const explicitSectionUpdates = extractSectionUpdates(normalizedOutput);
   const sectionUpdates = explicitSectionUpdates;
   const explicitAgentReply = String(normalizedOutput.reply_to_user?.content ?? "").trim();
@@ -1108,25 +1503,26 @@ async function runIdeationWorkflow(prisma, agentGatewayClient, workspaceId, inpu
             orderBy: {
               updatedAt: "desc",
             },
-            take: 1,
           },
         },
       });
 
-      const document = workspaceRecord.documents[0];
-      const thread = workspaceRecord.chatThreads[0];
+      const document = findDocumentByType(workspaceRecord, DOCUMENT_TYPES.IDEATION);
+      const thread = document ? findThreadForDocument(workspaceRecord, document.id) : null;
+      if (!document || !thread) {
+        const error = new Error("The ideation workspace is missing its active document thread.");
+        error.statusCode = 409;
+        throw error;
+      }
       const sectionsByKey = new Map((document.sections ?? []).map((section) => [section.sectionKey, section]));
+      const nextSectionCompletionByKey = new Map();
 
       for (const update of sectionUpdates) {
         const sectionPayload = update.payload;
         const nextContent = String(sectionPayload.content ?? "").trim();
         const hasContent = nextContent.length > 0;
         const statusLabel = sectionPayload.status?.label ?? null;
-        const completionPercent = scoreToCompletionPercent(
-          sectionPayload.status?.score,
-          statusLabel,
-          hasContent
-        );
+        const completionPercent = labelToCompletionPercent(statusLabel, hasContent);
         const refinementState = mapStatusLabelToRefinementState(statusLabel, hasContent);
         const strategySectionStatus = mapCompletionToSectionStatus(completionPercent, hasContent);
         const existingSection = sectionsByKey.get(update.sectionKey);
@@ -1213,30 +1609,24 @@ async function runIdeationWorkflow(prisma, agentGatewayClient, workspaceId, inpu
             },
           });
         }
+
+        nextSectionCompletionByKey.set(update.sectionKey, completionPercent);
       }
+
+      const computedCompleteness = calculateIdeationCompleteness(document.sections, nextSectionCompletionByKey);
+      const shouldUnlockStrategyTools =
+        computedCompleteness >= 80 || isStrategyToolsUnlocked(workspaceRecord);
+      const computedReadiness = getReadinessLabel({
+        completeness: computedCompleteness,
+        qualityState: null,
+        strategyToolsUnlocked: shouldUnlockStrategyTools,
+      });
 
       await tx.strategyDocument.update({
         where: { id: document.id },
         data: {
-          completenessPercent:
-            typeof ideationOverview.completeness_percent === "number"
-              ? Math.max(0, Math.min(100, Math.round(ideationOverview.completeness_percent)))
-              : sectionUpdates.length > 0
-                ? Math.max(
-                    Number(document.completenessPercent ?? 0),
-                    Math.round(
-                      sectionUpdates.reduce((total, update) => {
-                        const hasContent = String(update.payload?.content ?? "").trim().length > 0;
-                        return total + scoreToCompletionPercent(update.payload?.status?.score, update.payload?.status?.label, hasContent);
-                      }, 0) / sectionUpdates.length
-                    )
-                  )
-              : document.completenessPercent,
-          qualityState:
-            clampString(
-              String(ideationReadiness.label ?? document.qualityState ?? "In progress"),
-              STRATEGY_DOCUMENT_QUALITY_STATE_MAX_LENGTH
-            ) ?? "In progress",
+          completenessPercent: computedCompleteness,
+          qualityState: computedReadiness.readinessLabel,
           agentSummary: agentReply || String(ideationReadiness.reason ?? document.agentSummary ?? ""),
         },
       });
@@ -1387,7 +1777,8 @@ async function sendIdeationMessage(prisma, agentGatewayClient, workspaceId, inpu
 async function resendLastIdeationMessage(prisma, agentGatewayClient, workspaceId, currentUser) {
   const workspace = await loadWorkspaceWithChatContext(prisma, workspaceId);
   assertWorkspaceAccess(workspace, currentUser);
-  const thread = workspace.chatThreads[0] ?? null;
+  const document = findDocumentByType(workspace, DOCUMENT_TYPES.IDEATION);
+  const thread = document ? findThreadForDocument(workspace, document.id) : null;
   const lastMessage = thread?.messages?.at(-1) ?? null;
 
   if (!thread || !lastMessage || lastMessage.senderType !== ActorType.USER) {
@@ -1420,6 +1811,414 @@ async function resendLastIdeationMessage(prisma, agentGatewayClient, workspaceId
   }
 
   return runIdeationWorkflow(prisma, agentGatewayClient, workspaceId, {
+    messageText: lastMessage.messageText,
+    existingMessageId: lastMessage.id,
+  }, currentUser);
+}
+
+async function runValuePropositionWorkflow(prisma, agentGatewayClient, workspaceId, input, currentUser) {
+  if (!agentGatewayClient || typeof agentGatewayClient.runValuePropositionWorkflow !== "function") {
+    const error = new Error("The agent gateway client is not configured for value proposition workflows.");
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const initialWorkspace = await loadWorkspaceWithChatContext(prisma, workspaceId);
+  assertWorkspaceAccess(initialWorkspace, currentUser);
+
+  const initialDocument = findDocumentByType(initialWorkspace, DOCUMENT_TYPES.VALUE_PROPOSITION);
+  if (!initialDocument) {
+    const error = new Error("The value proposition workspace is missing its primary document.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const initialThread = findThreadForDocument(initialWorkspace, initialDocument.id);
+  if (!initialThread) {
+    const error = new Error("The value proposition workspace is missing its active chat thread.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const userMessageText = input.messageText.trim();
+  let persistedRun = null;
+  let persistedUserMessageId = input.existingMessageId ?? null;
+
+  await prisma.$transaction(async (tx) => {
+    const latestWorkspace = await tx.workspace.findUniqueOrThrow({
+      where: { id: workspaceId },
+      include: {
+        documents: {
+          include: {
+            sections: {
+              orderBy: {
+                displayOrder: "asc",
+              },
+            },
+          },
+        },
+        chatThreads: {
+          where: { status: "ACTIVE" },
+          include: {
+            messages: {
+              orderBy: {
+                messageIndex: "asc",
+              },
+            },
+          },
+          orderBy: {
+            updatedAt: "desc",
+          },
+        },
+      },
+    });
+
+    const document = findDocumentByType(latestWorkspace, DOCUMENT_TYPES.VALUE_PROPOSITION);
+    const thread = document ? findThreadForDocument(latestWorkspace, document.id) : null;
+    if (!document || !thread) {
+      const error = new Error("The value proposition workspace is missing its active document thread.");
+      error.statusCode = 409;
+      throw error;
+    }
+
+    let triggerMessageId = input.existingMessageId ?? null;
+
+    if (input.existingMessageId) {
+      await tx.chatMessage.update({
+        where: { id: input.existingMessageId },
+        data: {
+          status: MessageStatus.PENDING,
+        },
+      });
+    } else {
+      const lastMessageIndex = thread?.messages?.at(-1)?.messageIndex ?? 0;
+      const userMessage = await tx.chatMessage.create({
+        data: {
+          threadId: thread.id,
+          messageIndex: lastMessageIndex + 1,
+          senderType: ActorType.USER,
+          senderUserId: latestWorkspace.createdByUserId ?? null,
+          messageText: userMessageText,
+          messageFormat: MessageFormat.MARKDOWN,
+          status: MessageStatus.PENDING,
+        },
+      });
+      persistedUserMessageId = userMessage.id;
+      triggerMessageId = userMessage.id;
+    }
+
+    persistedRun = await tx.agentRun.create({
+      data: {
+        threadId: thread.id,
+        triggerMessageId,
+        runStatus: AgentRunStatus.RUNNING,
+        summary: null,
+        resultMetadata: {
+          source: "value_proposition_chat",
+          retry: Boolean(input.existingMessageId),
+        },
+      },
+    });
+  });
+
+  let gatewaySummary;
+  try {
+    const chatHistory = (initialThread.messages ?? []).slice(-8).map((message) => ({
+      sender: message.senderType,
+      content: message.messageText,
+    }));
+    const canvasState = {
+      workspace_id: workspaceId,
+      workspace_name: initialWorkspace.company.name,
+      business_type: initialWorkspace.company.businessType,
+      sections: Object.fromEntries(
+        (initialDocument.sections ?? []).map((section) => [section.sectionKey, section.content ?? ""])
+      ),
+    };
+
+    gatewaySummary = await agentGatewayClient.runValuePropositionWorkflow({
+      inputText: userMessageText,
+      sessionTitle: initialDocument.title,
+      metadata: {
+        workspace_id: workspaceId,
+        document_id: initialDocument.id,
+        thread_id: initialThread.id,
+      },
+      context: {
+        latest_user_message: userMessageText,
+        chat_history: chatHistory,
+        value_proposition_page_state: canvasState,
+        workspace_id: workspaceId,
+        workspace_name: initialWorkspace.company.name,
+        business_type: initialWorkspace.company.businessType,
+        sections: canvasState.sections,
+        recent_messages: chatHistory,
+      },
+    });
+
+    if (!TERMINAL_GATEWAY_STATUSES.has(normalizeGatewayStatus(gatewaySummary?.status))) {
+      const error = new Error(
+        `Agent gateway run did not complete in time (last status: ${gatewaySummary?.status ?? "unknown"}).`
+      );
+      error.statusCode = 504;
+      throw error;
+    }
+  } catch (error) {
+    await prisma.$transaction(async (tx) => {
+      if (persistedRun?.id && typeof tx.agentRun?.update === "function") {
+        await tx.agentRun.update({
+          where: { id: persistedRun.id },
+          data: {
+            runStatus: AgentRunStatus.FAILED,
+            completedAt: new Date(),
+            errorMessage: error instanceof Error ? error.message : "Value proposition workflow delivery failed.",
+          },
+        });
+      }
+
+      if (persistedUserMessageId && typeof tx.chatMessage?.update === "function") {
+        await tx.chatMessage.update({
+          where: { id: persistedUserMessageId },
+          data: {
+            status: MessageStatus.FAILED,
+          },
+        });
+      }
+    });
+
+    if (error instanceof Error && typeof error.statusCode !== "number") {
+      error.statusCode = 503;
+    }
+
+    throw error;
+  }
+
+  const normalizedOutput = normalizeValuePropositionPayload(gatewaySummary.normalized_output);
+  const overview = normalizedOutput.value_proposition_overview ?? {};
+  const readiness = overview.readiness ?? {};
+  const sectionUpdates = extractValuePropositionSectionUpdates(normalizedOutput);
+  const agentReply =
+    buildValuePropositionReply(gatewaySummary.normalized_output, initialWorkspace.company.name) ||
+    (String(gatewaySummary.status ?? "").toLowerCase() === "completed"
+      ? "I updated the value proposition canvas."
+      : "");
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const workspaceRecord = await tx.workspace.findUniqueOrThrow({
+        where: { id: workspaceId },
+        include: {
+          documents: {
+            include: {
+              sections: {
+                orderBy: {
+                  displayOrder: "asc",
+                },
+              },
+            },
+          },
+          chatThreads: {
+            where: { status: "ACTIVE" },
+            include: {
+              messages: {
+                orderBy: {
+                  messageIndex: "asc",
+                },
+              },
+            },
+            orderBy: {
+              updatedAt: "desc",
+            },
+          },
+        },
+      });
+
+      const document = findDocumentByType(workspaceRecord, DOCUMENT_TYPES.VALUE_PROPOSITION);
+      const thread = document ? findThreadForDocument(workspaceRecord, document.id) : null;
+      if (!document || !thread) {
+        const error = new Error("The value proposition workspace is missing its active document thread.");
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const sectionsByKey = new Map((document.sections ?? []).map((section) => [section.sectionKey, section]));
+
+      for (const update of sectionUpdates) {
+        const sectionPayload = update.payload;
+        const nextContent = String(sectionPayload.content ?? "").trim();
+        const hasContent = nextContent.length > 0;
+        const statusLabel = sectionPayload.status?.label ?? null;
+        const completionPercent = scoreToCompletionPercent(sectionPayload.status?.score, statusLabel, hasContent);
+        const refinementState = mapStatusLabelToRefinementState(statusLabel, hasContent);
+        const strategySectionStatus = mapCompletionToSectionStatus(completionPercent, hasContent);
+        const existingSection = sectionsByKey.get(update.sectionKey);
+        const helper =
+          typeof sectionPayload.helper === "string" && sectionPayload.helper.trim().length > 0
+            ? sectionPayload.helper.trim()
+            : update.blueprint.description;
+        const emphasis = sectionPayload.priority === "primary" ? "primary" : update.blueprint.emphasis;
+
+        let sectionRecord = existingSection;
+        if (!sectionRecord) {
+          sectionRecord = await tx.strategySection.create({
+            data: {
+              documentId: document.id,
+              sectionKey: update.sectionKey,
+              title: update.blueprint.title,
+              description: helper,
+              displayOrder: update.blueprint.displayOrder,
+              content: nextContent || null,
+              status: strategySectionStatus,
+              refinementState,
+              agentConfidence: mapConfidenceToken(sectionPayload.status?.agent_confidence),
+              completionPercent,
+              lastUpdatedByType: ActorType.AGENT,
+              lastUpdatedAt: new Date(),
+              versionNo: 1,
+              metadata: { emphasis },
+            },
+          });
+        } else {
+          sectionRecord = await tx.strategySection.update({
+            where: { id: sectionRecord.id },
+            data: {
+              title: update.blueprint.title,
+              description: helper,
+              content: nextContent || null,
+              status: strategySectionStatus,
+              refinementState,
+              agentConfidence: mapConfidenceToken(sectionPayload.status?.agent_confidence),
+              completionPercent,
+              lastUpdatedByType: ActorType.AGENT,
+              lastUpdatedAt: new Date(),
+              versionNo: (sectionRecord.versionNo ?? 0) + 1,
+              metadata: {
+                ...(sectionRecord.metadata ?? {}),
+                emphasis,
+              },
+            },
+          });
+        }
+      }
+
+      await tx.strategyDocument.update({
+        where: { id: document.id },
+        data: {
+          completenessPercent:
+            typeof overview.completeness_percent === "number"
+              ? Math.max(0, Math.min(100, Math.round(overview.completeness_percent)))
+              : document.completenessPercent,
+          qualityState:
+            clampString(String(readiness.label ?? document.qualityState ?? "In progress"), STRATEGY_DOCUMENT_QUALITY_STATE_MAX_LENGTH) ??
+            "In progress",
+          agentSummary: agentReply || String(readiness.reason ?? document.agentSummary ?? ""),
+        },
+      });
+
+      if (agentReply) {
+        const lastMessageIndex = thread?.messages?.at(-1)?.messageIndex ?? 0;
+        await tx.chatMessage.create({
+          data: {
+            threadId: thread.id,
+            messageIndex: lastMessageIndex + 1,
+            senderType: ActorType.AGENT,
+            messageText: agentReply,
+            messageFormat: MessageFormat.MARKDOWN,
+            status: MessageStatus.SENT,
+            metadata: {
+              gatewayRunId: gatewaySummary.id,
+            },
+          },
+        });
+      }
+
+      if (persistedUserMessageId && typeof tx.chatMessage?.update === "function") {
+        await tx.chatMessage.update({
+          where: { id: persistedUserMessageId },
+          data: {
+            status: MessageStatus.SENT,
+          },
+        });
+      }
+
+      if (typeof tx.agentRun?.update === "function" && persistedRun?.id) {
+        await tx.agentRun.update({
+          where: { id: persistedRun.id },
+          data: {
+            runStatus:
+              String(gatewaySummary.status ?? "").toLowerCase() === "completed"
+                ? AgentRunStatus.COMPLETED
+                : AgentRunStatus.FAILED,
+            completedAt: new Date(),
+            summary: agentReply || null,
+            resultMetadata: {
+              gatewayRunId: gatewaySummary.id,
+              gatewayStatus: gatewaySummary.status,
+              normalizedOutput,
+            },
+          },
+        });
+      }
+    });
+  } catch (error) {
+    if (persistedUserMessageId && typeof prisma.chatMessage?.update === "function") {
+      await prisma.chatMessage.update({
+        where: { id: persistedUserMessageId },
+        data: {
+          status: MessageStatus.FAILED,
+        },
+      });
+    }
+
+    if (typeof prisma.agentRun?.update === "function" && persistedRun?.id) {
+      await prisma.agentRun.update({
+        where: { id: persistedRun.id },
+        data: {
+          runStatus: AgentRunStatus.FAILED,
+          completedAt: new Date(),
+          errorMessage: error instanceof Error ? error.message : "Value proposition workflow persistence failed.",
+          resultMetadata: {
+            gatewayRunId: gatewaySummary.id,
+            gatewayStatus: gatewaySummary.status,
+            normalizedOutput,
+          },
+        },
+      });
+    }
+
+    throw error;
+  }
+
+  return getBusinessIdeaForTool(prisma, workspaceId, "value-proposition", currentUser);
+}
+
+async function sendValuePropositionMessage(prisma, agentGatewayClient, workspaceId, input, currentUser) {
+  return runValuePropositionWorkflow(prisma, agentGatewayClient, workspaceId, {
+    messageText: input.messageText,
+    existingMessageId: null,
+  }, currentUser);
+}
+
+async function resendLastValuePropositionMessage(prisma, agentGatewayClient, workspaceId, currentUser) {
+  const workspace = await loadWorkspaceWithChatContext(prisma, workspaceId);
+  assertWorkspaceAccess(workspace, currentUser);
+  const document = findDocumentByType(workspace, DOCUMENT_TYPES.VALUE_PROPOSITION);
+  const thread = document ? findThreadForDocument(workspace, document.id) : null;
+  const lastMessage = thread?.messages?.at(-1) ?? null;
+
+  if (!thread || !lastMessage || lastMessage.senderType !== ActorType.USER) {
+    const error = new Error("There is no recent user message available to resend.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  if (!isRetryableLatestUserMessage(thread)) {
+    const error = new Error("The latest user message does not need to be resent.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  return runValuePropositionWorkflow(prisma, agentGatewayClient, workspaceId, {
     messageText: lastMessage.messageText,
     existingMessageId: lastMessage.id,
   }, currentUser);
@@ -1488,9 +2287,10 @@ async function createBusinessIdea(prisma, input, currentUser) {
       },
     });
 
-    const document = await tx.strategyDocument.create({
+    const ideationDocument = await tx.strategyDocument.create({
       data: {
         workspaceId: workspace.id,
+        documentType: DOCUMENT_TYPES.IDEATION,
         title: `Ideation: ${input.name}`,
         qualityState: "IN_PROGRESS",
         agentSummary: `A new ${BUSINESS_TYPE_LABELS[input.businessType].toLowerCase()} business idea has been created. Start by clarifying the problem statement.`,
@@ -1500,7 +2300,33 @@ async function createBusinessIdea(prisma, input, currentUser) {
     for (const sectionSeed of IDEATION_SECTION_SEEDS) {
       await tx.strategySection.create({
         data: {
-          documentId: document.id,
+          documentId: ideationDocument.id,
+          sectionKey: sectionSeed.sectionKey,
+          title: sectionSeed.title,
+          description: sectionSeed.description,
+          displayOrder: sectionSeed.displayOrder,
+          content: null,
+          metadata: {
+            emphasis: sectionSeed.emphasis,
+          },
+        },
+      });
+    }
+
+    const valuePropositionDocument = await tx.strategyDocument.create({
+      data: {
+        workspaceId: workspace.id,
+        documentType: DOCUMENT_TYPES.VALUE_PROPOSITION,
+        title: `Value Proposition: ${input.name}`,
+        qualityState: "IN_PROGRESS",
+        agentSummary: "Start with the customer profile before shaping the value map.",
+      },
+    });
+
+    for (const sectionSeed of VALUE_PROPOSITION_SECTION_SEEDS) {
+      await tx.strategySection.create({
+        data: {
+          documentId: valuePropositionDocument.id,
           sectionKey: sectionSeed.sectionKey,
           title: sectionSeed.title,
           description: sectionSeed.description,
@@ -1530,10 +2356,10 @@ async function createBusinessIdea(prisma, input, currentUser) {
       });
     }
 
-    const thread = await tx.chatThread.create({
+    const ideationThread = await tx.chatThread.create({
       data: {
         workspaceId: workspace.id,
-        documentId: document.id,
+        documentId: ideationDocument.id,
         title: "Ideation thread",
         createdByUserId: currentUser.id,
       },
@@ -1541,10 +2367,30 @@ async function createBusinessIdea(prisma, input, currentUser) {
 
     await tx.chatMessage.create({
       data: {
-        threadId: thread.id,
+        threadId: ideationThread.id,
         messageIndex: 1,
         senderType: ActorType.AGENT,
         messageText: "Hi there. Please tell me about your business idea.",
+        messageFormat: MessageFormat.MARKDOWN,
+        status: MessageStatus.SENT,
+      },
+    });
+
+    const valuePropositionThread = await tx.chatThread.create({
+      data: {
+        workspaceId: workspace.id,
+        documentId: valuePropositionDocument.id,
+        title: "Value Proposition thread",
+        createdByUserId: currentUser.id,
+      },
+    });
+
+    await tx.chatMessage.create({
+      data: {
+        threadId: valuePropositionThread.id,
+        messageIndex: 1,
+        senderType: ActorType.AGENT,
+        messageText: "Let's build the Value Proposition Canvas by starting with the customer segments you want to serve.",
         messageFormat: MessageFormat.MARKDOWN,
         status: MessageStatus.SENT,
       },
@@ -1599,12 +2445,11 @@ async function createBusinessIdea(prisma, input, currentUser) {
           orderBy: {
             updatedAt: "desc",
           },
-          take: 1,
         },
       },
     });
 
-    return mapStrategyCopilot(workspaceRecord);
+    return mapStrategyCopilot(workspaceRecord, "ideation");
   });
 }
 
@@ -1631,6 +2476,10 @@ async function listBusinessIdeas(prisma, currentUser) {
 }
 
 async function getBusinessIdea(prisma, workspaceId, currentUser) {
+  return getBusinessIdeaForTool(prisma, workspaceId, "ideation", currentUser);
+}
+
+async function getBusinessIdeaForTool(prisma, workspaceId, toolId, currentUser) {
   const workspaceRecord = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
     include: STRATEGY_COPILOT_WORKSPACE_INCLUDE,
@@ -1638,14 +2487,17 @@ async function getBusinessIdea(prisma, workspaceId, currentUser) {
 
   assertWorkspaceAccess(workspaceRecord, currentUser);
 
-  return mapStrategyCopilot(workspaceRecord);
+  return mapStrategyCopilot(workspaceRecord, toolId);
 }
 
 module.exports = {
   BUSINESS_TYPE_LABELS,
   createBusinessIdea,
   getBusinessIdea,
+  getBusinessIdeaForTool,
   listBusinessIdeas,
   resendLastIdeationMessage,
+  resendLastValuePropositionMessage,
   sendIdeationMessage,
+  sendValuePropositionMessage,
 };

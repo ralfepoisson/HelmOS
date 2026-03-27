@@ -51,6 +51,29 @@ export class BusinessIdeasApiService {
     return this.parseApiResponse<StrategyCopilotData>(response, 'resend the latest ideation chat message');
   }
 
+  async getValueProposition(workspaceId: string): Promise<StrategyCopilotData> {
+    const response = await this.requestWithDevFallback(`/business-ideas/${workspaceId}/value-proposition`);
+    return this.parseApiResponse<StrategyCopilotData>(response, 'load the value proposition workspace');
+  }
+
+  async sendValuePropositionMessage(workspaceId: string, messageText: string): Promise<StrategyCopilotData> {
+    const response = await this.requestWithDevFallback(
+      `/business-ideas/${workspaceId}/value-proposition/messages`,
+      { messageText },
+      'POST'
+    );
+    return this.parseApiResponse<StrategyCopilotData>(response, 'send the value proposition chat message');
+  }
+
+  async resendLastValuePropositionMessage(workspaceId: string): Promise<StrategyCopilotData> {
+    const response = await this.requestWithDevFallback(
+      `/business-ideas/${workspaceId}/value-proposition/messages/retry-last`,
+      {},
+      'POST'
+    );
+    return this.parseApiResponse<StrategyCopilotData>(response, 'resend the latest value proposition chat message');
+  }
+
   private async requestWithDevFallback(
     path: string,
     payload?: unknown,

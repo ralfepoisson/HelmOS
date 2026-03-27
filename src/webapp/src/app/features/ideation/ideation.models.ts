@@ -35,7 +35,6 @@ export interface IdeationAgentStatusPayload {
   label?: string | null;
   tone?: 'success' | 'warning' | 'info' | 'muted' | null;
   agent_confidence?: 'high' | 'medium' | 'low' | null;
-  score?: number | null;
   explanation?: string | null;
 }
 
@@ -57,7 +56,6 @@ export interface IdeationAgentResponsePayload {
     content?: string | null;
   } | null;
   ideation_overview?: {
-    completeness_percent?: number | null;
     readiness?: {
       label?: string | null;
       reason?: string | null;

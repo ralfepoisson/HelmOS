@@ -41,6 +41,8 @@ test.describe('HelmOS ideation workspace', () => {
     await expect(page.getByRole('combobox', { name: 'Business idea switcher' })).toBeVisible();
     await expect(page.getByRole('option', { name: '+ New Business Idea' })).toBeAttached();
     await expect(page.getByText('More tools later', { exact: true })).toBeVisible();
+    const sidebarToggle = page.getByTestId('strategy-sidebar-toggle');
+    await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'true');
 
     const strategyColumn = page.getByTestId('strategy-column');
     const workspaceColumn = page.getByTestId('workspace-column');
@@ -103,6 +105,23 @@ test.describe('HelmOS ideation workspace', () => {
     expect(strategyAfterScroll!.y).toBeLessThanOrEqual(navBox!.height + 20);
     expect(chatAfterScroll!.y).toBeLessThanOrEqual(navBox!.height + 20);
     expect(workspaceAfterScroll!.y).toBe(strategy.y);
+
+    await sidebarToggle.click();
+    await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'false');
+
+    const collapsedStrategyBox = await strategyColumn.boundingBox();
+    const expandedWorkspaceBox = await workspaceColumn.boundingBox();
+
+    expect(collapsedStrategyBox).not.toBeNull();
+    expect(expandedWorkspaceBox).not.toBeNull();
+    expect(collapsedStrategyBox!.width).toBeLessThan(5);
+    expect(expandedWorkspaceBox!.x).toBeLessThan(workspace.x);
+
+    await sidebarToggle.click();
+    await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'true');
+    const restoredStrategyBox = await strategyColumn.boundingBox();
+    expect(restoredStrategyBox).not.toBeNull();
+    expect(restoredStrategyBox!.width).toBeGreaterThan(220);
   });
 
   test('opens the dedicated New Idea page and creates from a minimal centered form', async ({ page }) => {

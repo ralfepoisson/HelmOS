@@ -52,6 +52,7 @@ export class WorkspaceShellService {
       description: 'Translate the early concept into a sharper customer-job, pain, and gain narrative.',
       status: 'locked',
       helper: 'Unlock when the core concept is defined.',
+      route: '/strategy-copilot/value-proposition',
       group: 'core'
     },
     {

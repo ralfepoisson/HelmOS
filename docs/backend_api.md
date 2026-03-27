@@ -58,6 +58,11 @@ Infrastructure endpoints:
 - `GET /api/business-ideas`
 - `POST /api/business-ideas`
 - `GET /api/business-ideas/:workspaceId`
+- `GET /api/business-ideas/:workspaceId/value-proposition`
+- `POST /api/business-ideas/:workspaceId/ideation/messages`
+- `POST /api/business-ideas/:workspaceId/ideation/messages/retry-last`
+- `POST /api/business-ideas/:workspaceId/value-proposition/messages`
+- `POST /api/business-ideas/:workspaceId/value-proposition/messages/retry-last`
 - `GET /api/admin/agents`
 - `POST /api/admin/agents`
 - `PATCH /api/admin/agents/:id`

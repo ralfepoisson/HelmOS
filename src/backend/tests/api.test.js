@@ -340,6 +340,7 @@ function buildStrategyHubWorkspaceRecord(overrides = {}) {
     documents: [
       {
         id: "document-idea-1",
+        documentType: "IDEATION",
         completenessPercent: 0,
         qualityState: "In progress",
         agentSummary: "Start by clarifying the problem statement.",
@@ -362,16 +363,55 @@ function buildStrategyHubWorkspaceRecord(overrides = {}) {
           },
         ],
       },
+      {
+        id: "document-value-1",
+        documentType: "VALUE_PROPOSITION",
+        completenessPercent: 0,
+        qualityState: "In progress",
+        agentSummary: "Start with the customer profile before shaping the value map.",
+        sections: [
+          {
+            id: "section-value-1",
+            sectionKey: "customer_segments",
+            title: "Customer Segments",
+            description: "Identify the most specific customer groups this canvas is designed around.",
+            content: null,
+            versionNo: 1,
+            metadata: {
+              emphasis: "primary",
+            },
+            refinementState: "EMPTY",
+            completionPercent: 0,
+            agentConfidence: "MEDIUM",
+            lastUpdatedByType: "AGENT",
+            lastUpdatedAt: new Date("2026-03-22T09:00:00Z"),
+          },
+        ],
+      },
     ],
     chatThreads: [
       {
         id: "thread-idea-1",
+        documentId: "document-idea-1",
         messages: [
           {
             id: "message-idea-1",
             messageIndex: 1,
             senderType: "AGENT",
             messageText: "Hi there. Please tell me about your business idea.",
+            createdAt: new Date("2026-03-22T09:00:00Z"),
+          },
+        ],
+      },
+      {
+        id: "thread-value-1",
+        documentId: "document-value-1",
+        messages: [
+          {
+            id: "message-value-1",
+            messageIndex: 1,
+            senderType: "AGENT",
+            messageText: "Let's build the Value Proposition Canvas by starting with the customer segments you want to serve.",
             createdAt: new Date("2026-03-22T09:00:00Z"),
           },
         ],
@@ -781,6 +821,168 @@ test("GET /api/business-ideas/:workspaceId returns unlocked strategy tools from 
   assert.equal(response.body.data.workspace.overview.readinessLabel, "Ready for next tool");
 });
 
+test("GET /api/business-ideas/:workspaceId/value-proposition returns the value proposition workspace payload", async () => {
+  const workspaceRecord = buildStrategyHubWorkspaceRecord({
+    id: "workspace-existing-1",
+    name: "Northstar Ventures",
+    businessType: "PRODUCT",
+    strategyToolsUnlocked: true,
+  });
+  workspaceRecord.documents[1].completenessPercent = 60;
+  workspaceRecord.documents[1].sections = [
+    {
+      ...workspaceRecord.documents[1].sections[0],
+      content: "Boutique consultancies\nFounder-led service firms",
+      refinementState: "DRAFT",
+      completionPercent: 60,
+    },
+  ];
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-idea-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    workspace: {
+      findUniqueOrThrow: async () => workspaceRecord,
+    },
+  };
+
+  const app = createApp({ prisma });
+  const response = await withAuth(request(app).get("/api/business-ideas/workspace-existing-1/value-proposition"));
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.workspace.pageTitle, "Value Proposition: Northstar Ventures");
+  assert.equal(response.body.data.workspace.sections[0].title, "Customer Segments");
+  assert.equal(response.body.data.chat.panelTitle, "Value Proposition Agent");
+});
+
+test("POST /api/business-ideas/:workspaceId/value-proposition/messages runs the value proposition workflow", async () => {
+  const initialWorkspace = buildStrategyHubWorkspaceRecord({
+    id: "workspace-existing-1",
+    name: "Northstar Ventures",
+    businessType: "PRODUCT",
+    strategyToolsUnlocked: true,
+  });
+  const refreshedWorkspace = structuredClone(initialWorkspace);
+  refreshedWorkspace.documents[1].completenessPercent = 60;
+  refreshedWorkspace.documents[1].qualityState = "Needs refinement";
+  refreshedWorkspace.documents[1].agentSummary = "I updated the canvas and the weakest area is pain relievers.";
+  refreshedWorkspace.documents[1].sections = [
+    {
+      ...refreshedWorkspace.documents[1].sections[0],
+      content: "- Boutique consultancies\n- Founder-led service firms",
+      refinementState: "DRAFT",
+      completionPercent: 60,
+      agentConfidence: "MEDIUM",
+    },
+  ];
+  refreshedWorkspace.chatThreads[1].messages = [
+    ...initialWorkspace.chatThreads[1].messages,
+    {
+      id: "message-value-2",
+      messageIndex: 2,
+      senderType: "USER",
+      messageText: "Sharpen the customer profile and fit.",
+      createdAt: new Date("2026-03-22T10:14:00Z"),
+    },
+    {
+      id: "message-value-3",
+      messageIndex: 3,
+      senderType: "AGENT",
+      messageText: "I updated the canvas and the weakest area is pain relievers.",
+      createdAt: new Date("2026-03-22T10:15:00Z"),
+    },
+  ];
+
+  let workspaceFindCount = 0;
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-idea-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    workspace: {
+      findUniqueOrThrow: async () => {
+        workspaceFindCount += 1;
+        return workspaceFindCount === 1 ? initialWorkspace : refreshedWorkspace;
+      },
+    },
+    chatMessage: {
+      create: async ({ data }) => ({ id: "message-value-created", ...data }),
+      update: async () => ({}),
+    },
+    agentRun: {
+      create: async ({ data }) => ({ id: "run-value-1", ...data }),
+      update: async () => ({}),
+    },
+    strategySection: {
+      create: async ({ data }) => ({ id: "section-created", versionNo: 1, metadata: data.metadata ?? {}, ...data }),
+      update: async ({ data, where }) => ({ id: where.id, versionNo: data.versionNo, metadata: data.metadata ?? {}, ...data }),
+    },
+    strategyDocument: {
+      update: async () => ({}),
+    },
+    activityLog: {
+      create: async () => ({}),
+    },
+    $transaction: async (callback) => callback(prisma),
+  };
+
+  const agentGatewayClient = {
+    runValuePropositionWorkflow: async () => ({
+      id: "gateway-run-value-1",
+      status: "completed",
+      normalized_output: {
+        customer_profile: {
+          segments: ["Boutique consultancies", "Founder-led service firms"],
+          jobs: { functional: ["Deliver strategy outcomes"], emotional: [], social: [] },
+          pains: ["Momentum disappears after workshops"],
+          gains: ["A clearer path from strategy to execution"],
+        },
+        value_map: {
+          products_services: ["AI-guided strategic operating workspace"],
+          pain_relievers: ["Turns workshop output into coordinated execution"],
+          gain_creators: ["Keeps teams aligned on next decisions"],
+        },
+        analysis: {
+          weakest_area: "Pain Relievers",
+          issues: ["Relief mechanisms are still broad"],
+          inconsistencies: [],
+          recommendations: ["Make each reliever directly address a named pain"],
+        },
+        scoring: {
+          customer_clarity: "Medium",
+          problem_depth: "Medium",
+          value_definition: "Medium",
+          pain_gain_relevance: "Medium",
+          fit_consistency: "Medium",
+          overall: "Emerging",
+        },
+        next_question: "Which pain is costly enough that the customer would act now?",
+      },
+    }),
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(
+    request(app).post("/api/business-ideas/workspace-existing-1/value-proposition/messages").send({
+      messageText: "Sharpen the customer profile and fit.",
+    })
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.workspace.pageTitle, "Value Proposition: Northstar Ventures");
+  assert.equal(response.body.data.chat.panelTitle, "Value Proposition Agent");
+});
+
 test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation workflow and returns refreshed workspace data", async () => {
   const initialWorkspace = buildStrategyHubWorkspaceRecord({
     id: "workspace-existing-1",
@@ -793,8 +995,8 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
     businessType: "PRODUCT",
     strategyToolsUnlocked: true,
   });
-  refreshedWorkspace.documents[0].completenessPercent = 65;
-  refreshedWorkspace.documents[0].qualityState = "Needs refinement";
+  refreshedWorkspace.documents[0].completenessPercent = 82;
+  refreshedWorkspace.documents[0].qualityState = "Ready for next tool";
   refreshedWorkspace.documents[0].agentSummary =
     "I tightened the value proposition and product description. The main gap now is making the target customer more specific.";
   refreshedWorkspace.documents[0].sections = [
@@ -958,9 +1160,8 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
             "I tightened the value proposition and product description. The main gap now is making the target customer more specific.",
         },
         ideation_overview: {
-          completeness_percent: 65,
           readiness: {
-            label: "Ready for next tool",
+            label: "Needs refinement",
             reason:
               "The concept is coherent enough to move into the next structured strategy tools.",
             next_best_action: "Start shaping the value proposition in the next workspace.",
@@ -974,7 +1175,6 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
             label: "Strong",
             tone: "success",
             agent_confidence: "high",
-            score: 0.86,
             explanation: "The problem is concrete and easy to understand.",
           },
           ui_hints: {
@@ -989,12 +1189,67 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
             label: "Needs refinement",
             tone: "warning",
             agent_confidence: "medium",
-            score: 0.61,
             explanation: "The segment is plausible but still broad.",
           },
           ui_hints: {
             highlight: true,
             needs_attention: true,
+          },
+        },
+        "Value Proposition": {
+          content: "A strategy operating system that unifies planning, execution, and governance.",
+          priority: "primary",
+          status: {
+            label: "Strong",
+            tone: "success",
+            agent_confidence: "high",
+            explanation: "The value proposition is specific and compelling.",
+          },
+          ui_hints: {
+            highlight: true,
+            needs_attention: false,
+          },
+        },
+        product_service_description: {
+          content: "A shared workspace that structures strategy and coordinates intelligent agents.",
+          priority: "secondary",
+          status: {
+            label: "Strong",
+            tone: "success",
+            agent_confidence: "high",
+            explanation: "The product description is clear.",
+          },
+          ui_hints: {
+            highlight: true,
+            needs_attention: false,
+          },
+        },
+        differentiation: {
+          content: "HelmOS connects strategic thinking to execution instead of acting like another isolated planning tool.",
+          priority: "secondary",
+          status: {
+            label: "Strong",
+            tone: "success",
+            agent_confidence: "high",
+            explanation: "Differentiation is concrete.",
+          },
+          ui_hints: {
+            highlight: true,
+            needs_attention: false,
+          },
+        },
+        early_monitization_idea: {
+          content: "Tiered founder subscriptions with premium execution orchestration.",
+          priority: "secondary",
+          status: {
+            label: "Strong",
+            tone: "success",
+            agent_confidence: "medium",
+            explanation: "The initial monetization path is clear enough to proceed.",
+          },
+          ui_hints: {
+            highlight: true,
+            needs_attention: false,
           },
         },
       },
@@ -1010,7 +1265,7 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
 
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.data.workspaceOption.id, "workspace-existing-1");
-  assert.equal(response.body.data.workspace.overview.completeness, 65);
+  assert.equal(response.body.data.workspace.overview.completeness, 82);
   assert.deepEqual(response.body.data.workspace.availableToolIds, [
     "ideation",
     "value-proposition",
@@ -1024,7 +1279,8 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
   );
   assert.equal(response.body.data.chat.resendAvailable, false);
   assert.equal(chatMessageCreates.length, 2);
-  assert.equal(strategyDocumentUpdates[0].completenessPercent, 65);
+  assert.equal(strategyDocumentUpdates[0].completenessPercent, 82);
+  assert.equal(strategyDocumentUpdates[0].qualityState, "Ready for next tool");
   assert.equal(workspaceUpdates.length, 1);
   assert.equal(workspaceUpdates[0].featureUnlocks.strategyTools.enabled, true);
   assert.equal(stageProgressUpdates.length, 1);
@@ -1042,7 +1298,7 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
       enteredAt: null,
     },
   });
-  assert.equal(strategySectionUpdates.length + strategySectionCreates.length, 2);
+  assert.equal(strategySectionUpdates.length + strategySectionCreates.length, 6);
   assert.equal(agentRunUpdates.at(-1).runStatus, "COMPLETED");
   assert.equal(
     prisma.logEntry.createCalls.some((entry) => entry.event === "ideation_gateway_summary_received"),
@@ -1198,11 +1454,10 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages sends the exact ag
           reply_to_user: {
             content: "You should clarify the target customer next.",
           },
-          ideation_overview: {
-            completeness_percent: 50,
-            readiness: {
-              label: "Needs refinement",
-              reason: "The concept is forming but key sections are still broad.",
+        ideation_overview: {
+          readiness: {
+            label: "Needs refinement",
+            reason: "The concept is forming but key sections are still broad.",
               next_best_action: "Clarify the target customer.",
             },
           },
@@ -1370,7 +1625,6 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages clamps an overlong
           content: "Structured problem statement ready for review.",
         },
         ideation_overview: {
-          completeness_percent: 40,
           readiness: {
             label: "Problem articulation strong, value proposition next",
             reason:
@@ -1386,7 +1640,6 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages clamps an overlong
             label: "Draft",
             tone: "info",
             agent_confidence: "high",
-            score: 0.75,
             explanation: "The draft is strong enough to review and refine.",
           },
           ui_hints: {
@@ -1401,7 +1654,6 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages clamps an overlong
             label: "Needs refinement",
             tone: "warning",
             agent_confidence: "medium",
-            score: 0.61,
             explanation: "Segments are useful but could be sharper.",
           },
           ui_hints: {
@@ -1417,7 +1669,6 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages clamps an overlong
             label: "Needs refinement",
             tone: "warning",
             agent_confidence: "medium",
-            score: 0.64,
             explanation: "The value is promising but still broad.",
           },
           ui_hints: {
@@ -1432,7 +1683,6 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages clamps an overlong
             label: "Draft",
             tone: "info",
             agent_confidence: "medium",
-            score: 0.68,
             explanation: "Basic platform description is present.",
           },
           ui_hints: {
@@ -1447,7 +1697,6 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages clamps an overlong
             label: "Draft",
             tone: "info",
             agent_confidence: "medium",
-            score: 0.68,
             explanation: "Differentiation is directionally clear.",
           },
           ui_hints: {
@@ -1462,7 +1711,6 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages clamps an overlong
             label: "Draft",
             tone: "info",
             agent_confidence: "medium",
-            score: 0.68,
             explanation: "Monetization direction is plausible.",
           },
           ui_hints: {
@@ -1482,10 +1730,8 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages clamps an overlong
     }));
 
   assert.equal(response.statusCode, 200);
-  assert.equal(
-    strategyDocumentUpdates[0].qualityState,
-    "Problem articulation strong, value proposition ..."
-  );
+  assert.equal(strategyDocumentUpdates[0].completenessPercent, 50);
+  assert.equal(strategyDocumentUpdates[0].qualityState, "Needs refinement");
 });
 
 test("POST /api/business-ideas/:workspaceId/ideation/messages/retry-last resends the latest failed user message without duplicating it", async () => {
