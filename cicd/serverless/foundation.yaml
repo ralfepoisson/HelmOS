@@ -419,6 +419,26 @@ Resources:
             return request;
           }
 
+          if (uri === "/app" || uri === "/app/") {
+            request.uri = "/app/index.html";
+            return request;
+          }
+
+          if (uri.startsWith("/app/")) {
+            var appPath = uri.slice(5);
+
+            if (!appPath || (!appPath.includes(".") && !appPath.endsWith("/"))) {
+              request.uri = "/app/index.html";
+              return request;
+            }
+
+            if (uri.endsWith("/")) {
+              request.uri = uri + "index.html";
+            }
+
+            return request;
+          }
+
           if (uri === "/" || (!uri.includes(".") && !uri.endsWith("/"))) {
             request.uri = "/index.html";
             return request;
@@ -666,7 +686,7 @@ Resources:
             CustomOriginConfig:
               HTTPPort: 80
               HTTPSPort: 443
-              OriginProtocolPolicy: http-only
+              OriginProtocolPolicy: https-only
         DefaultCacheBehavior:
           AllowedMethods:
             - GET

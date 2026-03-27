@@ -3,6 +3,7 @@ import { HttpClient, HttpErrorResponse, HttpResponse } from '@angular/common/htt
 import { firstValueFrom } from 'rxjs';
 
 import { BusinessIdeaOption, BusinessType, StrategyCopilotData } from '../../features/ideation/ideation.models';
+import { readAuthConfig } from '../auth/bootstrap-auth';
 
 interface ApiEnvelope<T> {
   data: T;
@@ -13,7 +14,7 @@ interface ApiEnvelope<T> {
 })
 export class BusinessIdeasApiService {
   private readonly http = inject(HttpClient);
-  private readonly primaryApiBaseUrl = '/api';
+  private readonly primaryApiBaseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api`;
   private readonly fallbackApiBaseUrl = this.buildLocalDevApiBaseUrl();
   private readonly preferredApiBaseUrl = this.fallbackApiBaseUrl ?? this.primaryApiBaseUrl;
 
@@ -186,6 +187,10 @@ export class BusinessIdeasApiService {
       return null;
     }
 
+    if (this.primaryApiBaseUrl !== `${window.location.origin}/api`) {
+      return null;
+    }
+
     const { hostname, port, protocol } = window.location;
     const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
 
@@ -195,4 +200,8 @@ export class BusinessIdeasApiService {
 
     return `${protocol}//${hostname}:3001/api`;
   }
+}
+
+function normalizeBaseUrl(value: string): string {
+  return value.endsWith('/') ? value.slice(0, -1) : value;
 }

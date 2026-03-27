@@ -3,6 +3,7 @@ import { HttpClient, HttpErrorResponse, HttpResponse } from '@angular/common/htt
 import { firstValueFrom } from 'rxjs';
 
 import { IdeationAgentResponsePayload } from '../ideation.models';
+import { readAuthConfig } from '../../../core/auth/bootstrap-auth';
 
 interface ApiEnvelope<T> {
   data: T;
@@ -41,8 +42,8 @@ export interface RunSummaryResponse extends RunStatusResponse {
 })
 export class AgentGatewayApiService {
   private readonly http = inject(HttpClient);
-  private readonly primaryBaseUrl = '/api/v1';
-  private readonly fallbackBaseUrl = 'http://localhost:8000/api/v1';
+  private readonly primaryBaseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api/v1`;
+  private readonly fallbackBaseUrl = this.buildLocalDevFallbackBaseUrl();
 
   async startIdeationRun(inputText: string, sessionTitle?: string): Promise<RunStatusResponse> {
     return this.requestWithFallback<RunStatusResponse>('/runs', 'POST', {
@@ -140,4 +141,25 @@ export class AgentGatewayApiService {
   private isApiEnvelope<T>(body: ApiEnvelope<T> | T): body is ApiEnvelope<T> {
     return typeof body === 'object' && body !== null && 'data' in body;
   }
+
+  private buildLocalDevFallbackBaseUrl(): string | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    if (this.primaryBaseUrl !== `${window.location.origin}/api/v1`) {
+      return null;
+    }
+
+    const hostname = window.location.hostname;
+    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      return null;
+    }
+
+    return 'http://localhost:8000/api/v1';
+  }
+}
+
+function normalizeBaseUrl(value: string): string {
+  return value.endsWith('/') ? value.slice(0, -1) : value;
 }

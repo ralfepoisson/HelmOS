@@ -1,8 +1,11 @@
 @startuml
 package "Agent Experience Layer" {
+  [Marketing Website]
   [Angular UI]
   [Angular Dev Proxy]
   [Auth Callback & Route Guards]
+  [Root Idea Selection Redirect]
+  [My Business Ideas Page]
   [Node Control Plane API]
   [Agent Gateway API (FastAPI)]
   [Agent Admin Screen]
@@ -64,7 +67,9 @@ package "AWS Production Deployment" {
   [Route 53]
   [ACM]
   [CloudFront]
-  [S3 Static Site Bucket]
+  [S3 Website Bucket]
+  [Marketing Site Files]
+  [Strategy App Files (/app)]
   [Application Load Balancer]
   [ECS Fargate - Node API]
   [ECS Fargate - Agent Gateway]
@@ -75,8 +80,14 @@ package "AWS Production Deployment" {
   [S3 Artifact Bucket]
 }
 
+[Marketing Website] --> [CloudFront] : helm-os.ai and www.helm-os.ai
 [Angular UI] --> [Angular Dev Proxy] : local /api and /api/v1
 [Angular UI] --> [Auth Callback & Route Guards] : restore session, route gating
+[Angular UI] --> [Root Idea Selection Redirect] : decide / entry based on saved ideas
+[Root Idea Selection Redirect] --> [Node Control Plane API] : list business ideas for current user
+[Angular UI] --> [My Business Ideas Page]
+[My Business Ideas Page] --> [Node Control Plane API] : list business ideas and select active workspace
+[Angular UI] --> [Node Control Plane API] : load workspace unlock state and available strategy tools
 [Auth Callback & Route Guards] --> [Life2 Auth Service] : delegated sign-in / sign-out
 [Auth Callback & Route Guards] --> [JWT Session Bootstrap] : capture hash-route token before app bootstrap
 [Angular Dev Proxy] --> [Node Control Plane API] : /api
@@ -84,6 +95,7 @@ package "AWS Production Deployment" {
 [Angular UI] --> [Agent Admin Screen]
 [Agent Admin Screen] --> [Node Control Plane API] : create/update agent registry
 [Node Control Plane API] --> [RBAC Policy] : verify JWT, derive user context, enforce access
+[Node Control Plane API] --> [PostgreSQL] : persist workspace feature unlocks and stage availability
 [RBAC Policy] --> [PostgreSQL] : upsert local user, tenant link, app role
 [Node Control Plane API] --> [Agent Gateway API (FastAPI)] : runtime snapshot
 [Node Control Plane API] --> [Agent Registry] : create/update definitions
@@ -127,7 +139,9 @@ package "AWS Production Deployment" {
 
 [Route 53] --> [ACM]
 [Route 53] --> [CloudFront]
-[CloudFront] --> [S3 Static Site Bucket]
+[CloudFront] --> [S3 Website Bucket]
+[S3 Website Bucket] --> [Marketing Site Files]
+[S3 Website Bucket] --> [Strategy App Files (/app)]
 [CloudFront] --> [Application Load Balancer] : /api and /api/v1
 [Application Load Balancer] --> [ECS Fargate - Node API]
 [Application Load Balancer] --> [ECS Fargate - Agent Gateway]

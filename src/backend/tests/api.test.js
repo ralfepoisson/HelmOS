@@ -318,10 +318,20 @@ function buildCrudPrismaForConfig(config) {
 }
 
 function buildStrategyHubWorkspaceRecord(overrides = {}) {
+  const strategyToolsUnlocked = overrides.strategyToolsUnlocked ?? false;
   return {
     id: overrides.id ?? "workspace-idea-1",
     createdByUserId: overrides.createdByUserId ?? "user-idea-1",
     updatedAt: overrides.updatedAt ?? new Date("2026-03-22T09:00:00Z"),
+    featureUnlocks: strategyToolsUnlocked
+      ? {
+          strategyTools: {
+            enabled: true,
+            unlockedAt: "2026-03-22T10:15:00.000Z",
+            source: "ideation_agent",
+          },
+        }
+      : null,
     company: {
       id: "company-idea-1",
       name: overrides.name ?? "Orbit Forge Labs",
@@ -365,6 +375,56 @@ function buildStrategyHubWorkspaceRecord(overrides = {}) {
             createdAt: new Date("2026-03-22T09:00:00Z"),
           },
         ],
+      },
+    ],
+    stageProgress: [
+      {
+        id: "stage-ideation-1",
+        stageKey: "IDEATION",
+        displayOrder: 1,
+        status: "CURRENT",
+        unlockState: "UNLOCKED",
+        unlockReason: "Ideation is the active starting stage.",
+      },
+      {
+        id: "stage-value-proposition-1",
+        stageKey: "VALUE_PROPOSITION",
+        displayOrder: 2,
+        status: strategyToolsUnlocked ? "AVAILABLE" : "LOCKED",
+        unlockState: strategyToolsUnlocked ? "UNLOCKED" : "LOCKED",
+        unlockReason: strategyToolsUnlocked
+          ? "Unlocked after the ideation agent marked the idea ready for the next strategy tool."
+          : "Unlocks once the ideation draft is mature enough for the next strategy tool.",
+      },
+      {
+        id: "stage-customer-segments-1",
+        stageKey: "CUSTOMER_SEGMENTS",
+        displayOrder: 3,
+        status: strategyToolsUnlocked ? "AVAILABLE" : "LOCKED",
+        unlockState: strategyToolsUnlocked ? "UNLOCKED" : "LOCKED",
+        unlockReason: strategyToolsUnlocked
+          ? "Unlocked after the ideation agent marked the idea ready for the next strategy tool."
+          : "Unlocks once the ideation draft is mature enough for the next strategy tool.",
+      },
+      {
+        id: "stage-business-model-1",
+        stageKey: "BUSINESS_MODEL",
+        displayOrder: 4,
+        status: strategyToolsUnlocked ? "AVAILABLE" : "LOCKED",
+        unlockState: strategyToolsUnlocked ? "UNLOCKED" : "LOCKED",
+        unlockReason: strategyToolsUnlocked
+          ? "Unlocked after the ideation agent marked the idea ready for the next strategy tool."
+          : "Unlocks once the ideation draft is mature enough for the next strategy tool.",
+      },
+      {
+        id: "stage-market-research-1",
+        stageKey: "MARKET_RESEARCH",
+        displayOrder: 5,
+        status: strategyToolsUnlocked ? "AVAILABLE" : "LOCKED",
+        unlockState: strategyToolsUnlocked ? "UNLOCKED" : "LOCKED",
+        unlockReason: strategyToolsUnlocked
+          ? "Unlocked after the ideation agent marked the idea ready for the next strategy tool."
+          : "Unlocks once the ideation draft is mature enough for the next strategy tool.",
       },
     ],
   };
@@ -683,6 +743,42 @@ test("GET /api/business-ideas/:workspaceId returns the strategy hub payload", as
   assert.equal(response.body.data.workspace.pageStatus, "Product business idea");
   assert.equal(response.body.data.workspace.sections[0].title, "Problem Statement");
   assert.equal(response.body.data.workspace.sections[0].content, "");
+  assert.deepEqual(response.body.data.workspace.availableToolIds, ["ideation"]);
+});
+
+test("GET /api/business-ideas/:workspaceId returns unlocked strategy tools from persisted business idea feature flags", async () => {
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-idea-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    workspace: {
+      findUniqueOrThrow: async () =>
+        buildStrategyHubWorkspaceRecord({
+          id: "workspace-existing-1",
+          name: "Northstar Ventures",
+          businessType: "PRODUCT",
+          strategyToolsUnlocked: true,
+        }),
+    },
+  };
+
+  const app = createApp({ prisma });
+  const response = await withAuth(request(app).get("/api/business-ideas/workspace-existing-1"));
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.body.data.workspace.availableToolIds, [
+    "ideation",
+    "value-proposition",
+    "customer-segments",
+    "business-model",
+    "market-research",
+  ]);
+  assert.equal(response.body.data.workspace.overview.readinessLabel, "Ready for next tool");
 });
 
 test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation workflow and returns refreshed workspace data", async () => {
@@ -695,6 +791,7 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
     id: "workspace-existing-1",
     name: "Northstar Ventures",
     businessType: "PRODUCT",
+    strategyToolsUnlocked: true,
   });
   refreshedWorkspace.documents[0].completenessPercent = 65;
   refreshedWorkspace.documents[0].qualityState = "Needs refinement";
@@ -752,6 +849,8 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
   const strategySectionCreates = [];
   const strategyDocumentUpdates = [];
   const agentRunUpdates = [];
+  const workspaceUpdates = [];
+  const stageProgressUpdates = [];
 
   const prisma = {
     user: {
@@ -766,6 +865,13 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
       findUniqueOrThrow: async () => {
         workspaceFindCount += 1;
         return workspaceFindCount >= 3 ? refreshedWorkspace : initialWorkspace;
+      },
+      update: async ({ data }) => {
+        workspaceUpdates.push(data);
+        return {
+          id: "workspace-existing-1",
+          ...data,
+        };
       },
     },
     chatMessage: {
@@ -797,6 +903,12 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
           id: "document-idea-1",
           ...data,
         };
+      },
+    },
+    stageProgress: {
+      updateMany: async ({ where, data }) => {
+        stageProgressUpdates.push({ where, data });
+        return { count: 4 };
       },
     },
     strategySection: {
@@ -848,10 +960,10 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
         ideation_overview: {
           completeness_percent: 65,
           readiness: {
-            label: "Needs refinement",
+            label: "Ready for next tool",
             reason:
-              "The concept is coherent, but the target customer and value proposition are still broad.",
-            next_best_action: "Clarify the target customer and sharpen the value proposition.",
+              "The concept is coherent enough to move into the next structured strategy tools.",
+            next_best_action: "Start shaping the value proposition in the next workspace.",
           },
         },
         problem_statement: {
@@ -899,6 +1011,13 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.data.workspaceOption.id, "workspace-existing-1");
   assert.equal(response.body.data.workspace.overview.completeness, 65);
+  assert.deepEqual(response.body.data.workspace.availableToolIds, [
+    "ideation",
+    "value-proposition",
+    "customer-segments",
+    "business-model",
+    "market-research",
+  ]);
   assert.equal(
     response.body.data.chat.messages.at(-1).content,
     "I tightened the value proposition and product description. The main gap now is making the target customer more specific."
@@ -906,6 +1025,23 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages runs the ideation 
   assert.equal(response.body.data.chat.resendAvailable, false);
   assert.equal(chatMessageCreates.length, 2);
   assert.equal(strategyDocumentUpdates[0].completenessPercent, 65);
+  assert.equal(workspaceUpdates.length, 1);
+  assert.equal(workspaceUpdates[0].featureUnlocks.strategyTools.enabled, true);
+  assert.equal(stageProgressUpdates.length, 1);
+  assert.deepEqual(stageProgressUpdates[0], {
+    where: {
+      workspaceId: "workspace-existing-1",
+      stageKey: {
+        in: ["VALUE_PROPOSITION", "CUSTOMER_SEGMENTS", "BUSINESS_MODEL", "MARKET_RESEARCH"],
+      },
+    },
+    data: {
+      status: "AVAILABLE",
+      unlockState: "UNLOCKED",
+      unlockReason: "Unlocked after the ideation agent marked the idea ready for the next strategy tool.",
+      enteredAt: null,
+    },
+  });
   assert.equal(strategySectionUpdates.length + strategySectionCreates.length, 2);
   assert.equal(agentRunUpdates.at(-1).runStatus, "COMPLETED");
   assert.equal(
@@ -1145,6 +1281,211 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages sends the exact ag
       ],
     },
   });
+});
+
+test("POST /api/business-ideas/:workspaceId/ideation/messages clamps an overlong readiness label for persistence", async () => {
+  const initialWorkspace = buildStrategyHubWorkspaceRecord({
+    id: "workspace-existing-1",
+    name: "HelmOS",
+    businessType: "PRODUCT",
+  });
+  const refreshedWorkspace = structuredClone(initialWorkspace);
+  refreshedWorkspace.documents[0].qualityState = "Problem articulation strong, value proposition...";
+  refreshedWorkspace.documents[0].agentSummary = "Structured problem statement ready for review.";
+  refreshedWorkspace.chatThreads[0].messages = [
+    ...initialWorkspace.chatThreads[0].messages,
+    {
+      id: "message-idea-2",
+      messageIndex: 2,
+      senderType: "USER",
+      messageText: "Expand the problem statement with concrete pain points.",
+      createdAt: new Date("2026-03-22T10:14:00Z"),
+    },
+    {
+      id: "message-idea-3",
+      messageIndex: 3,
+      senderType: "AGENT",
+      messageText: "Structured problem statement ready for review.",
+      createdAt: new Date("2026-03-22T10:15:00Z"),
+    },
+  ];
+
+  let workspaceFindCount = 0;
+  const strategyDocumentUpdates = [];
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-idea-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    workspace: {
+      findUniqueOrThrow: async () => {
+        workspaceFindCount += 1;
+        return workspaceFindCount >= 3 ? refreshedWorkspace : initialWorkspace;
+      },
+    },
+    chatMessage: {
+      create: async ({ data }) => ({ id: `message-created-${data.messageIndex}`, ...data }),
+      update: async ({ where, data }) => ({ id: where.id, ...data }),
+    },
+    agentRun: {
+      create: async ({ data }) => ({ id: "agent-run-local-1", ...data }),
+      update: async ({ where, data }) => ({ id: where.id, ...data }),
+    },
+    strategyDocument: {
+      update: async ({ data }) => {
+        strategyDocumentUpdates.push(data);
+        return { id: "document-idea-1", ...data };
+      },
+    },
+    strategySection: {
+      update: async ({ where, data }) => ({ id: where.id, versionNo: data.versionNo, ...data }),
+      create: async ({ data }) => ({ id: `section-${data.sectionKey}`, versionNo: 1, ...data }),
+    },
+    sectionVersion: {
+      create: async () => ({}),
+    },
+    agentRunEffect: {
+      create: async () => ({}),
+    },
+    activityLog: {
+      create: async () => ({}),
+    },
+    logEntry: {
+      create: async () => ({}),
+    },
+    $transaction: async (callback) => callback(prisma),
+  };
+
+  const agentGatewayClient = {
+    runIdeationWorkflow: async () => ({
+      id: "gateway-run-1",
+      status: "completed",
+      normalized_output: {
+        reply_to_user: {
+          content: "Structured problem statement ready for review.",
+        },
+        ideation_overview: {
+          completeness_percent: 40,
+          readiness: {
+            label: "Problem articulation strong, value proposition next",
+            reason:
+              "The problem articulation is now strong and the next focus should be tightening the value proposition.",
+            next_best_action: "Refine the value proposition to connect directly to these pain points.",
+          },
+        },
+        problem_statement: {
+          content:
+            "Founders face persistent coordination and execution challenges that intensify as the business matures.",
+          priority: "primary",
+          status: {
+            label: "Draft",
+            tone: "info",
+            agent_confidence: "high",
+            score: 0.75,
+            explanation: "The draft is strong enough to review and refine.",
+          },
+          ui_hints: {
+            highlight: true,
+            needs_attention: true,
+          },
+        },
+        target_customer: {
+          content: "Early-stage founders and experienced operators managing multiple ventures.",
+          priority: "primary",
+          status: {
+            label: "Needs refinement",
+            tone: "warning",
+            agent_confidence: "medium",
+            score: 0.61,
+            explanation: "Segments are useful but could be sharper.",
+          },
+          ui_hints: {
+            highlight: false,
+            needs_attention: true,
+          },
+        },
+        "Value Proposition": {
+          content: "HelmOS creates strategic clarity and coordinated execution in one AI-native workspace.",
+          helper: "Sharpen the promise against the strongest founder pain points.",
+          priority: "primary",
+          status: {
+            label: "Needs refinement",
+            tone: "warning",
+            agent_confidence: "medium",
+            score: 0.64,
+            explanation: "The value is promising but still broad.",
+          },
+          ui_hints: {
+            highlight: true,
+            needs_attention: true,
+          },
+        },
+        product_service_description: {
+          content: "An AI-powered founder operating system for strategy and execution.",
+          priority: "secondary",
+          status: {
+            label: "Draft",
+            tone: "info",
+            agent_confidence: "medium",
+            score: 0.68,
+            explanation: "Basic platform description is present.",
+          },
+          ui_hints: {
+            highlight: true,
+            needs_attention: true,
+          },
+        },
+        differentiation: {
+          content: "HelmOS unifies founder thinking, execution, and governance rather than acting like a standalone tool.",
+          priority: "secondary",
+          status: {
+            label: "Draft",
+            tone: "info",
+            agent_confidence: "medium",
+            score: 0.68,
+            explanation: "Differentiation is directionally clear.",
+          },
+          ui_hints: {
+            highlight: true,
+            needs_attention: true,
+          },
+        },
+        early_monitization_idea: {
+          content: "Founder SaaS tiers with premium orchestration and governance features.",
+          priority: "secondary",
+          status: {
+            label: "Draft",
+            tone: "info",
+            agent_confidence: "medium",
+            score: 0.68,
+            explanation: "Monetization direction is plausible.",
+          },
+          ui_hints: {
+            highlight: true,
+            needs_attention: true,
+          },
+        },
+      },
+    }),
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(request(app)
+    .post("/api/business-ideas/workspace-existing-1/ideation/messages")
+    .send({
+      messageText: "Expand the problem statement with concrete pain points.",
+    }));
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(
+    strategyDocumentUpdates[0].qualityState,
+    "Problem articulation strong, value proposition ..."
+  );
 });
 
 test("POST /api/business-ideas/:workspaceId/ideation/messages/retry-last resends the latest failed user message without duplicating it", async () => {

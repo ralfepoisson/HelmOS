@@ -32,7 +32,7 @@ import { CompletionCalloutComponent } from './completion-callout.component';
       <div class="list-group list-group-flush tool-list">
         <ng-container *ngFor="let tool of tools">
           <a
-            *ngIf="tool.status === 'available' && tool.route; else lockedPrimaryTool"
+            *ngIf="tool.status === 'available' && tool.route; else availableWithoutRouteOrLocked"
             class="list-group-item list-group-item-action tool-item tool-link"
             [class.active-tool]="tool.id === activeToolId"
             [routerLink]="tool.route"
@@ -40,6 +40,17 @@ import { CompletionCalloutComponent } from './completion-callout.component';
           >
             <ng-container [ngTemplateOutlet]="toolContent" [ngTemplateOutletContext]="{ tool: tool }"></ng-container>
           </a>
+
+          <ng-template #availableWithoutRouteOrLocked>
+            <button
+              *ngIf="tool.status === 'available'; else lockedPrimaryTool"
+              type="button"
+              class="list-group-item list-group-item-action tool-item"
+              aria-disabled="true"
+            >
+              <ng-container [ngTemplateOutlet]="toolContent" [ngTemplateOutletContext]="{ tool: tool }"></ng-container>
+            </button>
+          </ng-template>
 
           <ng-template #lockedPrimaryTool>
             <button
@@ -224,8 +235,8 @@ import { CompletionCalloutComponent } from './completion-callout.component';
       }
 
       .lock-badge {
-        background: #eef2f7;
-        color: #7d8aa0;
+        background: rgba(226, 232, 240, 0.72);
+        color: #94a3b8;
       }
 
       .lock-tooltip {
@@ -274,8 +285,23 @@ import { CompletionCalloutComponent } from './completion-callout.component';
       }
 
       .locked-tool {
-        background: rgba(247, 249, 252, 0.92);
+        background: linear-gradient(180deg, rgba(246, 248, 252, 0.96), rgba(241, 244, 249, 0.96));
+        border-color: rgba(148, 163, 184, 0.18);
         cursor: default;
+      }
+
+      .locked-tool .tool-icon {
+        background: linear-gradient(180deg, rgba(243, 246, 251, 0.98), rgba(239, 243, 248, 0.98));
+        border-color: rgba(148, 163, 184, 0.18);
+        color: #94a3b8;
+      }
+
+      .locked-tool .tool-label {
+        color: #475569;
+      }
+
+      .locked-tool .tool-helper {
+        color: #7c8aa0;
       }
 
       @media (max-width: 1199.98px) {

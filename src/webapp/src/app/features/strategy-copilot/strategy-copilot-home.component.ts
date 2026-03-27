@@ -16,7 +16,7 @@ import {
 import { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 
 import { BusinessIdeasApiService } from '../../core/services/business-ideas-api.service';
-import { WorkspaceOption, WorkspaceShellService } from '../../core/services/workspace-shell.service';
+import { StrategyTool, WorkspaceOption, WorkspaceShellService } from '../../core/services/workspace-shell.service';
 import { AgentChatService } from '../ideation/services/agent-chat.service';
 import { StrategyCopilotShellComponent } from './strategy-copilot-shell.component';
 
@@ -30,6 +30,7 @@ import { StrategyCopilotShellComponent } from './strategy-copilot-shell.componen
       [workspaces]="workspaces"
       [selectedWorkspaceId]="selectedWorkspaceId"
       [saveStatus]="shell.saveStatus"
+      [showWorkspaceSwitcher]="workspaceOptionsReady"
       [primaryTools]="primaryTools"
       [laterTools]="laterTools"
       [guidanceTitle]="guidanceTitle"
@@ -41,6 +42,13 @@ import { StrategyCopilotShellComponent } from './strategy-copilot-shell.componen
       (workspaceChange)="handleWorkspaceSelection($event)"
     >
       <section class="copilot-home">
+        <p *ngIf="workspaceErrorMessage" class="workspace-feedback workspace-feedback-error" role="alert">
+          {{ workspaceErrorMessage }}
+        </p>
+        <p *ngIf="!workspaceOptionsReady && !workspaceErrorMessage" class="workspace-feedback" aria-live="polite">
+          Loading your business ideas...
+        </p>
+
         <header class="home-hero helmos-card p-4 p-xl-4">
           <div class="hero-copy">
             <span class="hero-kicker">Strategy Copilot</span>
@@ -101,6 +109,15 @@ import { StrategyCopilotShellComponent } from './strategy-copilot-shell.componen
         gap: 1rem;
       }
 
+      .workspace-feedback {
+        margin: 0;
+        color: var(--helmos-muted);
+      }
+
+      .workspace-feedback-error {
+        color: #b42318;
+      }
+
       .home-hero {
         position: relative;
         overflow: hidden;
@@ -156,10 +173,14 @@ import { StrategyCopilotShellComponent } from './strategy-copilot-shell.componen
         display: flex;
         flex-direction: column;
         gap: 0.9rem;
+        border: 1px solid rgba(31, 111, 235, 0.12);
+        box-shadow: 0 18px 38px rgba(15, 23, 42, 0.06);
       }
 
       .tool-card-locked {
-        background: rgba(255, 255, 255, 0.82);
+        background: linear-gradient(180deg, rgba(246, 248, 252, 0.96), rgba(241, 244, 249, 0.96));
+        border-color: rgba(148, 163, 184, 0.18);
+        box-shadow: none;
       }
 
       .tool-card-head {
@@ -181,9 +202,15 @@ import { StrategyCopilotShellComponent } from './strategy-copilot-shell.componen
         font-size: 1.05rem;
       }
 
+      .tool-card-locked .tool-card-icon {
+        background: linear-gradient(180deg, rgba(243, 246, 251, 0.98), rgba(239, 243, 248, 0.98));
+        border-color: rgba(148, 163, 184, 0.18);
+        color: #94a3b8;
+      }
+
       .locked-badge {
-        background: #eef2f7;
-        color: #7d8aa0;
+        background: rgba(226, 232, 240, 0.72);
+        color: #94a3b8;
       }
 
       .tool-card-title {
@@ -197,9 +224,24 @@ import { StrategyCopilotShellComponent } from './strategy-copilot-shell.componen
         margin: 0;
       }
 
+      .tool-card-locked .tool-card-title {
+        color: #475569;
+      }
+
+      .tool-card-locked .tool-card-copy,
+      .tool-card-locked .tool-card-helper {
+        color: #7c8aa0;
+      }
+
       .tool-card-link {
         align-self: flex-start;
         margin-top: auto;
+      }
+
+      .tool-card-locked .tool-card-link {
+        border-color: rgba(148, 163, 184, 0.45);
+        background: rgba(255, 255, 255, 0.72);
+        color: #94a3b8;
       }
 
       @media (max-width: 991.98px) {
@@ -226,13 +268,14 @@ export class StrategyCopilotHomeComponent {
     compass: faCompass
   };
 
-  readonly primaryTools;
-  readonly laterTools;
-  readonly allTools;
+  primaryTools: StrategyTool[];
+  laterTools: StrategyTool[];
+  allTools: StrategyTool[];
   readonly messages;
   workspaces: WorkspaceOption[] = [];
   selectedWorkspaceId = '';
-  private backendIdeasAvailable = false;
+  workspaceOptionsReady = false;
+  workspaceErrorMessage = '';
 
   constructor(
     private readonly route: ActivatedRoute,
@@ -241,16 +284,15 @@ export class StrategyCopilotHomeComponent {
     readonly shell: WorkspaceShellService,
     readonly chat: AgentChatService
   ) {
-    this.primaryTools = this.shell.strategyTools.filter((tool) => tool.group === 'core');
-    this.laterTools = this.shell.strategyTools.filter((tool) => tool.group === 'later');
-    this.allTools = this.shell.strategyTools;
+    const initialTools = this.shell.getStrategyTools();
+    this.primaryTools = initialTools.filter((tool) => tool.group === 'core');
+    this.laterTools = initialTools.filter((tool) => tool.group === 'later');
+    this.allTools = initialTools;
     this.messages = this.chat.getMessages();
-    this.workspaces = this.shell.getDemoWorkspaces();
-    this.selectedWorkspaceId = this.shell.getDemoWorkspaces()[0]?.id ?? '';
 
     void this.refreshWorkspaceOptions();
     this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
-      this.applyWorkspaceSelection(params.get('workspaceId'));
+      void this.applyWorkspaceSelection(params.get('workspaceId'));
     });
   }
 
@@ -271,10 +313,18 @@ export class StrategyCopilotHomeComponent {
   }
 
   private async refreshWorkspaceOptions(preferredWorkspaceId?: string): Promise<void> {
+    this.workspaceOptionsReady = false;
+    this.workspaceErrorMessage = '';
+
     try {
       const ideas = await this.businessIdeasApi.listBusinessIdeas();
-      this.backendIdeasAvailable = true;
+      if (ideas.length === 0) {
+        await this.router.navigate(['/strategy-copilot/new-idea'], { replaceUrl: true });
+        return;
+      }
+
       this.workspaces = [...ideas.map((idea) => ({ id: idea.id, name: idea.name })), this.shell.newIdeaOption];
+      this.workspaceOptionsReady = true;
 
       const routeWorkspaceId = this.route.snapshot.queryParamMap.get('workspaceId');
       const activeWorkspaceId = preferredWorkspaceId ?? routeWorkspaceId;
@@ -288,27 +338,47 @@ export class StrategyCopilotHomeComponent {
         return;
       }
 
-      this.applyWorkspaceSelection(activeWorkspaceId);
+      void this.applyWorkspaceSelection(activeWorkspaceId);
     } catch {
-      this.backendIdeasAvailable = false;
-      this.workspaces = this.shell.getDemoWorkspaces();
-      this.applyWorkspaceSelection(this.route.snapshot.queryParamMap.get('workspaceId'));
+      this.workspaces = [];
+      this.selectedWorkspaceId = '';
+      this.workspaceErrorMessage =
+        'HelmOS could not load your business ideas. Make sure the backend is running and try again.';
     }
   }
 
-  private applyWorkspaceSelection(workspaceId: string | null): void {
+  private async applyWorkspaceSelection(workspaceId: string | null): Promise<void> {
     const selectedWorkspace = this.workspaces.find((option) => option.id === workspaceId && option.id !== 'new');
 
     if (selectedWorkspace) {
       this.selectedWorkspaceId = selectedWorkspace.id;
+      await this.loadWorkspaceTools(selectedWorkspace.id);
       return;
     }
 
     const fallbackWorkspace = this.workspaces.find((option) => option.id !== 'new');
     this.selectedWorkspaceId = fallbackWorkspace?.id ?? '';
+    if (fallbackWorkspace) {
+      await this.loadWorkspaceTools(fallbackWorkspace.id);
+    }
 
-    if (workspaceId === 'new' && this.backendIdeasAvailable) {
+    if (workspaceId === 'new' && this.workspaceOptionsReady) {
       this.selectedWorkspaceId = workspaceId;
+    }
+  }
+
+  private async loadWorkspaceTools(workspaceId: string): Promise<void> {
+    try {
+      const strategyCopilot = await this.businessIdeasApi.getBusinessIdea(workspaceId);
+      const tools = this.shell.getStrategyTools(strategyCopilot.workspace.availableToolIds);
+      this.primaryTools = tools.filter((tool) => tool.group === 'core');
+      this.laterTools = tools.filter((tool) => tool.group === 'later');
+      this.allTools = tools;
+    } catch {
+      const fallbackTools = this.shell.getStrategyTools();
+      this.primaryTools = fallbackTools.filter((tool) => tool.group === 'core');
+      this.laterTools = fallbackTools.filter((tool) => tool.group === 'later');
+      this.allTools = fallbackTools;
     }
   }
 }

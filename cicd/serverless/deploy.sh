@@ -16,6 +16,9 @@ HELMOS_LOG_LEVEL="${HELMOS_LOG_LEVEL:-INFO}"
 HELMOS_DEFAULT_MODEL="${HELMOS_DEFAULT_MODEL:-helmos-default}"
 HELMOS_SUPERVISOR_MODEL="${HELMOS_SUPERVISOR_MODEL:-helmos-supervisor}"
 HELMOS_LANGSMITH_ENABLED="${HELMOS_LANGSMITH_ENABLED:-false}"
+NODE_API_DESIRED_COUNT="${NODE_API_DESIRED_COUNT:-2}"
+AGENT_GATEWAY_DESIRED_COUNT="${AGENT_GATEWAY_DESIRED_COUNT:-2}"
+LITELLM_DESIRED_COUNT="${LITELLM_DESIRED_COUNT:-1}"
 
 if [[ ! -f "${METADATA_FILE}" ]]; then
   printf 'Build metadata file not found: %s\nRun ./cicd/build/build_all.sh first.\n' "${METADATA_FILE}" >&2
@@ -36,6 +39,7 @@ require_value() {
 }
 
 require_value "WEBAPP_ARCHIVE"
+require_value "MARKETING_SITE_ARCHIVE"
 require_value "NODE_API_IMAGE_NAME"
 require_value "NODE_API_IMAGE_TAG"
 require_value "NODE_API_IMAGE_TAR"
@@ -128,8 +132,9 @@ push_image "${AWS_REGION}" "${LITELLM_REPOSITORY_URI}" "${LITELLM_IMAGE_NAME}" "
 
 WEB_ROOT="${TMP_DIR}/webapp"
 rm -rf "${WEB_ROOT}"
-mkdir -p "${WEB_ROOT}"
-tar -xzf "${WEBAPP_ARCHIVE}" -C "${WEB_ROOT}"
+mkdir -p "${WEB_ROOT}/app"
+tar -xzf "${MARKETING_SITE_ARCHIVE}" -C "${WEB_ROOT}"
+tar -xzf "${WEBAPP_ARCHIVE}" -C "${WEB_ROOT}/app"
 
 printf 'Uploading static web bundle to s3://%s ...\n' "${SITE_BUCKET_NAME}"
 aws s3 sync "${WEB_ROOT}" "s3://${SITE_BUCKET_NAME}/" --delete
@@ -145,6 +150,9 @@ aws cloudformation deploy \
     RootDomain="${ROOT_DOMAIN}" \
     WwwDomain="${WWW_DOMAIN}" \
     ApiDomain="${API_DOMAIN}" \
+    NodeApiDesiredCount="0" \
+    AgentGatewayDesiredCount="${AGENT_GATEWAY_DESIRED_COUNT}" \
+    LiteLlmDesiredCount="${LITELLM_DESIRED_COUNT}" \
     NodeApiImageUri="${NODE_API_REPOSITORY_URI}:${NODE_API_IMAGE_TAG}" \
     AgentGatewayImageUri="${AGENT_GATEWAY_REPOSITORY_URI}:${AGENT_GATEWAY_IMAGE_TAG}" \
     LiteLlmImageUri="${LITELLM_REPOSITORY_URI}:${LITELLM_IMAGE_TAG}" \
@@ -159,6 +167,34 @@ PUBLIC_SUBNETS="$(stack_output "${AWS_REGION}" "${FOUNDATION_STACK_NAME}" "Publi
 TASK_SECURITY_GROUP="$(stack_output "${AWS_REGION}" "${FOUNDATION_STACK_NAME}" "EcsTaskSecurityGroupId")"
 
 printf 'Running Prisma migrations...\n'
+SCHEMA_BOOTSTRAP_TASK_ARN="$(
+  aws ecs run-task \
+    --region "${AWS_REGION}" \
+    --cluster "${CLUSTER_NAME}" \
+    --launch-type FARGATE \
+    --task-definition "${NODE_API_TASK_DEFINITION_ARN}" \
+    --network-configuration "awsvpcConfiguration={subnets=[${PUBLIC_SUBNETS}],securityGroups=[${TASK_SECURITY_GROUP}],assignPublicIp=ENABLED}" \
+    --overrides '{"containerOverrides":[{"name":"node-api","command":["sh","-lc","printf '\''CREATE SCHEMA IF NOT EXISTS helmos;'\'' | npx prisma db execute --stdin --schema prisma/schema.prisma"]}]}' \
+    --query 'tasks[0].taskArn' \
+    --output text
+)"
+
+aws ecs wait tasks-stopped --region "${AWS_REGION}" --cluster "${CLUSTER_NAME}" --tasks "${SCHEMA_BOOTSTRAP_TASK_ARN}"
+
+SCHEMA_BOOTSTRAP_EXIT_CODE="$(
+  aws ecs describe-tasks \
+    --region "${AWS_REGION}" \
+    --cluster "${CLUSTER_NAME}" \
+    --tasks "${SCHEMA_BOOTSTRAP_TASK_ARN}" \
+    --query 'tasks[0].containers[?name==`node-api`].exitCode' \
+    --output text
+)"
+
+if [[ "${SCHEMA_BOOTSTRAP_EXIT_CODE}" != "0" ]]; then
+  printf 'Prisma schema bootstrap task failed with exit code %s\n' "${SCHEMA_BOOTSTRAP_EXIT_CODE}" >&2
+  exit 1
+fi
+
 RUN_TASK_ARN="$(
   aws ecs run-task \
     --region "${AWS_REGION}" \
@@ -186,6 +222,28 @@ if [[ "${MIGRATION_EXIT_CODE}" != "0" ]]; then
   printf 'Prisma migration task failed with exit code %s\n' "${MIGRATION_EXIT_CODE}" >&2
   exit 1
 fi
+
+printf 'Scaling Node API service to desired count %s...\n' "${NODE_API_DESIRED_COUNT}"
+aws cloudformation deploy \
+  --region "${AWS_REGION}" \
+  --stack-name "${SERVICES_STACK_NAME}" \
+  --template-file "${ROOT_DIR}/cicd/serverless/services.yaml" \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+    FoundationStackName="${FOUNDATION_STACK_NAME}" \
+    RootDomain="${ROOT_DOMAIN}" \
+    WwwDomain="${WWW_DOMAIN}" \
+    ApiDomain="${API_DOMAIN}" \
+    NodeApiDesiredCount="${NODE_API_DESIRED_COUNT}" \
+    AgentGatewayDesiredCount="${AGENT_GATEWAY_DESIRED_COUNT}" \
+    LiteLlmDesiredCount="${LITELLM_DESIRED_COUNT}" \
+    NodeApiImageUri="${NODE_API_REPOSITORY_URI}:${NODE_API_IMAGE_TAG}" \
+    AgentGatewayImageUri="${AGENT_GATEWAY_REPOSITORY_URI}:${AGENT_GATEWAY_IMAGE_TAG}" \
+    LiteLlmImageUri="${LITELLM_REPOSITORY_URI}:${LITELLM_IMAGE_TAG}" \
+    HelmOsLogLevel="${HELMOS_LOG_LEVEL}" \
+    HelmOsDefaultModel="${HELMOS_DEFAULT_MODEL}" \
+    HelmOsSupervisorModel="${HELMOS_SUPERVISOR_MODEL}" \
+    HelmOsLangsmithEnabled="${HELMOS_LANGSMITH_ENABLED}"
 
 printf 'Invalidating CloudFront distribution %s...\n' "${CLOUDFRONT_DISTRIBUTION_ID}"
 aws cloudfront create-invalidation \

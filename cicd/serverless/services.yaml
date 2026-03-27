@@ -107,6 +107,9 @@ Resources:
       Family: !Sub "${FoundationStackName}-node-api"
       Cpu: !Ref NodeApiCpu
       Memory: !Ref NodeApiMemory
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
@@ -134,15 +137,23 @@ Resources:
               Value: !Sub "https://${RootDomain},https://${WwwDomain},https://${ApiDomain}"
             - Name: DATABASE_URL
               Value: !Sub
-                - "postgresql://${DbUser}:${DbPassword}@${DbHost}:5432/${DbName}?schema=public"
-                - DbUser: !Sub "{{resolve:secretsmanager:${DbSecretArn}:SecretString:username}}"
-                  DbPassword: !Sub "{{resolve:secretsmanager:${DbSecretArn}:SecretString:password}}"
+                - "postgresql://${DbUser}:${DbPassword}@${DbHost}:5432/${DbName}?schema=helmos"
+                - DbUser:
+                    Fn::Join:
+                      - ""
+                      - - "{{resolve:secretsmanager:"
+                        - Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseCredentialsSecretArn"
+                        - ":SecretString:username}}"
+                  DbPassword:
+                    Fn::Join:
+                      - ""
+                      - - "{{resolve:secretsmanager:"
+                        - Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseCredentialsSecretArn"
+                        - ":SecretString:password}}"
                   DbHost:
                     Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseAddress"
                   DbName:
                     Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseName"
-                  DbSecretArn:
-                    Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseCredentialsSecretArn"
           Secrets:
             - Name: LIFE2_JWT_SECRET
               ValueFrom: !Sub
@@ -167,6 +178,9 @@ Resources:
       Family: !Sub "${FoundationStackName}-agent-gateway"
       Cpu: !Ref AgentGatewayCpu
       Memory: !Ref AgentGatewayMemory
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
@@ -189,14 +203,22 @@ Resources:
             - Name: HELMOS_DATABASE_URL
               Value: !Sub
                 - "postgresql+psycopg://${DbUser}:${DbPassword}@${DbHost}:5432/${DbName}"
-                - DbUser: !Sub "{{resolve:secretsmanager:${DbSecretArn}:SecretString:username}}"
-                  DbPassword: !Sub "{{resolve:secretsmanager:${DbSecretArn}:SecretString:password}}"
+                - DbUser:
+                    Fn::Join:
+                      - ""
+                      - - "{{resolve:secretsmanager:"
+                        - Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseCredentialsSecretArn"
+                        - ":SecretString:username}}"
+                  DbPassword:
+                    Fn::Join:
+                      - ""
+                      - - "{{resolve:secretsmanager:"
+                        - Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseCredentialsSecretArn"
+                        - ":SecretString:password}}"
                   DbHost:
                     Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseAddress"
                   DbName:
                     Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseName"
-                  DbSecretArn:
-                    Fn::ImportValue: !Sub "${FoundationStackName}-DatabaseCredentialsSecretArn"
             - Name: HELMOS_REDIS_URL
               Value: !Sub
                 - "redis://${RedisHost}:6379/0"
@@ -239,6 +261,9 @@ Resources:
       Family: !Sub "${FoundationStackName}-litellm"
       Cpu: !Ref LiteLlmCpu
       Memory: !Ref LiteLlmMemory
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE

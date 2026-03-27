@@ -7,6 +7,8 @@ const {
   MessageStatus,
   RefinementState,
   SectionStatus,
+  StageStatus,
+  UnlockState,
   WorkspaceStage,
 } = require("@prisma/client");
 const { createHttpError } = require("../api/auth");
@@ -104,6 +106,22 @@ const BUSINESS_TYPE_LABELS = {
 };
 
 const TERMINAL_GATEWAY_STATUSES = new Set(["completed", "failed", "cancelled", "waiting_for_approval"]);
+const STRATEGY_DOCUMENT_QUALITY_STATE_MAX_LENGTH = 50;
+const STRATEGY_TOOLS_UNLOCK_REASON =
+  "Unlocked after the ideation agent marked the idea ready for the next strategy tool.";
+const UNLOCKABLE_STAGE_KEYS = [
+  WorkspaceStage.VALUE_PROPOSITION,
+  WorkspaceStage.CUSTOMER_SEGMENTS,
+  WorkspaceStage.BUSINESS_MODEL,
+  WorkspaceStage.MARKET_RESEARCH,
+];
+const STAGE_KEY_TO_TOOL_ID = new Map([
+  [WorkspaceStage.IDEATION, "ideation"],
+  [WorkspaceStage.VALUE_PROPOSITION, "value-proposition"],
+  [WorkspaceStage.CUSTOMER_SEGMENTS, "customer-segments"],
+  [WorkspaceStage.BUSINESS_MODEL, "business-model"],
+  [WorkspaceStage.MARKET_RESEARCH, "market-research"],
+]);
 
 function slugify(value) {
   return value
@@ -116,6 +134,91 @@ function slugify(value) {
 
 function normalizeGatewayStatus(status) {
   return typeof status === "string" ? status.trim().toLowerCase() : "";
+}
+
+function clampString(value, maxLength) {
+  if (typeof value !== "string") {
+    return value ?? null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (!Number.isInteger(maxLength) || maxLength <= 0 || trimmed.length <= maxLength) {
+    return trimmed;
+  }
+
+  if (maxLength <= 3) {
+    return trimmed.slice(0, maxLength);
+  }
+
+  return `${trimmed.slice(0, maxLength - 3)}...`;
+}
+
+function normalizeReadinessToken(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function isStrategyToolsUnlocked(workspaceRecord) {
+  if (workspaceRecord?.featureUnlocks?.strategyTools?.enabled === true) {
+    return true;
+  }
+
+  return (workspaceRecord?.stageProgress ?? []).some(
+    (stage) => stage.stageKey !== WorkspaceStage.IDEATION && stage.unlockState === UnlockState.UNLOCKED
+  );
+}
+
+function buildFeatureUnlocks(existingFeatureUnlocks, { unlockStrategyTools = false } = {}) {
+  const base =
+    existingFeatureUnlocks && typeof existingFeatureUnlocks === "object" && !Array.isArray(existingFeatureUnlocks)
+      ? existingFeatureUnlocks
+      : {};
+  const existingStrategyTools =
+    base.strategyTools && typeof base.strategyTools === "object" && !Array.isArray(base.strategyTools)
+      ? base.strategyTools
+      : {};
+
+  if (unlockStrategyTools || existingStrategyTools.enabled === true) {
+    return {
+      ...base,
+      strategyTools: {
+        ...existingStrategyTools,
+        enabled: true,
+        unlockedAt: existingStrategyTools.unlockedAt ?? new Date().toISOString(),
+        source: existingStrategyTools.source ?? "ideation_agent",
+      },
+    };
+  }
+
+  return {
+    ...base,
+    strategyTools: {
+      ...existingStrategyTools,
+      enabled: false,
+      unlockedAt: existingStrategyTools.unlockedAt ?? null,
+      source: existingStrategyTools.source ?? null,
+    },
+  };
+}
+
+function getAvailableToolIds(workspaceRecord) {
+  const availableToolIds = ["ideation"];
+
+  if (isStrategyToolsUnlocked(workspaceRecord)) {
+    for (const stageKey of UNLOCKABLE_STAGE_KEYS) {
+      const toolId = STAGE_KEY_TO_TOOL_ID.get(stageKey);
+      if (toolId) {
+        availableToolIds.push(toolId);
+      }
+    }
+  }
+
+  return availableToolIds;
 }
 
 function buildDefaultOrganisationSlug(currentUser) {
@@ -162,9 +265,26 @@ function formatTimestamp(date) {
   }).format(date);
 }
 
-function getReadinessLabel(completeness) {
+function getReadinessLabel({ completeness, qualityState, strategyToolsUnlocked }) {
+  if (strategyToolsUnlocked) {
+    return { readinessLabel: "Ready for next tool", readinessTone: "success" };
+  }
+
+  const normalizedQualityState = normalizeReadinessToken(qualityState);
+  if (normalizedQualityState === "ready for next tool") {
+    return { readinessLabel: "Ready for next tool", readinessTone: "success" };
+  }
+
+  if (normalizedQualityState === "needs refinement") {
+    return { readinessLabel: "Needs refinement", readinessTone: "warning" };
+  }
+
+  if (normalizedQualityState === "in progress") {
+    return { readinessLabel: "In progress", readinessTone: "info" };
+  }
+
   if (completeness >= 80) {
-    return { readinessLabel: "Ready for next tool", readinessTone: "info" };
+    return { readinessLabel: "Ready for next tool", readinessTone: "success" };
   }
 
   if (completeness >= 45) {
@@ -202,9 +322,14 @@ function mapConfidence(section) {
   return "medium";
 }
 
-function mapOverview(document, sections, company) {
+function mapOverview(document, sections, company, workspaceRecord) {
   const completeness = Number(document?.completenessPercent ?? 0);
-  const readiness = getReadinessLabel(completeness);
+  const strategyToolsUnlocked = isStrategyToolsUnlocked(workspaceRecord);
+  const readiness = getReadinessLabel({
+    completeness,
+    qualityState: document?.qualityState,
+    strategyToolsUnlocked,
+  });
   const completedSections = sections.filter((section) => Number(section.completionPercent ?? 0) > 0).length;
   const totalSections = sections.length || 1;
 
@@ -212,11 +337,15 @@ function mapOverview(document, sections, company) {
     completeness,
     ...readiness,
     nextAction:
-      completedSections === 0
+      strategyToolsUnlocked
+        ? "Open the Value Proposition tool to turn this ideation draft into a sharper strategic narrative."
+        : completedSections === 0
         ? `Start by defining the core problem ${company.name} should solve before expanding into customer and value framing.`
         : `Refine the weakest ideation section so the problem, customer, and promise connect more clearly.`,
     completionSummary:
-      completedSections === 0
+      strategyToolsUnlocked
+        ? "The ideation agent marked this business idea ready, so the next structured strategy tools are now unlocked."
+        : completedSections === 0
         ? "No ideation sections have been developed yet. Begin with the problem statement to anchor the rest of the strategy."
         : `${completedSections} of ${totalSections} ideation sections now contain working content. Keep sharpening the weak spots before unlocking the next tool.`,
   };
@@ -567,7 +696,9 @@ function mapStrategyCopilot(workspaceRecord) {
   }));
 
   const company = workspaceRecord.company;
-  const overview = mapOverview(document, document?.sections ?? [], company);
+  const overview = mapOverview(document, document?.sections ?? [], company, workspaceRecord);
+  const availableToolIds = getAvailableToolIds(workspaceRecord);
+  const strategyToolsUnlocked = isStrategyToolsUnlocked(workspaceRecord);
 
   return {
     workspaceOption: {
@@ -579,10 +710,12 @@ function mapStrategyCopilot(workspaceRecord) {
     workspace: {
       pageTitle: `Ideation: ${company.name}`,
       pageStatus: `${BUSINESS_TYPE_LABELS[company.businessType]} business idea`,
-      completionHintTitle: "Next strategy step is waiting",
-      completionHint:
-        "When the concept becomes more consistent and evidence-backed, HelmOS can unlock Value Proposition design and recommend the next structured strategy tool.",
+      completionHintTitle: strategyToolsUnlocked ? "Next strategy tools unlocked" : "Next strategy step is waiting",
+      completionHint: strategyToolsUnlocked
+        ? "HelmOS has unlocked the next structured strategy tools for this business idea. You can continue from ideation into Value Proposition and the other downstream strategy views."
+        : "When the concept becomes more consistent and evidence-backed, HelmOS can unlock Value Proposition design and recommend the next structured strategy tool.",
       overview,
+      availableToolIds,
       sections,
     },
     chat: {
@@ -597,6 +730,11 @@ function mapStrategyCopilot(workspaceRecord) {
 
 const STRATEGY_COPILOT_WORKSPACE_INCLUDE = {
   company: true,
+  stageProgress: {
+    orderBy: {
+      displayOrder: "asc",
+    },
+  },
   documents: {
     include: {
       sections: {
@@ -685,6 +823,11 @@ async function loadWorkspaceWithChatContext(prisma, workspaceId) {
     where: { id: workspaceId },
     include: {
       company: true,
+      stageProgress: {
+        orderBy: {
+          displayOrder: "asc",
+        },
+      },
       documents: {
         include: {
           sections: {
@@ -927,6 +1070,7 @@ async function runIdeationWorkflow(prisma, agentGatewayClient, workspaceId, inpu
   const normalizedOutput = normalizeIdeationPayload(gatewaySummary.normalized_output);
   const ideationOverview = normalizedOutput.ideation_overview ?? {};
   const ideationReadiness = ideationOverview.readiness ?? {};
+  const shouldUnlockStrategyTools = normalizeReadinessToken(ideationReadiness.label) === "ready for next tool";
   const explicitSectionUpdates = extractSectionUpdates(normalizedOutput);
   const sectionUpdates = explicitSectionUpdates;
   const explicitAgentReply = String(normalizedOutput.reply_to_user?.content ?? "").trim();
@@ -1088,10 +1232,42 @@ async function runIdeationWorkflow(prisma, agentGatewayClient, workspaceId, inpu
                     )
                   )
               : document.completenessPercent,
-          qualityState: String(ideationReadiness.label ?? document.qualityState ?? "In progress"),
+          qualityState:
+            clampString(
+              String(ideationReadiness.label ?? document.qualityState ?? "In progress"),
+              STRATEGY_DOCUMENT_QUALITY_STATE_MAX_LENGTH
+            ) ?? "In progress",
           agentSummary: agentReply || String(ideationReadiness.reason ?? document.agentSummary ?? ""),
         },
       });
+
+      if (shouldUnlockStrategyTools && typeof tx.workspace?.update === "function") {
+        await tx.workspace.update({
+          where: { id: workspaceId },
+          data: {
+            featureUnlocks: buildFeatureUnlocks(workspaceRecord.featureUnlocks, {
+              unlockStrategyTools: true,
+            }),
+          },
+        });
+      }
+
+      if (shouldUnlockStrategyTools && typeof tx.stageProgress?.updateMany === "function") {
+        await tx.stageProgress.updateMany({
+          where: {
+            workspaceId,
+            stageKey: {
+              in: UNLOCKABLE_STAGE_KEYS,
+            },
+          },
+          data: {
+            status: StageStatus.AVAILABLE,
+            unlockState: UnlockState.UNLOCKED,
+            unlockReason: STRATEGY_TOOLS_UNLOCK_REASON,
+            enteredAt: null,
+          },
+        });
+      }
 
       if (agentReply) {
         const lastMessageIndex = thread?.messages?.at(-1)?.messageIndex ?? 0;
@@ -1307,6 +1483,7 @@ async function createBusinessIdea(prisma, input, currentUser) {
       data: {
         companyId: company.id,
         name: input.name,
+        featureUnlocks: buildFeatureUnlocks(null),
         createdByUserId: currentUser.id,
       },
     });
@@ -1393,6 +1570,11 @@ async function createBusinessIdea(prisma, input, currentUser) {
       where: { id: workspace.id },
       include: {
         company: true,
+        stageProgress: {
+          orderBy: {
+            displayOrder: "asc",
+          },
+        },
         documents: {
           include: {
             sections: {
@@ -1451,40 +1633,7 @@ async function listBusinessIdeas(prisma, currentUser) {
 async function getBusinessIdea(prisma, workspaceId, currentUser) {
   const workspaceRecord = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
-    include: {
-      company: true,
-      documents: {
-        include: {
-          sections: {
-            include: {
-              lastUpdatedBy: true,
-            },
-            orderBy: {
-              displayOrder: "asc",
-            },
-          },
-        },
-      },
-      chatThreads: {
-        where: { status: "ACTIVE" },
-        include: {
-          messages: {
-            orderBy: {
-              messageIndex: "asc",
-            },
-          },
-          agentRuns: {
-            orderBy: {
-              startedAt: "desc",
-            },
-          },
-        },
-        orderBy: {
-          updatedAt: "desc",
-        },
-        take: 1,
-      },
-    },
+    include: STRATEGY_COPILOT_WORKSPACE_INCLUDE,
   });
 
   assertWorkspaceAccess(workspaceRecord, currentUser);

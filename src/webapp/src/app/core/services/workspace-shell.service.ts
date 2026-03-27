@@ -5,8 +5,18 @@ export interface WorkspaceOption {
   name: string;
 }
 
+export type StrategyToolId =
+  | 'ideation'
+  | 'value-proposition'
+  | 'customer-segments'
+  | 'business-model'
+  | 'market-research'
+  | 'business-case'
+  | 'capability-map'
+  | 'goals-kpis';
+
 export interface StrategyTool {
-  id: string;
+  id: StrategyToolId;
   label: string;
   icon: string;
   description: string;
@@ -31,7 +41,7 @@ export class WorkspaceShellService {
       icon: 'spark',
       description: 'Capture the core problem, audience, and value proposition with a guided strategic workspace.',
       status: 'available',
-      helper: 'Capture and shape the initial concept.',
+      helper: 'Refine and shape the initial concept.',
       route: '/strategy-copilot/ideation',
       group: 'core'
     },
@@ -99,6 +109,15 @@ export class WorkspaceShellService {
       group: 'later'
     }
   ];
+
+  getStrategyTools(availableToolIds: StrategyToolId[] = ['ideation']): StrategyTool[] {
+    const available = new Set<StrategyToolId>(availableToolIds);
+
+    return this.strategyTools.map((tool) => ({
+      ...tool,
+      status: available.has(tool.id) ? 'available' : 'locked'
+    }));
+  }
 
   getDemoWorkspaces(): WorkspaceOption[] {
     return [

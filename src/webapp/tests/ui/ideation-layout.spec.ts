@@ -156,6 +156,7 @@ test.describe('HelmOS ideation workspace', () => {
               pageStatus: 'Mixture business idea',
               completionHintTitle: 'Next strategy step is waiting',
               completionHint: 'When the concept becomes more consistent and evidence-backed, HelmOS can unlock Value Proposition design and recommend the next structured strategy tool.',
+              availableToolIds: ['ideation'],
               overview: {
                 completeness: 0,
                 readinessLabel: 'In progress',
@@ -193,6 +194,7 @@ test.describe('HelmOS ideation workspace', () => {
               pageStatus: 'Mixture business idea',
               completionHintTitle: 'Next strategy step is waiting',
               completionHint: 'When the concept becomes more consistent and evidence-backed, HelmOS can unlock Value Proposition design and recommend the next structured strategy tool.',
+              availableToolIds: ['ideation'],
               overview: {
                 completeness: 0,
                 readinessLabel: 'In progress',
@@ -245,6 +247,7 @@ test.describe('HelmOS ideation workspace', () => {
         completionHintTitle: 'Next strategy step is waiting',
         completionHint:
           'When the concept becomes more consistent and evidence-backed, HelmOS can unlock Value Proposition design and recommend the next structured strategy tool.',
+        availableToolIds: ['ideation'],
         overview: {
           completeness: 65,
           readinessLabel: 'Needs refinement',
@@ -443,7 +446,7 @@ test.describe('HelmOS ideation workspace', () => {
     await expect(chatInput).toHaveValue('Please sharpen\nthe target-customer definition.');
     await expect(sendButton).toBeEnabled();
     await chatInput.press('Enter');
-    await expect(page.getByText('Shaping the next response...')).toBeVisible();
+    await expect(page.getByText('Thinking...')).toBeVisible();
     await expect(page.locator('.message-bubble').filter({ hasText: 'Please sharpen the target-customer definition.' }).first()).toBeVisible();
     await expect(page.getByText('I tightened the target customer framing and highlighted it for follow-up.')).toBeVisible();
 
@@ -466,6 +469,7 @@ test.describe('HelmOS ideation workspace', () => {
         completionHintTitle: 'Next strategy step is waiting',
         completionHint:
           'When the concept becomes more consistent and evidence-backed, HelmOS can unlock Value Proposition design and recommend the next structured strategy tool.',
+        availableToolIds: ['ideation'],
         overview: {
           completeness: 65,
           readinessLabel: 'Needs refinement',

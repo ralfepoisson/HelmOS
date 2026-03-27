@@ -3,9 +3,18 @@ import { inject } from '@angular/core';
 import { catchError, throwError } from 'rxjs';
 
 import { AuthService } from './auth.service';
+import { readAuthConfig } from './bootstrap-auth';
 
 function isApiRequest(url: string): boolean {
-  return url.startsWith('/api') || url.includes('/api/');
+  const { apiBaseUrl } = readAuthConfig();
+  const normalizedApiBaseUrl = apiBaseUrl.endsWith('/') ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
+
+  return (
+    url.startsWith('/api') ||
+    url.includes('/api/') ||
+    url.startsWith(`${normalizedApiBaseUrl}/api`) ||
+    url.includes(`${normalizedApiBaseUrl}/api/`)
+  );
 }
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {

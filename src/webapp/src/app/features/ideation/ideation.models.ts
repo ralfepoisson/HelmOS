@@ -1,3 +1,5 @@
+import { StrategyToolId } from '../../core/services/workspace-shell.service';
+
 export interface IdeationSection {
   id: string;
   title: string;
@@ -95,6 +97,7 @@ export interface StrategyCopilotWorkspace {
   completionHintTitle: string;
   completionHint: string;
   overview: IdeationOverview;
+  availableToolIds: StrategyToolId[];
   sections: IdeationSection[];
 }
 

@@ -73,7 +73,7 @@ import { ChatMessage } from './ideation.models';
             <span class="pending-agent-spinner" aria-hidden="true">
               <fa-icon [icon]="spinnerIcon"></fa-icon>
             </span>
-            <span>Shaping the next response...</span>
+            <span>Thinking...</span>
           </div>
         </article>
       </section>

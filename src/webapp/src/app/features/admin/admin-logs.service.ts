@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { readAuthConfig } from '../../core/auth/bootstrap-auth';
 
 export type LogLevel = 'info' | 'warn' | 'error';
 export type LogTimeRange = '15m' | '30m' | '1h' | '6h' | '24h';
@@ -39,7 +40,7 @@ interface ApiResponse<T> {
 })
 export class AdminLogsService {
   private readonly http = inject(HttpClient);
-  private readonly primaryApiBaseUrl = '/api';
+  private readonly primaryApiBaseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api`;
   private readonly fallbackApiBaseUrl = this.buildLocalDevApiBaseUrl();
   private readonly preferredApiBaseUrl = this.fallbackApiBaseUrl ?? this.primaryApiBaseUrl;
 
@@ -198,6 +199,10 @@ export class AdminLogsService {
       return null;
     }
 
+    if (this.primaryApiBaseUrl !== `${window.location.origin}/api`) {
+      return null;
+    }
+
     const hostname = window.location.hostname;
     if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
       return null;
@@ -205,4 +210,8 @@ export class AdminLogsService {
 
     return 'http://localhost:3001/api';
   }
+}
+
+function normalizeBaseUrl(value: string): string {
+  return value.endsWith('/') ? value.slice(0, -1) : value;
 }

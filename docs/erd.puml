@@ -90,6 +90,7 @@ package "Business Context" {
     workspace_type : VARCHAR(50)
     status : VARCHAR(50)
     current_stage : VARCHAR(50)
+    feature_unlocks : JSONB
     created_by_user_id : UUID <<FK>>
     created_at : TIMESTAMP
     updated_at : TIMESTAMP
@@ -341,6 +342,13 @@ Initial stage_key values:
 - customer_segments
 - business_model
 - market_research
+end note
+
+note right of workspaces
+Workspace rows back the "My Business Ideas" selector.
+The app entry route chooses between:
+- New Idea when none exist
+- Business idea selection when one or more exist
 end note
 
 note bottom of agent_runs

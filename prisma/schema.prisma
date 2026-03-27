@@ -201,6 +201,7 @@ model Workspace {
   workspaceType   WorkspaceType      @default(IDEATION) @map("workspace_type")
   status          WorkspaceStatus    @default(ACTIVE)
   currentStage    WorkspaceStage     @default(IDEATION) @map("current_stage")
+  featureUnlocks  Json?              @map("feature_unlocks")
   createdByUserId String             @map("created_by_user_id") @db.Uuid
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")

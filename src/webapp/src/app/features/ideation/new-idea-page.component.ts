@@ -263,7 +263,7 @@ export class NewIdeaPageComponent {
     readonly shell: WorkspaceShellService
   ) {
     this.selectedWorkspaceId = this.shell.newIdeaOption.id;
-    this.workspaces = this.shell.getDemoWorkspaces();
+    this.workspaces = [this.shell.newIdeaOption];
     void this.refreshWorkspaceOptions();
   }
 
@@ -318,7 +318,7 @@ export class NewIdeaPageComponent {
       const ideas = await this.businessIdeasApi.listBusinessIdeas();
       this.workspaces = [...ideas.map((idea) => ({ id: idea.id, name: idea.name })), this.shell.newIdeaOption];
     } catch {
-      this.workspaces = this.shell.getDemoWorkspaces();
+      this.workspaces = [this.shell.newIdeaOption];
     }
 
     this.selectedWorkspaceId = this.shell.newIdeaOption.id;

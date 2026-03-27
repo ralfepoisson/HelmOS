@@ -2,12 +2,14 @@ import {
   AUTH_ERROR_KEY,
   AUTH_SESSION_KEY,
   AUTH_TOKEN_KEY,
-  captureAuthTokenFromUrl
+  captureAuthTokenFromUrl,
+  readAuthConfig
 } from './bootstrap-auth';
 
 describe('captureAuthTokenFromUrl', () => {
   afterEach(() => {
     localStorage.clear();
+    delete (window as typeof window & { __HELMOS_CONFIG__?: unknown }).__HELMOS_CONFIG__;
   });
 
   it('stores a valid callback token before the app boots and strips it from the URL', () => {
@@ -74,5 +76,23 @@ describe('captureAuthTokenFromUrl', () => {
     expect(localStorage.getItem(AUTH_SESSION_KEY)).toBeNull();
     expect(localStorage.getItem(AUTH_ERROR_KEY)).toContain('missing the required identity claims');
     expect(calls).toEqual([[{}, '', '/#/auth/callback']]);
+  });
+});
+
+describe('readAuthConfig', () => {
+  it('uses injected runtime config for app and api urls', () => {
+    (window as typeof window & { __HELMOS_CONFIG__?: unknown }).__HELMOS_CONFIG__ = {
+      authServiceSignInUrl: 'https://auth.life-sqrd.com/signIn',
+      authServiceSignOutUrl: 'https://auth.life-sqrd.com/logout',
+      appBaseUrl: 'https://helm-os.ai/app/',
+      apiBaseUrl: 'https://api.helm-os.ai'
+    };
+
+    expect(readAuthConfig()).toMatchObject({
+      authServiceSignInUrl: 'https://auth.life-sqrd.com/signIn',
+      authServiceSignOutUrl: 'https://auth.life-sqrd.com/logout',
+      appBaseUrl: 'https://helm-os.ai/app/',
+      apiBaseUrl: 'https://api.helm-os.ai'
+    });
   });
 });

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, RouterLinkWithHref } from '@angular/router';
 
 import { TopNavComponent } from './top-nav.component';
 
@@ -47,5 +47,14 @@ describe('TopNavComponent', () => {
     expect(compiled.querySelector('.profile-avatar')?.textContent).toContain('RP');
     expect(compiled.textContent).toContain('Ralfe Poisson');
     expect(compiled.textContent).toContain('Admin');
+  });
+
+  it('links the brand cluster back to root', async () => {
+    const fixture = await renderComponent();
+    const brandLink = fixture.debugElement
+      .queryAll((node) => node.providerTokens.includes(RouterLinkWithHref))
+      .find((node) => node.nativeElement.classList.contains('brand-home-link'));
+
+    expect(brandLink?.injector.get(RouterLinkWithHref).href).toBe('/');
   });
 });

@@ -1,7 +1,7 @@
 const { createLogEntry } = require("./log-entry.service");
 
 const DEFAULT_TIMEOUT_MS = 2500;
-const DEFAULT_RUN_POLL_ATTEMPTS = 20;
+const DEFAULT_RUN_POLL_ATTEMPTS = 90;
 const DEFAULT_RUN_POLL_DELAY_MS = 1000;
 const MAX_LOG_PREVIEW_LENGTH = 4000;
 const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "cancelled", "waiting_for_approval"]);

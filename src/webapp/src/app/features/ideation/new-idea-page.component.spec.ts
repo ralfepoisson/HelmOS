@@ -25,4 +25,20 @@ describe('NewIdeaPageComponent', () => {
     const fixture = TestBed.createComponent(NewIdeaPageComponent);
     expect(fixture.componentInstance).toBeTruthy();
   });
+
+  it('shows the new business idea option as the selected workspace', () => {
+    const fixture = TestBed.createComponent(NewIdeaPageComponent);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.selectedWorkspaceId).toBe('new');
+  });
+
+  it('does not seed the workspace selector with demo workspaces', async () => {
+    const fixture = TestBed.createComponent(NewIdeaPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.workspaces).toEqual([{ id: 'new', name: '+ New Business Idea' }]);
+  });
 });

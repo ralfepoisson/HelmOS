@@ -94,6 +94,7 @@ Build everything:
 Build individual artifacts:
 
 ```bash
+./cicd/build/build_marketing_site.sh
 ./cicd/build/build_webapp.sh
 ./cicd/build/build_node_api_image.sh
 ./cicd/build/build_agent_gateway_image.sh
@@ -114,10 +115,11 @@ The deploy script runs in this order:
 1. Deploy the edge certificate stack in `us-east-1` for CloudFront.
 2. Deploy the regional foundation stack in `AWS_REGION`.
 3. Push the built container images to the ECR repositories created by the foundation stack.
-4. Upload the static web bundle to the site bucket.
-5. Deploy the ECS services stack with the image URIs and secret ARNs.
-6. Run `prisma migrate deploy` as a one-off ECS task.
-7. Invalidate CloudFront.
+4. Upload the marketing site to `/` and the Angular application bundle to `/app` in the site bucket.
+5. Deploy the ECS services stack with the Node API desired count temporarily set to `0`, plus the image URIs and secret ARNs.
+6. Create the dedicated PostgreSQL schema `helmos` if it does not yet exist, then run `prisma migrate deploy` as a one-off ECS task.
+7. Scale the Node API service to its steady-state desired count.
+8. Invalidate CloudFront.
 
 ## Required deployment environment variables
 
@@ -141,6 +143,10 @@ export ANTHROPIC_API_KEY_SECRET_ARN=arn:aws:secretsmanager:...
 export LITELLM_MASTER_KEY_SECRET_ARN=arn:aws:secretsmanager:...
 export LANGSMITH_API_KEY_SECRET_ARN=arn:aws:secretsmanager:...
 export HELMOS_LANGSMITH_ENABLED=false
+export FRONTEND_AUTH_SERVICE_SIGN_IN_URL=https://auth.life-sqrd.com/signIn
+export FRONTEND_AUTH_SERVICE_SIGN_OUT_URL=https://auth.life-sqrd.com/logout
+export FRONTEND_APP_BASE_URL=https://helm-os.ai/app/
+export FRONTEND_API_BASE_URL=https://api.helm-os.ai
 ```
 
 Optional overrides:

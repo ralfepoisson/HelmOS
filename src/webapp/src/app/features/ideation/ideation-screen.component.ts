@@ -4,9 +4,8 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import { BusinessIdeasApiService } from '../../core/services/business-ideas-api.service';
-import { WorkspaceOption, WorkspaceShellService } from '../../core/services/workspace-shell.service';
+import { StrategyTool, WorkspaceOption, WorkspaceShellService } from '../../core/services/workspace-shell.service';
 import { IdeationWorkspaceComponent } from './ideation-workspace.component';
-import { IdeationWorkspaceService } from './services/ideation-workspace.service';
 import { AgentChatService } from './services/agent-chat.service';
 import {
   ChatMessage,
@@ -26,10 +25,12 @@ import { StrategyCopilotShellComponent } from '../strategy-copilot/strategy-copi
   template: `
     <ng-container *ngIf="screenReady; else loadingState">
       <app-strategy-copilot-shell
+        *ngIf="!loadErrorMessage; else errorState"
         [productName]="shell.productName"
         [workspaces]="workspaces"
         [selectedWorkspaceId]="selectedWorkspaceId"
         [saveStatus]="shell.saveStatus"
+        [showWorkspaceSwitcher]="workspaces.length > 0"
         [primaryTools]="primaryTools"
         [laterTools]="laterTools"
         activeToolId="ideation"
@@ -53,6 +54,12 @@ import { StrategyCopilotShellComponent } from '../strategy-copilot/strategy-copi
           [sections]="sections"
         />
       </app-strategy-copilot-shell>
+
+      <ng-template #errorState>
+        <section class="ideation-loading-state">
+          <p class="mb-0">{{ loadErrorMessage }}</p>
+        </section>
+      </ng-template>
     </ng-container>
 
     <ng-template #loadingState>
@@ -112,8 +119,8 @@ export class IdeationScreenComponent implements OnInit {
       emphasis: 'secondary'
     }
   ];
-  readonly primaryTools;
-  readonly laterTools;
+  primaryTools: StrategyTool[];
+  laterTools: StrategyTool[];
   readonly destroyRef = inject(DestroyRef);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
   private readonly pendingCreatedIdea = history.state?.['createdIdea'] as StrategyCopilotData | undefined;
@@ -132,6 +139,7 @@ export class IdeationScreenComponent implements OnInit {
   placeholder = '';
   isSendingAgentMessage = false;
   screenReady = false;
+  loadErrorMessage = '';
   private backendIdeasAvailable = false;
   private lastFailedUserMessage: string | null = null;
 
@@ -149,13 +157,16 @@ export class IdeationScreenComponent implements OnInit {
     private readonly businessIdeasApi: BusinessIdeasApiService,
     private readonly agentGatewayApi: AgentGatewayApiService,
     readonly shell: WorkspaceShellService,
-    readonly workspace: IdeationWorkspaceService,
     readonly chat: AgentChatService
   ) {
-    this.primaryTools = this.shell.strategyTools.filter((tool) => tool.group === 'core');
-    this.laterTools = this.shell.strategyTools.filter((tool) => tool.group === 'later');
+    const initialTools = this.shell.getStrategyTools();
+    this.primaryTools = initialTools.filter((tool) => tool.group === 'core');
+    this.laterTools = initialTools.filter((tool) => tool.group === 'later');
     this.workspaces = this.getInitialWorkspaces();
-    this.applyFallbackWorkspace(this.shell.getDemoWorkspaces()[0]?.id ?? '');
+    this.panelTitle = this.chat.panelTitle;
+    this.panelSubtitle = this.chat.panelSubtitle;
+    this.placeholder = this.chat.placeholder;
+    this.messages = this.chat.getMessages();
   }
 
   ngOnInit(): void {
@@ -272,9 +283,16 @@ export class IdeationScreenComponent implements OnInit {
   }
 
   private async refreshWorkspaceOptions(preferredWorkspaceId?: string): Promise<void> {
+    this.loadErrorMessage = '';
+
     try {
       const ideas = await this.businessIdeasApi.listBusinessIdeas();
       this.backendIdeasAvailable = true;
+      if (ideas.length === 0) {
+        await this.router.navigate(['/strategy-copilot/new-idea'], { replaceUrl: true });
+        return;
+      }
+
       this.workspaces = [...ideas.map((idea) => ({ id: idea.id, name: idea.name })), this.shell.newIdeaOption];
 
       const routeWorkspaceId = this.route.snapshot.queryParamMap.get('workspaceId');
@@ -294,7 +312,17 @@ export class IdeationScreenComponent implements OnInit {
       }
     } catch {
       this.backendIdeasAvailable = false;
-      this.workspaces = this.shell.getDemoWorkspaces();
+      this.workspaces = this.pendingCreatedIdea
+        ? [{ id: this.pendingCreatedIdea.workspaceOption.id, name: this.pendingCreatedIdea.workspaceOption.name }, this.shell.newIdeaOption]
+        : [];
+
+      if (this.pendingCreatedIdea) {
+        this.applyStrategyCopilotData(this.pendingCreatedIdea);
+        return;
+      }
+
+      this.loadErrorMessage =
+        'HelmOS could not load this ideation workspace. Make sure the backend is running and try again.';
     }
   }
 
@@ -311,25 +339,27 @@ export class IdeationScreenComponent implements OnInit {
         return;
       } catch {
         this.backendIdeasAvailable = false;
-        this.workspaces = this.shell.getDemoWorkspaces();
+        this.loadErrorMessage =
+          'HelmOS could not load this ideation workspace. Make sure the backend is running and try again.';
+        this.selectedWorkspaceId = '';
       }
     }
-
-    this.applyFallbackWorkspace(workspaceId ?? this.shell.getDemoWorkspaces()[0]?.id ?? '');
   }
 
   private applyStrategyCopilotData(strategyCopilot: StrategyCopilotData): void {
+    this.loadErrorMessage = '';
     this.selectedWorkspaceId = strategyCopilot.workspaceOption.id;
     this.pageTitle = strategyCopilot.workspace.pageTitle;
     this.pageStatus = strategyCopilot.workspace.pageStatus;
     this.completionHintTitle = strategyCopilot.workspace.completionHintTitle;
     this.completionHint = strategyCopilot.workspace.completionHint;
     this.overview = strategyCopilot.workspace.overview;
+    this.applyAvailableTools(strategyCopilot.workspace.availableToolIds);
     this.sections = this.buildCompleteSectionSet(strategyCopilot.workspace.sections);
     this.panelTitle = strategyCopilot.chat.panelTitle;
     this.panelSubtitle = strategyCopilot.chat.panelSubtitle;
     this.placeholder = strategyCopilot.chat.placeholder;
-    this.messages = strategyCopilot.chat.messages.length > 0 ? strategyCopilot.chat.messages : this.chat.getMessages();
+    this.messages = strategyCopilot.chat.messages;
     this.lastFailedUserMessage = strategyCopilot.chat.resendAvailable
       ? [...this.messages].reverse().find((message) => message.role === 'user')?.content ?? null
       : null;
@@ -440,6 +470,12 @@ export class IdeationScreenComponent implements OnInit {
         timestamp: 'Now'
       }
     ];
+  }
+
+  private applyAvailableTools(availableToolIds: StrategyCopilotData['workspace']['availableToolIds']): void {
+    const tools = this.shell.getStrategyTools(availableToolIds);
+    this.primaryTools = tools.filter((tool) => tool.group === 'core');
+    this.laterTools = tools.filter((tool) => tool.group === 'later');
   }
 
   private coerceIdeationAgentResponse(payload: unknown): IdeationAgentResponsePayload | null {
@@ -594,25 +630,9 @@ export class IdeationScreenComponent implements OnInit {
     return updated;
   }
 
-  private applyFallbackWorkspace(workspaceId: string): void {
-    const fallbackWorkspace = this.shell.getDemoWorkspaces().find((option) => option.id === workspaceId && option.id !== 'new');
-
-    this.selectedWorkspaceId = fallbackWorkspace?.id ?? this.shell.getDemoWorkspaces()[0]?.id ?? '';
-    this.pageTitle = this.workspace.pageTitle;
-    this.pageStatus = this.workspace.pageStatus;
-    this.completionHintTitle = this.workspace.completionHintTitle;
-    this.completionHint = this.workspace.completionHint;
-    this.overview = this.workspace.getOverview();
-    this.sections = this.buildCompleteSectionSet(this.workspace.getSections());
-    this.panelTitle = this.chat.panelTitle;
-    this.panelSubtitle = this.chat.panelSubtitle;
-    this.placeholder = this.chat.placeholder;
-    this.messages = this.chat.getMessages();
-  }
-
   private getInitialWorkspaces(): WorkspaceOption[] {
     if (!this.pendingCreatedIdea) {
-      return this.shell.getDemoWorkspaces();
+      return [];
     }
 
     return [
@@ -620,7 +640,6 @@ export class IdeationScreenComponent implements OnInit {
         id: this.pendingCreatedIdea.workspaceOption.id,
         name: this.pendingCreatedIdea.workspaceOption.name
       },
-      ...this.shell.getDemoWorkspaces().filter((workspace) => workspace.id !== this.shell.newIdeaOption.id),
       this.shell.newIdeaOption
     ];
   }

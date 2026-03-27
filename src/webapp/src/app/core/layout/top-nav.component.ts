@@ -15,13 +15,13 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
   template: `
     <nav class="top-nav navbar navbar-expand border-bottom">
       <div class="container-fluid px-3 px-lg-4 gap-3">
-        <div class="d-flex align-items-center gap-3 brand-cluster">
+        <a routerLink="/" class="d-flex align-items-center gap-3 brand-cluster brand-home-link" aria-label="Go to home">
           <img class="brand-mark" src="media/HelmOS-logo-icon-small.png" alt="HelmOS logo" />
           <div>
             <div class="brand-name">{{ productName }}</div>
             <div class="brand-tagline">{{ surfaceLabel }}</div>
           </div>
-        </div>
+        </a>
 
         <div class="toolbar-cluster">
           <div *ngIf="showWorkspaceSwitcher" class="workspace-switcher d-none d-md-flex align-items-center gap-2">
@@ -125,6 +125,11 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
         height: 2.25rem;
         object-fit: contain;
         flex: 0 0 auto;
+      }
+
+      .brand-home-link {
+        color: inherit;
+        text-decoration: none;
       }
 
       .brand-name {

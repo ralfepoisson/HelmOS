@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { readAuthConfig } from '../../core/auth/bootstrap-auth';
 
 export interface AgentGatewayStatus {
   configured: boolean;
@@ -99,7 +100,7 @@ interface ApiResponse<T> {
 })
 export class AgentAdminService {
   private readonly http = inject(HttpClient);
-  private readonly primaryApiBaseUrl = '/api';
+  private readonly primaryApiBaseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api`;
   private readonly fallbackApiBaseUrl = this.buildLocalDevApiBaseUrl();
   private readonly preferredApiBaseUrl = this.fallbackApiBaseUrl ?? this.primaryApiBaseUrl;
 
@@ -266,6 +267,10 @@ export class AgentAdminService {
       return null;
     }
 
+    if (this.primaryApiBaseUrl !== `${window.location.origin}/api`) {
+      return null;
+    }
+
     const { hostname, port, protocol } = window.location;
     const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
 
@@ -275,4 +280,8 @@ export class AgentAdminService {
 
     return `${protocol}//${hostname}:3001/api`;
   }
+}
+
+function normalizeBaseUrl(value: string): string {
+  return value.endsWith('/') ? value.slice(0, -1) : value;
 }

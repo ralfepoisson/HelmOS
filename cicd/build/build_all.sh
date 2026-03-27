@@ -11,6 +11,7 @@ mkdir -p "${ARTIFACT_DIR}"
 export BUILD_METADATA_FILE="${TEMP_METADATA_FILE}"
 
 "${ROOT_DIR}/cicd/build/build_webapp.sh"
+"${ROOT_DIR}/cicd/build/build_marketing_site.sh"
 "${ROOT_DIR}/cicd/build/build_node_api_image.sh"
 "${ROOT_DIR}/cicd/build/build_agent_gateway_image.sh"
 "${ROOT_DIR}/cicd/build/build_litellm_image.sh"

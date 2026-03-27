@@ -19,6 +19,7 @@ export interface AuthRuntimeConfig {
   authServiceSignInUrl: string;
   authServiceSignOutUrl: string;
   appBaseUrl: string;
+  apiBaseUrl: string;
   adminEmails: string[];
 }
 
@@ -59,6 +60,7 @@ export function readAuthConfig(): AuthRuntimeConfig {
     authServiceSignInUrl: globalConfig?.authServiceSignInUrl?.trim() || 'http://localhost:63431/signIn',
     authServiceSignOutUrl: globalConfig?.authServiceSignOutUrl?.trim() || 'http://localhost:63431/logout',
     appBaseUrl,
+    apiBaseUrl: globalConfig?.apiBaseUrl?.trim() || window.location.origin,
     adminEmails: adminEmails.length > 0 ? adminEmails : ['ralfepoisson@gmail.com']
   };
 }

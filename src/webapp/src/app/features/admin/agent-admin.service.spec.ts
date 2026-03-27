@@ -5,23 +5,57 @@ import { provideHttpClient } from '@angular/common/http';
 import { AgentAdminService } from './agent-admin.service';
 
 describe('AgentAdminService', () => {
-  let service: AgentAdminService;
   let httpTesting: HttpTestingController;
 
   beforeEach(() => {
+    (window as typeof window & { __HELMOS_CONFIG__?: unknown }).__HELMOS_CONFIG__ = undefined;
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting()]
     });
-
-    service = TestBed.inject(AgentAdminService);
     httpTesting = TestBed.inject(HttpTestingController);
   });
 
   afterEach(() => {
     httpTesting.verify();
+    delete (window as typeof window & { __HELMOS_CONFIG__?: unknown }).__HELMOS_CONFIG__;
+  });
+
+  it('uses the configured production API origin outside local development', async () => {
+    (window as typeof window & { __HELMOS_CONFIG__?: unknown }).__HELMOS_CONFIG__ = {
+      apiBaseUrl: 'https://api.helm-os.ai'
+    };
+    const service = TestBed.inject(AgentAdminService);
+    const snapshotPromise = service.listAgents();
+    const request = httpTesting.expectOne('https://api.helm-os.ai/api/admin/agents');
+    expect(request.request.method).toBe('GET');
+    request.flush(
+      JSON.stringify({
+        data: {
+          gateway: {
+            configured: false,
+            status: 'not_configured',
+            message: 'not configured',
+            baseUrl: null,
+            service: null,
+            checkedAt: '2026-03-26T00:00:00.000Z',
+            agents: []
+          },
+          agents: []
+        }
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    const snapshot = await snapshotPromise;
+    expect(snapshot.agents).toEqual([]);
   });
 
   it('falls back to the local backend when the same-origin admin request fails', async () => {
+    const service = TestBed.inject(AgentAdminService);
     const snapshotPromise = service.listAgents();
 
     const fallbackRequest = httpTesting.expectOne('http://localhost:3001/api/admin/agents');
@@ -77,6 +111,7 @@ describe('AgentAdminService', () => {
   });
 
   it('falls back to the local backend when the same-origin admin request returns a proxy 500', async () => {
+    const service = TestBed.inject(AgentAdminService);
     const snapshotPromise = service.listAgents();
 
     const fallbackRequest = httpTesting.expectOne('http://localhost:3001/api/admin/agents');
@@ -132,6 +167,7 @@ describe('AgentAdminService', () => {
   });
 
   it('creates a new agent through the admin API', async () => {
+    const service = TestBed.inject(AgentAdminService);
     const createdAgentPromise = service.createAgent({
       key: 'ideation',
       name: 'Ideation Agent',

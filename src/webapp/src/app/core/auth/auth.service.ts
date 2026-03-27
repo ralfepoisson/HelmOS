@@ -76,7 +76,7 @@ export class AuthService {
       return true;
     }
 
-    await router.navigateByUrl('/strategy-copilot');
+    await router.navigateByUrl('/');
     return false;
   }
 
@@ -112,7 +112,7 @@ export class AuthService {
   }
 
   consumeReturnPath(): string {
-    const stored = localStorage.getItem(AUTH_RETURN_PATH_KEY) || '/strategy-copilot';
+    const stored = localStorage.getItem(AUTH_RETURN_PATH_KEY) || '/';
     localStorage.removeItem(AUTH_RETURN_PATH_KEY);
     return stored;
   }
