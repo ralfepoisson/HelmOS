@@ -80,16 +80,29 @@ describe('captureAuthTokenFromUrl', () => {
 });
 
 describe('readAuthConfig', () => {
+  afterEach(() => {
+    delete (window as typeof window & { __HELMOS_CONFIG__?: unknown }).__HELMOS_CONFIG__;
+  });
+
+  it('falls back to the local auth-service host defaults when runtime config is absent', () => {
+    expect(readAuthConfig()).toMatchObject({
+      authServiceSignInUrl: 'http://auth-service.localhost:46138/',
+      authServiceApplicationId: '04adc1d7-7475-4b28-67b2-63e24308a786'
+    });
+  });
+
   it('uses injected runtime config for app and api urls', () => {
     (window as typeof window & { __HELMOS_CONFIG__?: unknown }).__HELMOS_CONFIG__ = {
-      authServiceSignInUrl: 'https://auth.life-sqrd.com/signIn',
+      authServiceSignInUrl: 'https://auth.life-sqrd.com/',
+      authServiceApplicationId: 'public-app-id',
       authServiceSignOutUrl: 'https://auth.life-sqrd.com/logout',
       appBaseUrl: 'https://helm-os.ai/app/',
       apiBaseUrl: 'https://api.helm-os.ai'
     };
 
     expect(readAuthConfig()).toMatchObject({
-      authServiceSignInUrl: 'https://auth.life-sqrd.com/signIn',
+      authServiceSignInUrl: 'https://auth.life-sqrd.com/',
+      authServiceApplicationId: 'public-app-id',
       authServiceSignOutUrl: 'https://auth.life-sqrd.com/logout',
       appBaseUrl: 'https://helm-os.ai/app/',
       apiBaseUrl: 'https://api.helm-os.ai'

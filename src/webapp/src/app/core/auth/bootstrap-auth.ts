@@ -2,6 +2,7 @@ export const AUTH_TOKEN_KEY = 'helmos.auth.token';
 export const AUTH_SESSION_KEY = 'helmos.auth.session';
 export const AUTH_RETURN_PATH_KEY = 'helmos.auth.returnPath';
 export const AUTH_ERROR_KEY = 'helmos.auth.error';
+const DEV_AUTH_SERVICE_APPLICATION_ID = '04adc1d7-7475-4b28-67b2-63e24308a786';
 
 export type AppRole = 'ADMIN' | 'USER';
 
@@ -17,6 +18,7 @@ export interface StoredAuthSession {
 
 export interface AuthRuntimeConfig {
   authServiceSignInUrl: string;
+  authServiceApplicationId: string;
   authServiceSignOutUrl: string;
   appBaseUrl: string;
   apiBaseUrl: string;
@@ -57,7 +59,8 @@ export function readAuthConfig(): AuthRuntimeConfig {
     globalConfig?.adminEmails?.map((entry) => entry.trim().toLowerCase()).filter(Boolean) ?? [];
 
   return {
-    authServiceSignInUrl: globalConfig?.authServiceSignInUrl?.trim() || 'http://localhost:63431/signIn',
+    authServiceSignInUrl: globalConfig?.authServiceSignInUrl?.trim() || 'http://auth-service.localhost:46138/',
+    authServiceApplicationId: globalConfig?.authServiceApplicationId?.trim() || DEV_AUTH_SERVICE_APPLICATION_ID,
     authServiceSignOutUrl: globalConfig?.authServiceSignOutUrl?.trim() || 'http://localhost:63431/logout',
     appBaseUrl,
     apiBaseUrl: globalConfig?.apiBaseUrl?.trim() || window.location.origin,

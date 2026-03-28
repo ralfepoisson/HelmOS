@@ -6,7 +6,8 @@ ARTIFACT_DIR="${ROOT_DIR}/dist/deployment"
 WEB_BUILD_DIR="${ARTIFACT_DIR}/webapp-build"
 WEB_ARCHIVE="${ARTIFACT_DIR}/webapp.tar.gz"
 METADATA_FILE="${BUILD_METADATA_FILE:-${ARTIFACT_DIR}/build.env}"
-FRONTEND_AUTH_SERVICE_SIGN_IN_URL="${FRONTEND_AUTH_SERVICE_SIGN_IN_URL:-https://auth.life-sqrd.com/signIn}"
+FRONTEND_AUTH_SERVICE_SIGN_IN_URL="${FRONTEND_AUTH_SERVICE_SIGN_IN_URL:-https://auth.life-sqrd.com/}"
+FRONTEND_AUTH_SERVICE_APPLICATION_ID="${FRONTEND_AUTH_SERVICE_APPLICATION_ID:-}"
 FRONTEND_AUTH_SERVICE_SIGN_OUT_URL="${FRONTEND_AUTH_SERVICE_SIGN_OUT_URL:-https://auth.life-sqrd.com/logout}"
 FRONTEND_APP_BASE_URL="${FRONTEND_APP_BASE_URL:-https://helm-os.ai/app/}"
 FRONTEND_API_BASE_URL="${FRONTEND_API_BASE_URL:-https://api.helm-os.ai}"
@@ -28,6 +29,7 @@ fi
 cat > "${WEB_RUNTIME_ROOT}/helmos-config.js" <<EOF
 window.__HELMOS_CONFIG__ = Object.assign({
   authServiceSignInUrl: "${FRONTEND_AUTH_SERVICE_SIGN_IN_URL}",
+  authServiceApplicationId: "${FRONTEND_AUTH_SERVICE_APPLICATION_ID}",
   authServiceSignOutUrl: "${FRONTEND_AUTH_SERVICE_SIGN_OUT_URL}",
   appBaseUrl: "${FRONTEND_APP_BASE_URL}",
   apiBaseUrl: "${FRONTEND_API_BASE_URL}"

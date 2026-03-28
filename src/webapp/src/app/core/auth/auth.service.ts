@@ -82,7 +82,11 @@ export class AuthService {
 
   redirectToSignIn(): void {
     const callbackUrl = `${normalizeAppBaseUrl(this.config.appBaseUrl)}#/auth/callback`;
-    const signInUrl = new URL(`${normalizeBaseUrl(this.config.apiBaseUrl)}/api/auth/sign-in`);
+    const signInUrl = new URL(this.config.authServiceSignInUrl);
+    if (!this.config.authServiceApplicationId) {
+      throw new Error('The auth service application id is not configured.');
+    }
+    signInUrl.searchParams.set('applicationId', this.config.authServiceApplicationId);
     signInUrl.searchParams.set('redirect', callbackUrl);
     this.navigateTo(signInUrl.toString());
   }
@@ -123,9 +127,5 @@ export class AuthService {
 }
 
 function normalizeAppBaseUrl(value: string): string {
-  return value.endsWith('/') ? value.slice(0, -1) : value;
-}
-
-function normalizeBaseUrl(value: string): string {
   return value.endsWith('/') ? value.slice(0, -1) : value;
 }

@@ -8,6 +8,10 @@ import { AuthService } from './auth.service';
 describe('AuthService', () => {
   beforeEach(async () => {
     localStorage.clear();
+    (window as typeof window & { __HELMOS_CONFIG__?: unknown }).__HELMOS_CONFIG__ = {
+      authServiceSignInUrl: 'https://auth.life-sqrd.com/',
+      authServiceApplicationId: 'public-app-id'
+    };
 
     await TestBed.configureTestingModule({
       providers: [provideRouter([])]
@@ -16,6 +20,7 @@ describe('AuthService', () => {
 
   afterEach(() => {
     localStorage.clear();
+    delete (window as typeof window & { __HELMOS_CONFIG__?: unknown }).__HELMOS_CONFIG__;
   });
 
   it('defaults the return path to root when none is stored', () => {
@@ -46,14 +51,16 @@ describe('AuthService', () => {
     expect(localStorage.getItem(AUTH_RETURN_PATH_KEY)).toBeNull();
   });
 
-  it('routes sign-in through the backend auth bootstrap endpoint', () => {
+  it('routes sign-in to the auth service with applicationId and redirect', () => {
     const service = TestBed.inject(AuthService);
     const navigateSpy = vi.spyOn(service as AuthService & { navigateTo: (url: string) => void }, 'navigateTo');
 
     service.redirectToSignIn();
 
     expect(navigateSpy).toHaveBeenCalledWith(
-      `${window.location.origin}/api/auth/sign-in?redirect=${encodeURIComponent(`${window.location.origin}#/auth/callback`)}`
+      `https://auth.life-sqrd.com/?applicationId=public-app-id&redirect=${encodeURIComponent(
+        `${window.location.origin}#/auth/callback`
+      )}`
     );
   });
 

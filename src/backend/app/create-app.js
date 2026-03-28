@@ -31,7 +31,7 @@ function isAllowedOrigin(origin, allowedOrigins = getAllowedOrigins()) {
   }
 }
 
-function createApp({ prisma, agentGatewayClient, fetchImpl }) {
+function createApp({ prisma, agentGatewayClient }) {
   const app = express();
   const allowedOrigins = getAllowedOrigins();
   const gatewayClient =
@@ -61,7 +61,7 @@ function createApp({ prisma, agentGatewayClient, fetchImpl }) {
   app.use(express.json({ limit: "1mb" }));
   app.use(buildRequestLogger({ prisma }));
 
-  app.use("/api", createApiRouter({ prisma, agentGatewayClient: gatewayClient, fetchImpl }));
+  app.use("/api", createApiRouter({ prisma, agentGatewayClient: gatewayClient }));
 
   app.use((req, res) => {
     res.status(404).json({

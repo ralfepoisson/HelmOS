@@ -480,51 +480,131 @@ test("GET /api/health returns a healthy status", async () => {
   });
 });
 
-test("GET /api/auth/sign-in forwards the application token to the auth service", async () => {
-  const originalToken = process.env.AUTH_SERVICE_TOKEN;
+test("GET /api/auth/sign-in redirects to the auth service with applicationId and redirect", async () => {
+  const originalApplicationId = process.env.AUTH_SERVICE_APPLICATION_ID;
+  const originalFrontendApplicationId = process.env.FRONTEND_AUTH_SERVICE_APPLICATION_ID;
   const originalSignInUrl = process.env.AUTH_SERVICE_SIGN_IN_URL;
-  const fetchCalls = [];
-  const fetchImpl = async (url, options) => {
-    fetchCalls.push({ url, options });
-    return {
-      status: 302,
-      headers: new Headers({
-        location: "https://auth.life-sqrd.com/authorize?state=test-state",
-      }),
-      text: async () => "",
-    };
-  };
 
-  process.env.AUTH_SERVICE_TOKEN = "test-app-token";
-  process.env.AUTH_SERVICE_SIGN_IN_URL = "https://auth.life-sqrd.com/signIn";
+  process.env.AUTH_SERVICE_APPLICATION_ID = "public-app-id";
+  process.env.AUTH_SERVICE_SIGN_IN_URL = "https://auth.life-sqrd.com/";
 
   try {
-    const app = createApp({ prisma: {}, fetchImpl });
+    const app = createApp({ prisma: {} });
     const response = await request(app)
       .get("/api/auth/sign-in")
       .query({ redirect: "http://localhost:4200/#/auth/callback" });
 
     assert.equal(response.statusCode, 302);
-    assert.equal(response.headers.location, "https://auth.life-sqrd.com/authorize?state=test-state");
-    assert.equal(fetchCalls.length, 1);
     assert.equal(
-      fetchCalls[0].url.toString(),
-      "https://auth.life-sqrd.com/signIn?redirect=http%3A%2F%2Flocalhost%3A4200%2F%23%2Fauth%2Fcallback",
+      response.headers.location,
+      "https://auth.life-sqrd.com/?applicationId=public-app-id&redirect=http%3A%2F%2Flocalhost%3A4200%2F%23%2Fauth%2Fcallback",
     );
-    assert.equal(fetchCalls[0].options.method, "GET");
-    assert.equal(fetchCalls[0].options.redirect, "manual");
-    assert.equal(fetchCalls[0].options.headers["Application-Token"], "test-app-token");
   } finally {
-    if (originalToken == null) {
-      delete process.env.AUTH_SERVICE_TOKEN;
+    if (originalApplicationId == null) {
+      delete process.env.AUTH_SERVICE_APPLICATION_ID;
     } else {
-      process.env.AUTH_SERVICE_TOKEN = originalToken;
+      process.env.AUTH_SERVICE_APPLICATION_ID = originalApplicationId;
+    }
+
+    if (originalFrontendApplicationId == null) {
+      delete process.env.FRONTEND_AUTH_SERVICE_APPLICATION_ID;
+    } else {
+      process.env.FRONTEND_AUTH_SERVICE_APPLICATION_ID = originalFrontendApplicationId;
     }
 
     if (originalSignInUrl == null) {
       delete process.env.AUTH_SERVICE_SIGN_IN_URL;
     } else {
       process.env.AUTH_SERVICE_SIGN_IN_URL = originalSignInUrl;
+    }
+  }
+});
+
+test("GET /api/auth/sign-in falls back to the dev application id when none is configured", async () => {
+  const originalApplicationId = process.env.AUTH_SERVICE_APPLICATION_ID;
+  const originalFrontendApplicationId = process.env.FRONTEND_AUTH_SERVICE_APPLICATION_ID;
+  const originalSignInUrl = process.env.AUTH_SERVICE_SIGN_IN_URL;
+
+  delete process.env.AUTH_SERVICE_APPLICATION_ID;
+  delete process.env.FRONTEND_AUTH_SERVICE_APPLICATION_ID;
+  process.env.AUTH_SERVICE_SIGN_IN_URL = "https://auth.life-sqrd.com/";
+
+  try {
+    const app = createApp({ prisma: {} });
+    const response = await request(app)
+      .get("/api/auth/sign-in")
+      .query({ redirect: "http://localhost:4200/#/auth/callback" });
+
+    assert.equal(response.statusCode, 302);
+    assert.equal(
+      response.headers.location,
+      "https://auth.life-sqrd.com/?applicationId=04adc1d7-7475-4b28-67b2-63e24308a786&redirect=http%3A%2F%2Flocalhost%3A4200%2F%23%2Fauth%2Fcallback",
+    );
+  } finally {
+    if (originalApplicationId == null) {
+      delete process.env.AUTH_SERVICE_APPLICATION_ID;
+    } else {
+      process.env.AUTH_SERVICE_APPLICATION_ID = originalApplicationId;
+    }
+
+    if (originalFrontendApplicationId == null) {
+      delete process.env.FRONTEND_AUTH_SERVICE_APPLICATION_ID;
+    } else {
+      process.env.FRONTEND_AUTH_SERVICE_APPLICATION_ID = originalFrontendApplicationId;
+    }
+
+    if (originalSignInUrl == null) {
+      delete process.env.AUTH_SERVICE_SIGN_IN_URL;
+    } else {
+      process.env.AUTH_SERVICE_SIGN_IN_URL = originalSignInUrl;
+    }
+  }
+});
+
+test("GET /api/auth/sign-in falls back to the local auth-service host when no sign-in url is configured", async () => {
+  const originalApplicationId = process.env.AUTH_SERVICE_APPLICATION_ID;
+  const originalFrontendApplicationId = process.env.FRONTEND_AUTH_SERVICE_APPLICATION_ID;
+  const originalSignInUrl = process.env.AUTH_SERVICE_SIGN_IN_URL;
+  const originalFrontendSignInUrl = process.env.FRONTEND_AUTH_SERVICE_SIGN_IN_URL;
+
+  process.env.AUTH_SERVICE_APPLICATION_ID = "public-app-id";
+  delete process.env.AUTH_SERVICE_SIGN_IN_URL;
+  delete process.env.FRONTEND_AUTH_SERVICE_SIGN_IN_URL;
+
+  try {
+    const app = createApp({ prisma: {} });
+    const response = await request(app)
+      .get("/api/auth/sign-in")
+      .query({ redirect: "http://localhost:4200/#/auth/callback" });
+
+    assert.equal(response.statusCode, 302);
+    assert.equal(
+      response.headers.location,
+      "http://auth-service.localhost:46138/?applicationId=public-app-id&redirect=http%3A%2F%2Flocalhost%3A4200%2F%23%2Fauth%2Fcallback",
+    );
+  } finally {
+    if (originalApplicationId == null) {
+      delete process.env.AUTH_SERVICE_APPLICATION_ID;
+    } else {
+      process.env.AUTH_SERVICE_APPLICATION_ID = originalApplicationId;
+    }
+
+    if (originalFrontendApplicationId == null) {
+      delete process.env.FRONTEND_AUTH_SERVICE_APPLICATION_ID;
+    } else {
+      process.env.FRONTEND_AUTH_SERVICE_APPLICATION_ID = originalFrontendApplicationId;
+    }
+
+    if (originalSignInUrl == null) {
+      delete process.env.AUTH_SERVICE_SIGN_IN_URL;
+    } else {
+      process.env.AUTH_SERVICE_SIGN_IN_URL = originalSignInUrl;
+    }
+
+    if (originalFrontendSignInUrl == null) {
+      delete process.env.FRONTEND_AUTH_SERVICE_SIGN_IN_URL;
+    } else {
+      process.env.FRONTEND_AUTH_SERVICE_SIGN_IN_URL = originalFrontendSignInUrl;
     }
   }
 });

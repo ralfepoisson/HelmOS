@@ -6,7 +6,7 @@ const { createBusinessIdeasRouter } = require("./business-ideas-router");
 const { createCrudRouter } = require("./create-crud-router");
 const { prismaEnums, resourceConfigs } = require("./resources");
 
-function createApiRouter({ prisma, agentGatewayClient, fetchImpl }) {
+function createApiRouter({ prisma, agentGatewayClient }) {
   const router = express.Router();
   const authenticate = createAuthMiddleware({ prisma });
 
@@ -28,7 +28,7 @@ function createApiRouter({ prisma, agentGatewayClient, fetchImpl }) {
     });
   });
 
-  router.get("/auth/sign-in", createAuthServiceSignInHandler({ fetchImpl }));
+  router.get("/auth/sign-in", createAuthServiceSignInHandler());
 
   router.use("/admin", authenticate, requireAdmin, createAdminRouter({ prisma, agentGatewayClient }));
   router.use("/business-ideas", authenticate, createBusinessIdeasRouter({ prisma, agentGatewayClient }));

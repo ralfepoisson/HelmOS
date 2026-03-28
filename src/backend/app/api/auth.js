@@ -1,3 +1,5 @@
+const DEV_AUTH_SERVICE_APPLICATION_ID = "04adc1d7-7475-4b28-67b2-63e24308a786";
+
 function createHttpError(statusCode, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -8,12 +10,16 @@ function getAuthServiceSignInUrl() {
   return (
     process.env.AUTH_SERVICE_SIGN_IN_URL?.trim() ||
     process.env.FRONTEND_AUTH_SERVICE_SIGN_IN_URL?.trim() ||
-    "http://localhost:63431/signIn"
+    "http://auth-service.localhost:46138/"
   );
 }
 
-function getAuthServiceToken() {
-  return process.env.AUTH_SERVICE_TOKEN?.trim() || null;
+function getAuthServiceApplicationId() {
+  return (
+    process.env.AUTH_SERVICE_APPLICATION_ID?.trim() ||
+    process.env.FRONTEND_AUTH_SERVICE_APPLICATION_ID?.trim() ||
+    DEV_AUTH_SERVICE_APPLICATION_ID
+  );
 }
 
 function isTruthyBoolean(value) {
@@ -252,42 +258,24 @@ function requireAdmin(req, _res, next) {
   return next();
 }
 
-function createAuthServiceSignInHandler({ fetchImpl = globalThis.fetch } = {}) {
-  return async (req, res, next) => {
+function createAuthServiceSignInHandler() {
+  return (req, res, next) => {
     const redirectTarget = typeof req.query.redirect === "string" ? req.query.redirect.trim() : "";
-    const applicationToken = getAuthServiceToken();
+    const applicationId = getAuthServiceApplicationId();
 
     if (!redirectTarget) {
       return next(createHttpError(400, "A redirect target is required"));
     }
 
-    if (!applicationToken) {
-      return next(createHttpError(500, "AUTH_SERVICE_TOKEN is not configured"));
+    if (!applicationId) {
+      return next(createHttpError(500, "AUTH_SERVICE_APPLICATION_ID is not configured"));
     }
 
     try {
       const signInUrl = new URL(getAuthServiceSignInUrl());
+      signInUrl.searchParams.set("applicationId", applicationId);
       signInUrl.searchParams.set("redirect", redirectTarget);
-
-      const upstreamResponse = await fetchImpl(signInUrl, {
-        method: "GET",
-        redirect: "manual",
-        headers: {
-          "Application-Token": applicationToken,
-        },
-      });
-
-      const location = upstreamResponse.headers.get("location");
-      if (location) {
-        return res.redirect(upstreamResponse.status, location);
-      }
-
-      const contentType = upstreamResponse.headers.get("content-type");
-      if (contentType) {
-        res.setHeader("Content-Type", contentType);
-      }
-
-      return res.status(upstreamResponse.status).send(await upstreamResponse.text());
+      return res.redirect(302, signInUrl.toString());
     } catch (error) {
       return next(error);
     }

@@ -85,6 +85,7 @@ Supported settings:
 
 - `apiBaseUrl`
 - `authServiceSignInUrl`
+- `authServiceApplicationId`
 - `authServiceSignOutUrl`
 - `appBaseUrl`
 
@@ -93,7 +94,8 @@ Local development defaults currently use:
 ```js
 window.__MORNING_BRIEFING_CONFIG__ = Object.assign({
   apiBaseUrl: window.location.protocol + '//' + morningBriefingApiHost + ':3000/api/v1',
-  authServiceSignInUrl: 'http://localhost:63431/signIn',
+  authServiceSignInUrl: 'http://auth-service.localhost:46138/',
+  authServiceApplicationId: '04adc1d7-7475-4b28-67b2-63e24308a786',
   authServiceSignOutUrl: 'http://localhost:63431/logout',
   appBaseUrl: window.location.origin + '/'
 }, window.__MORNING_BRIEFING_CONFIG__ || {});
@@ -102,14 +104,14 @@ window.__MORNING_BRIEFING_CONFIG__ = Object.assign({
 Production frontend builds currently default `authServiceSignInUrl` to:
 
 ```text
-https://auth.life-sqrd.com/signIn
+https://auth.life-sqrd.com/
 ```
 
 That default is emitted from:
 
 - [`cicd/ci/build-frontend.sh`](/Users/ralfe/Dev/Morning-Briefing/cicd/ci/build-frontend.sh)
 
-and can still be overridden with `FRONTEND_AUTH_SERVICE_SIGN_IN_URL`.
+and can still be overridden with `FRONTEND_AUTH_SERVICE_SIGN_IN_URL`. Browser-facing auth flows now also require a public `authServiceApplicationId` / `FRONTEND_AUTH_SERVICE_APPLICATION_ID`.
 
 ### Callback route
 
@@ -149,7 +151,7 @@ Responsibilities:
 - restore session from `localStorage`
 - validate JWT payload shape and expiry
 - expose the current auth state to the SPA
-- build the backend auth bootstrap redirect
+- build the auth-service browser redirect
 - handle sign-out by clearing the stored JWT/session and routing to `/#/signed-out`
 - expose the stored bearer token for API requests
 - preserve a post-login return path
@@ -163,15 +165,16 @@ HelmOS now routes sign-in initiation through the Node control plane:
 GET /api/auth/sign-in?redirect={APP_BASE_URL}/#/auth/callback
 ```
 
-That backend route calls the Life2 auth service sign-in URL server-side and adds:
+That backend route now issues a plain browser redirect to the Life2 auth service and adds:
 
 ```text
-Application-Token: {AUTH_SERVICE_TOKEN}
+applicationId={AUTH_SERVICE_APPLICATION_ID}
+redirect={APP_BASE_URL}/#/auth/callback
 ```
 
 The backend uses `AUTH_SERVICE_SIGN_IN_URL` when present, otherwise
 `FRONTEND_AUTH_SERVICE_SIGN_IN_URL`, and finally falls back to
-`http://localhost:63431/signIn` for local development.
+`http://auth-service.localhost:46138/` for local development. The public application id comes from `AUTH_SERVICE_APPLICATION_ID` or `FRONTEND_AUTH_SERVICE_APPLICATION_ID`.
 
 Current local storage keys:
 
@@ -319,13 +322,13 @@ Current examples include:
 The SPA sends users to the central auth UI using:
 
 ```text
-{AUTH_SERVICE_SIGN_IN_URL}?redirect={APP_BASE_URL}/#/auth/callback
+{AUTH_SERVICE_SIGN_IN_URL}?applicationId={AUTH_SERVICE_APPLICATION_ID}&redirect={APP_BASE_URL}/#/auth/callback
 ```
 
 Example local redirect:
 
 ```text
-http://localhost:63431/signIn?redirect=http%3A%2F%2Flocalhost%3A8080%2F%23%2Fauth%2Fcallback
+http://auth-service.localhost:46138/?applicationId=04adc1d7-7475-4b28-67b2-63e24308a786&redirect=http%3A%2F%2Flocalhost%3A8080%2F%23%2Fauth%2Fcallback
 ```
 
 The auth service must then redirect back to:
@@ -437,7 +440,7 @@ Use this checklist when integrating the Life2 auth service into another SPA proj
 
 1. Add a dedicated SPA callback route: `/#/auth/callback`.
 2. Redirect unauthenticated users to the central auth UI.
-3. Navigate to `/api/auth/sign-in`.
+3. Pass `applicationId={publicApplicationId}`.
 4. Pass `redirect={appBaseUrl}/#/auth/callback`.
 4. Ensure the auth service returns the exchanged Life2 JWT, not the raw Cognito token.
 5. Ensure the JWT includes user/account identity claims plus `exp`.
