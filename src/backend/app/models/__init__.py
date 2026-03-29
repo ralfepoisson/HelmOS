@@ -1,5 +1,12 @@
 """ORM models exposed for metadata creation and imports."""
 
+from app.models.agent_test import (
+    AgentTestAnnotation,
+    AgentTestRun,
+    AgentTestRunSnapshot,
+    AgentTestScore,
+    AgentTestTurn,
+)
 from app.models.approval import ApprovalRequest
 from app.models.artifact import Artifact, AuditLog
 from app.models.base import Base
@@ -10,6 +17,11 @@ from app.models.run import AgentRun
 from app.models.session import Session
 
 __all__ = [
+    "AgentTestAnnotation",
+    "AgentTestRun",
+    "AgentTestRunSnapshot",
+    "AgentTestScore",
+    "AgentTestTurn",
     "AgentCheckpoint",
     "AgentDefinition",
     "AgentRun",

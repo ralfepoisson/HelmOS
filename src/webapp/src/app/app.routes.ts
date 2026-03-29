@@ -6,6 +6,7 @@ import { BusinessIdeasApiService } from './core/services/business-ideas-api.serv
 import { AuthCallbackPageComponent } from './features/auth/auth-callback-page.component';
 import { AuthStatusPageComponent } from './features/auth/auth-status-page.component';
 import { AgentAdminScreenComponent } from './features/admin/agent-admin-screen.component';
+import { AgentTestingScreenComponent } from './features/admin/agent-testing-screen.component';
 import { AdminLogsScreenComponent } from './features/admin/admin-logs-screen.component';
 import { NewIdeaPageComponent } from './features/ideation/new-idea-page.component';
 import { IdeationScreenComponent } from './features/ideation/ideation-screen.component';
@@ -71,6 +72,12 @@ export const routes: Routes = [
     component: AgentAdminScreenComponent,
     canActivate: [adminGuard],
     title: 'HelmOS Agent Admin'
+  },
+  {
+    path: 'admin/agent-testing',
+    component: AgentTestingScreenComponent,
+    canActivate: [adminGuard],
+    title: 'HelmOS Agent Testing'
   },
   {
     path: 'admin/logs',

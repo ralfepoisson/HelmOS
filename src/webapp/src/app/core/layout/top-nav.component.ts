@@ -82,6 +82,16 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
                 <span class="admin-link-copy">Manage specialist registry, prompts, and runtime alignment.</span>
               </a>
               <a
+                routerLink="/admin/agent-testing"
+                routerLinkActive="admin-link-active"
+                class="admin-link"
+                role="menuitem"
+                (click)="closeAdminMenu()"
+              >
+                <span class="admin-link-title">Agent Testing</span>
+                <span class="admin-link-copy">Launch evaluations, review transcripts, and compare test runs.</span>
+              </a>
+              <a
                 routerLink="/admin/logs"
                 routerLinkActive="admin-link-active"
                 class="admin-link"
@@ -245,7 +255,7 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
         position: absolute;
         top: calc(100% + 0.6rem);
         right: 0;
-        width: 286px;
+        width: 304px;
         padding: 0.4rem;
         border-radius: 1rem;
       }

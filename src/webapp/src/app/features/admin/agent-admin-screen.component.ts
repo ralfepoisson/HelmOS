@@ -425,17 +425,27 @@ const RETRY_OPTIONS: Array<{ value: RetryPolicy; label: string; description: str
 
               <label class="field-block">
                 <span>Temperature</span>
-                <input [(ngModel)]="agent.temperatureText" class="form-control" [name]="'temperature-' + agent.id" />
+                <input
+                  #temperatureInput
+                  [(ngModel)]="agent.temperatureText"
+                  class="form-control"
+                  [name]="'temperature-' + agent.id"
+                />
               </label>
 
               <label class="field-block">
                 <span>Max steps</span>
-                <input [(ngModel)]="agent.maxStepsText" class="form-control" [name]="'max-steps-' + agent.id" />
+                <input #maxStepsInput [(ngModel)]="agent.maxStepsText" class="form-control" [name]="'max-steps-' + agent.id" />
               </label>
 
               <label class="field-block">
                 <span>Timeout (seconds)</span>
-                <input [(ngModel)]="agent.timeoutSecondsText" class="form-control" [name]="'timeout-' + agent.id" />
+                <input
+                  #timeoutInput
+                  [(ngModel)]="agent.timeoutSecondsText"
+                  class="form-control"
+                  [name]="'timeout-' + agent.id"
+                />
               </label>
 
               <label class="field-block">
@@ -573,7 +583,12 @@ const RETRY_OPTIONS: Array<{ value: RetryPolicy; label: string; description: str
             </div>
             <div class="footer-actions">
               <div *ngIf="agent.saveError" class="save-error">{{ agent.saveError }}</div>
-              <button class="btn btn-primary" type="button" [disabled]="agent.saving" (click)="saveAgent(agent)">
+              <button
+                class="btn btn-primary"
+                type="button"
+                [disabled]="agent.saving"
+                (click)="saveAgent(agent, { temperatureText: temperatureInput.value, maxStepsText: maxStepsInput.value, timeoutSecondsText: timeoutInput.value })"
+              >
                 {{ agent.saving ? 'Saving...' : 'Save agent' }}
               </button>
             </div>
@@ -1888,11 +1903,20 @@ export class AgentAdminScreenComponent implements OnInit {
     return this.isCreateFieldValid(fieldName, mode);
   }
 
-  async saveAgent(agent: EditableAgentRecord): Promise<void> {
+  async saveAgent(
+    agent: EditableAgentRecord,
+    latestFields?: Partial<Pick<EditableAgentRecord, 'temperatureText' | 'maxStepsText' | 'timeoutSecondsText'>>
+  ): Promise<void> {
     agent.saveError = null;
     agent.saving = true;
 
     try {
+      if (latestFields) {
+        agent.temperatureText = latestFields.temperatureText ?? agent.temperatureText;
+        agent.maxStepsText = latestFields.maxStepsText ?? agent.maxStepsText;
+        agent.timeoutSecondsText = latestFields.timeoutSecondsText ?? agent.timeoutSecondsText;
+      }
+
       const payload = this.buildUpdatePayload(agent);
       const updated = await this.agentAdminService.updateAgent(agent.id, payload);
       const index = this.agents.findIndex((entry) => entry.id === agent.id);

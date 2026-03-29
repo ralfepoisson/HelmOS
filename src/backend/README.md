@@ -61,6 +61,10 @@ src/backend/
 
    The gateway is intended to serve `http://127.0.0.1:8000` in local development.
    The Angular webapp dev server proxies `/api/v1` traffic to this process.
+   When you start the gateway via
+   [scripts/start_agent_gateway.sh](/Users/ralfe/Dev/HelmOS/scripts/start_agent_gateway.sh),
+   it also loads the repo-root Prisma `DATABASE_URL` so the FastAPI runtime and
+   Node control plane share the same local agent registry schema.
 
 4. Create agents through the Agent Admin screen or Node control-plane API.
 

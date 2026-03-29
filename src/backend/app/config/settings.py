@@ -2,9 +2,57 @@
 
 from functools import lru_cache
 from typing import cast
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import Field
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/helmos"
+
+
+def normalize_database_url(value: str | None) -> str:
+    """Normalize Prisma-style Postgres URLs for SQLAlchemy/psycopg."""
+
+    normalized = (value or "").strip()
+    if not normalized:
+        return DEFAULT_DATABASE_URL
+
+    if normalized.startswith("postgresql://"):
+        normalized = f"postgresql+psycopg://{normalized.removeprefix('postgresql://')}"
+
+    parts = urlsplit(normalized)
+    query_items = parse_qsl(parts.query, keep_blank_values=True)
+    schema_name: str | None = None
+    options_items: list[tuple[str, str]] = []
+
+    for key, item_value in query_items:
+        if key == "schema":
+            schema_name = item_value.strip() or None
+            continue
+        options_items.append((key, item_value))
+
+    if schema_name and not any(key == "options" for key, _ in options_items):
+        options_items.append(("options", f"-csearch_path={schema_name}"))
+
+    return urlunsplit(parts._replace(query=urlencode(options_items)))
+
+
+def resolve_database_url(database_url: str | None, prisma_database_url: str | None) -> str:
+    """Prefer the gateway-specific URL when present, otherwise reuse Prisma's DATABASE_URL."""
+
+    normalized_database_url = (database_url or "").strip()
+    normalized_prisma_url = (prisma_database_url or "").strip()
+
+    if normalized_prisma_url and (
+        not normalized_database_url or normalized_database_url == DEFAULT_DATABASE_URL
+    ):
+        preferred = normalized_prisma_url
+    else:
+        preferred = normalized_database_url
+
+    return normalize_database_url(preferred)
 
 
 class Settings(BaseSettings):
@@ -13,10 +61,8 @@ class Settings(BaseSettings):
     env: str = Field(default="local", alias="HELMOS_ENV")
     log_level: str = Field(default="INFO", alias="HELMOS_LOG_LEVEL")
     api_prefix: str = Field(default="/api/v1", alias="HELMOS_API_PREFIX")
-    database_url: str = Field(
-        default="postgresql+psycopg://postgres:postgres@localhost:5432/helmos",
-        alias="HELMOS_DATABASE_URL",
-    )
+    database_url: str = Field(default=DEFAULT_DATABASE_URL, alias="HELMOS_DATABASE_URL")
+    prisma_database_url: str | None = Field(default=None, alias="DATABASE_URL")
     redis_url: str = Field(default="redis://localhost:6379/0", alias="HELMOS_REDIS_URL")
     s3_endpoint_url: str | None = Field(default=None, alias="HELMOS_S3_ENDPOINT_URL")
     s3_bucket: str = Field(default="helmos-artifacts", alias="HELMOS_S3_BUCKET")
@@ -48,6 +94,13 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def apply_database_url_fallback(self) -> "Settings":
+        """Normalize the configured gateway URL and fall back to Prisma's DATABASE_URL."""
+
+        self.database_url = resolve_database_url(self.database_url, self.prisma_database_url)
+        return self
 
 
 @lru_cache(maxsize=1)

@@ -281,6 +281,101 @@ package "Agent Registry & Admin" {
   }
 }
 
+package "Agent Testing" {
+  entity "agent_test_runs" as agent_test_runs {
+    *id : UUID <<PK>>
+    --
+    target_agent_run_root_id : UUID <<FK>>
+    suite_key : VARCHAR(100)
+    test_mode : VARCHAR(100)
+    target_agent_key : VARCHAR(100)
+    target_agent_version : VARCHAR(50)
+    target_model_name : VARCHAR(255)
+    testing_agent_model_name : VARCHAR(255)
+    fixture_key : VARCHAR(150)
+    fixture_version : VARCHAR(50)
+    rubric_version : VARCHAR(100)
+    driver_version : VARCHAR(100)
+    status : VARCHAR(50)
+    actual_turns : INTEGER
+    min_turns : INTEGER
+    overall_score : NUMERIC(5,2)
+    aggregate_confidence : NUMERIC(5,2)
+    verdict : VARCHAR(50)
+    review_required : BOOLEAN
+    summary : TEXT
+    report_markdown : TEXT
+    report_json : JSONB
+    metadata_json : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
+  entity "agent_test_run_snapshots" as agent_test_run_snapshots {
+    *id : UUID <<PK>>
+    --
+    test_run_id : UUID <<FK>>
+    snapshot_type : VARCHAR(100)
+    source_ref : VARCHAR(255)
+    checksum : VARCHAR(255)
+    content_text : TEXT
+    content_json : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
+  entity "agent_test_turns" as agent_test_turns {
+    *id : UUID <<PK>>
+    --
+    test_run_id : UUID <<FK>>
+    turn_index : INTEGER
+    actor_type : VARCHAR(50)
+    message_role : VARCHAR(50)
+    message_text : TEXT
+    structured_payload : JSONB
+    token_usage_json : JSONB
+    metadata_json : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
+  entity "agent_test_annotations" as agent_test_annotations {
+    *id : UUID <<PK>>
+    --
+    test_run_id : UUID <<FK>>
+    turn_index : INTEGER
+    actor_type : VARCHAR(50)
+    tag : VARCHAR(100)
+    severity : VARCHAR(20)
+    confidence : NUMERIC(5,2)
+    evidence_text : TEXT
+    evidence_span : JSONB
+    linked_scoring_dimensions : JSONB
+    source_type : VARCHAR(50)
+    metadata_json : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
+  entity "agent_test_scores" as agent_test_scores {
+    *id : UUID <<PK>>
+    --
+    test_run_id : UUID <<FK>>
+    layer_key : VARCHAR(50)
+    dimension_key : VARCHAR(100)
+    raw_score : INTEGER
+    normalized_score : NUMERIC(5,2)
+    weight_percent : NUMERIC(5,2)
+    blocking : BOOLEAN
+    blocking_threshold : INTEGER
+    confidence : NUMERIC(5,2)
+    evidence_turn_refs : JSONB
+    metadata_json : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+}
+
 package "Audit" {
   entity "activity_log" as activity_log {
     *id : UUID <<PK>>
@@ -331,6 +426,11 @@ workspaces ||--o{ activity_log
 users ||--o{ activity_log : actor
 
 agent_runs ||--o{ section_versions
+agent_runs ||--o{ agent_test_runs : production_root
+agent_test_runs ||--o{ agent_test_run_snapshots
+agent_test_runs ||--o{ agent_test_turns
+agent_test_runs ||--o{ agent_test_annotations
+agent_test_runs ||--o{ agent_test_scores
 note right of strategy_sections
 Examples of section_key:
 - problem_statement
@@ -360,6 +460,11 @@ end note
 note bottom of agent_runs
 Captures one agent processing cycle:
 user message -> model run -> workspace updates
+end note
+
+note bottom of agent_test_runs
+Stores evaluation-specific interpretation of a transcript,
+while canonical production-path execution remains in agent_runs.
 end note
 
 @enduml

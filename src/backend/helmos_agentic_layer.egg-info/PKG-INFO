@@ -87,6 +87,9 @@ src/backend/
    uvicorn app.main:app --reload
    ```
 
+   The gateway is intended to serve `http://127.0.0.1:8000` in local development.
+   The Angular webapp dev server proxies `/api/v1` traffic to this process.
+
 4. Create agents through the Agent Admin screen or Node control-plane API.
 
    The FastAPI gateway now treats `agent_definitions` plus active
@@ -105,6 +108,19 @@ src/backend/
    docker compose -f docker-compose.litellm.yml up -d
    ```
 
+## Frontend integration
+
+During local product development, the Angular app uses
+[src/webapp/proxy.conf.json](/Users/ralfe/Dev/HelmOS/src/webapp/proxy.conf.json)
+to forward:
+
+- `/api` to the Node control-plane backend on `127.0.0.1:3001`
+- `/api/v1` to the FastAPI Agent Gateway on `127.0.0.1:8000`
+
+That proxy path is now the preferred local route for ideation agent runs.
+The frontend still keeps a direct `localhost:8000` fallback for resilience,
+but a healthy local stack should go through the Angular proxy first.
+
 ## Notes
 
 - PostgreSQL is the intended system of record.
@@ -112,5 +128,6 @@ src/backend/
 - The orchestration layer is wired for LangGraph and human approval checkpoints.
 - The agentic layer talks to an OpenAI-compatible LiteLLM proxy via `HELMOS_LITELLM_PROXY_URL`; upstream provider keys should stay in the proxy container env, not in backend application code.
 - Runtime agents are loaded dynamically from `agent_definitions` and active `prompt_configs`; adding a new agent should not require new Python classes.
+- Agent Admin prompt fields are composed into a rich runtime system prompt. The active runtime uses either `config_json.system_prompt` directly or a synthesized prompt built from purpose, scope notes, prompt sections, execution settings, and tool permissions.
 - The product control plane can inspect runtime agent registration through `GET /api/v1/admin/agents`.
 - Alembic is declared as a dependency and the model layout is migration-friendly, but migrations are not generated in this first pass.

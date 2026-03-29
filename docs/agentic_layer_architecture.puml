@@ -10,6 +10,7 @@ package "Agent Experience Layer" {
   [Node Control Plane API]
   [Agent Gateway API (FastAPI)]
   [Agent Admin Screen]
+  [Agent Test Admin Screen]
 }
 
 package "Identity & Access Layer" {
@@ -33,6 +34,16 @@ package "Specialist Agents" {
   [Roadmap Agent]
   [Architecture Agent]
   [Artifact Agent]
+  [Testing Agent]
+}
+
+package "Agent Testing Framework" {
+  [Test Harness Service]
+  [Scenario Driver]
+  [Fixture Repository]
+  [Rubric Registry]
+  [Comparison Engine]
+  [Report Renderer]
 }
 
 package "Deterministic Services" {
@@ -100,6 +111,8 @@ package "AWS Production Deployment" {
 [Angular Dev Proxy] --> [Agent Gateway API (FastAPI)] : /api/v1
 [Angular UI] --> [Agent Admin Screen]
 [Agent Admin Screen] --> [Node Control Plane API] : create/update agent registry
+[Angular UI] --> [Agent Test Admin Screen]
+[Agent Test Admin Screen] --> [Agent Gateway API (FastAPI)] : fixture discovery and transcript evaluation
 [Node Control Plane API] --> [RBAC Policy] : verify JWT, derive user context, enforce access
 [Node Control Plane API] --> [PostgreSQL] : persist workspace feature unlocks and stage availability
 [RBAC Policy] --> [PostgreSQL] : upsert local user, tenant link, app role
@@ -118,6 +131,14 @@ package "AWS Production Deployment" {
 [Workflow Graph Engine] --> [Roadmap Agent]
 [Workflow Graph Engine] --> [Architecture Agent]
 [Workflow Graph Engine] --> [Artifact Agent]
+[Test Harness Service] --> [Scenario Driver]
+[Test Harness Service] --> [Fixture Repository]
+[Test Harness Service] --> [Rubric Registry]
+[Test Harness Service] --> [Testing Agent]
+[Test Harness Service] --> [Report Renderer]
+[Test Harness Service] --> [Comparison Engine]
+[Test Harness Service] --> [Agent Gateway API (FastAPI)] : production-path specialist execution
+[Agent Gateway API (FastAPI)] --> [Test Harness Service] : admin-driven evaluation flows
 
 [Workflow Graph Engine] --> [Template Renderer]
 [Workflow Graph Engine] --> [Rules Engine]
@@ -144,6 +165,11 @@ package "AWS Production Deployment" {
 [Workflow Graph Engine] --> [Audit Logs]
 [Workflow Graph Engine] --> [Agent Registry]
 [Workflow Graph Engine] --> [Prompt Registry]
+[Test Harness Service] --> [Audit Logs]
+[Test Harness Service] --> [Agent Registry]
+[Test Harness Service] --> [Prompt Registry]
+[Test Harness Service] --> [Object Storage]
+[Test Harness Service] --> [PostgreSQL]
 
 [Route 53] --> [ACM]
 [Route 53] --> [CloudFront]
