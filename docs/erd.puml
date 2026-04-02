@@ -463,8 +463,9 @@ user message -> model run -> workspace updates
 end note
 
 note bottom of agent_test_runs
-Stores evaluation-specific interpretation of a transcript,
-while canonical production-path execution remains in agent_runs.
+Stores evaluation-specific transcript execution, scorecards,
+and review artifacts, while canonical product conversation
+execution remains in agent_runs.
 end note
 
 @enduml

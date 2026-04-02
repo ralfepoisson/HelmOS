@@ -21,6 +21,53 @@ class FixtureListResponse(BaseModel):
     fixtures: list[FixtureSummary] = Field(default_factory=list)
 
 
+class CreateAgentTestRunRequest(BaseModel):
+    target_agent_key: str
+    fixture_key: str
+    fixture_version: str | None = None
+    test_mode: str = "single_agent_benchmark"
+    suite_key: str | None = None
+    target_model_name: str | None = None
+    testing_agent_model_name: str | None = None
+    operator_notes: str | None = None
+
+
+class AgentTestRunSummaryResponse(BaseModel):
+    id: str
+    suite_key: str | None = None
+    test_mode: str
+    target_agent_key: str
+    target_agent_version: str | None = None
+    target_model_name: str | None = None
+    testing_agent_model_name: str | None = None
+    fixture_key: str
+    fixture_version: str
+    rubric_version: str
+    driver_version: str
+    status: str
+    actual_turns: int
+    min_turns: int
+    overall_score: float
+    aggregate_confidence: float
+    verdict: str
+    review_required: bool
+    summary: str | None = None
+    operator_notes: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentTestRunListResponse(BaseModel):
+    runs: list[AgentTestRunSummaryResponse] = Field(default_factory=list)
+
+
+class AgentTestRunDetailResponse(AgentTestRunSummaryResponse):
+    report_markdown: str | None = None
+    report_json: dict = Field(default_factory=dict)
+    metadata_json: dict = Field(default_factory=dict)
+    snapshots: list[dict] = Field(default_factory=list)
+
+
 class AgentTestTurnInput(BaseModel):
     turn_index: int
     actor_type: str

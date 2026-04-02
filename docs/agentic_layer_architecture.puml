@@ -39,6 +39,7 @@ package "Specialist Agents" {
 
 package "Agent Testing Framework" {
   [Test Harness Service]
+  [Agent Test Execution Service]
   [Scenario Driver]
   [Fixture Repository]
   [Rubric Registry]
@@ -132,12 +133,20 @@ package "AWS Production Deployment" {
 [Workflow Graph Engine] --> [Architecture Agent]
 [Workflow Graph Engine] --> [Artifact Agent]
 [Test Harness Service] --> [Scenario Driver]
+[Test Harness Service] --> [Agent Test Execution Service]
+[Agent Test Execution Service] --> [Scenario Driver]
+[Agent Test Execution Service] --> [Fixture Repository]
+[Agent Test Execution Service] --> [Rubric Registry]
+[Agent Test Execution Service] --> [Report Renderer]
+[Agent Test Execution Service] --> [Ideation Agent]
+[Agent Test Execution Service] --> [Value Proposition Agent]
 [Test Harness Service] --> [Fixture Repository]
 [Test Harness Service] --> [Rubric Registry]
 [Test Harness Service] --> [Testing Agent]
 [Test Harness Service] --> [Report Renderer]
 [Test Harness Service] --> [Comparison Engine]
-[Test Harness Service] --> [Agent Gateway API (FastAPI)] : production-path specialist execution
+[Test Harness Service] --> [Agent Gateway API (FastAPI)] : admin-driven execution and evaluation
+[Agent Test Execution Service] --> [Agent Gateway API (FastAPI)] : production-path specialist execution
 [Agent Gateway API (FastAPI)] --> [Test Harness Service] : admin-driven evaluation flows
 
 [Workflow Graph Engine] --> [Template Renderer]
