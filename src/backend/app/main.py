@@ -1,5 +1,6 @@
 """FastAPI application entrypoint."""
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,6 +10,7 @@ from app.api.api_router import api_router
 from app.config.logging import configure_logging
 from app.config.settings import get_cors_allowed_origins, get_settings
 from app.repositories.database import DatabaseManager
+from app.workers.agent_test_tasks import run_agent_test_worker
 
 
 @asynccontextmanager
@@ -19,9 +21,22 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.database = database
     await database.initialize()
+    agent_test_worker_stop = asyncio.Event()
+    agent_test_worker_task = None
+    if settings.agent_test_worker_enabled:
+        agent_test_worker_task = asyncio.create_task(
+            run_agent_test_worker(database.session_factory, settings, agent_test_worker_stop)
+        )
     try:
         yield
     finally:
+        if agent_test_worker_task is not None:
+            agent_test_worker_stop.set()
+            agent_test_worker_task.cancel()
+            try:
+                await agent_test_worker_task
+            except asyncio.CancelledError:
+                pass
         await database.dispose()
 
 

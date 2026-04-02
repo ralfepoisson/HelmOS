@@ -82,6 +82,8 @@ class Settings(BaseSettings):
     supervisor_model: str = Field(default="helmos-supervisor", alias="HELMOS_SUPERVISOR_MODEL")
     vector_dimensions: int = Field(default=1536, alias="HELMOS_VECTOR_DIMENSIONS")
     enable_approvals: bool = Field(default=True, alias="HELMOS_ENABLE_APPROVALS")
+    agent_test_worker_enabled: bool = Field(default=True, alias="HELMOS_AGENT_TEST_WORKER_ENABLED")
+    agent_test_worker_poll_seconds: float = Field(default=2.0, alias="HELMOS_AGENT_TEST_WORKER_POLL_SECONDS")
     cors_allowed_origins_raw: str = Field(
         default="http://127.0.0.1:4210,http://localhost:4210,http://127.0.0.1:4200,http://localhost:4200",
         alias="HELMOS_CORS_ALLOWED_ORIGINS",

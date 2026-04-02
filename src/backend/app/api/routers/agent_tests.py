@@ -6,15 +6,9 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import build_specialist_registry, get_db_session, get_settings
+from app.api.deps import get_db_session, get_settings
 from app.config.settings import Settings
-from app.models.agent_test import (
-    AgentTestAnnotation,
-    AgentTestRun,
-    AgentTestRunSnapshot,
-    AgentTestScore,
-    AgentTestTurn,
-)
+from app.models.agent_test import AgentTestRun, AgentTestRunSnapshot
 from app.repositories.registry_repository import RegistryRepository
 from app.repositories.agent_test_repository import AgentTestRepository
 from app.schemas.common import StatusResponse
@@ -30,17 +24,12 @@ from app.schemas.agent_test import (
     EvaluateTranscriptRequest,
 )
 from app.services.agent_test_fixtures import AgentTestFixtureRepository
-from app.services.agent_test_execution import AgentTestExecutionService
 from app.services.agent_test_reporting import AgentTestReportRenderer
 from app.services.agent_test_rubrics import RubricRegistry
 from app.services.agent_test_scoring import AgentTestScoringService
 
 
 router = APIRouter()
-
-
-def _checksum_text(value: str) -> str:
-    return f"sha256:{hashlib.sha256(value.encode('utf-8')).hexdigest()}"
 
 
 def _to_run_summary(run: AgentTestRun) -> AgentTestRunSummaryResponse:
@@ -244,13 +233,13 @@ async def execute_agent_test_run(
     db: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
 ) -> AgentTestRunDetailResponse:
-    """Execute a configured run through the live specialist runtime path."""
+    """Queue a configured run for background execution and capture immutable runtime snapshots."""
 
     repository = AgentTestRepository(db)
     run = await repository.get_run(run_id)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent test run not found.")
-    if run.status not in {"draft", "failed"}:
+    if run.status not in {"draft", "failed", "queued"}:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Run cannot be executed from status '{run.status}'.",
@@ -264,19 +253,6 @@ async def execute_agent_test_run(
             detail=f"Unknown active target agent '{run.target_agent_key}'.",
         )
     prompt_config = await registry_repository.get_prompt_config_for_agent(run.target_agent_key)
-    specialist_registry = build_specialist_registry(
-        settings,
-        registry_repository=registry_repository,
-    )
-    runtime_agent = await specialist_registry.get(run.target_agent_key)
-    fixture_repository = AgentTestFixtureRepository()
-    fixture = fixture_repository.load_fixture(run.fixture_key, run.fixture_version)
-    rubric = RubricRegistry().get(
-        run.target_agent_key,
-        fixture.scenario_dimensions,
-        run.rubric_version,
-    )
-
     identity_path = _resolve_identity_markdown_path(run.target_agent_key)
     existing_snapshot_types = {snapshot.snapshot_type for snapshot in await repository.list_snapshots_for_run(run.id)}
 
@@ -312,6 +288,13 @@ async def execute_agent_test_run(
         )
 
     if "composed_system_prompt" not in existing_snapshot_types:
+        from app.api.deps import build_specialist_registry
+
+        specialist_registry = build_specialist_registry(
+            settings,
+            registry_repository=registry_repository,
+        )
+        runtime_agent = await specialist_registry.get(run.target_agent_key)
         await repository.add_snapshot(
             AgentTestRunSnapshot(
                 test_run_id=run.id,
@@ -336,80 +319,15 @@ async def execute_agent_test_run(
             )
         )
 
-    run.status = "running"
-    run.summary = "Execution started. The specialist runtime is producing a transcript for evaluation."
+    run.status = "queued"
+    run.summary = "Execution requested. The run is queued for background execution."
     run.metadata_json = {
         **(run.metadata_json or {}),
         "execution_requested": True,
+        "queued_for_execution": True,
     }
     await db.commit()
     await db.refresh(run)
-    try:
-        await repository.clear_execution_artifacts(run.id)
-        execution = await AgentTestExecutionService().execute(
-            run=run,
-            fixture=fixture,
-            rubric=rubric,
-            runtime_agent=runtime_agent,
-            identity_markdown_path=str(identity_path) if identity_path is not None else None,
-        )
-        for turn in execution.turns:
-            await repository.add_turn(
-                AgentTestTurn(
-                    test_run_id=run.id,
-                    turn_index=turn.turn_index,
-                    actor_type=turn.actor_type,
-                    message_role=turn.message_role,
-                    message_text=turn.message_text,
-                    structured_payload=turn.structured_payload,
-                    token_usage_json=turn.token_usage_json,
-                    metadata_json=turn.metadata_json,
-                )
-            )
-        for annotation in execution.annotations:
-            await repository.add_annotation(
-                AgentTestAnnotation(
-                    test_run_id=run.id,
-                    turn_index=annotation.turn_index,
-                    actor_type=annotation.actor_type,
-                    tag=annotation.tag,
-                    severity=annotation.severity,
-                    confidence=annotation.confidence,
-                    evidence_text=annotation.evidence_text,
-                    evidence_span=annotation.evidence_span,
-                    linked_scoring_dimensions=annotation.linked_scoring_dimensions,
-                    source_type=annotation.source_type,
-                    metadata_json=annotation.metadata_json,
-                )
-            )
-        for score in execution.scores:
-            await repository.add_score(
-                AgentTestScore(
-                    test_run_id=run.id,
-                    layer_key=score.layer_key,
-                    dimension_key=score.dimension_key,
-                    raw_score=score.raw_score,
-                    normalized_score=score.normalized_score,
-                    weight_percent=score.weight_percent,
-                    blocking=score.blocking,
-                    blocking_threshold=score.blocking_threshold,
-                    confidence=score.confidence,
-                    evidence_turn_refs=score.evidence_turn_refs,
-                    metadata_json={},
-                )
-            )
-        await db.commit()
-        await db.refresh(run)
-    except Exception as exc:
-        run.status = "failed"
-        run.summary = f"Execution failed: {exc}"
-        run.metadata_json = {
-            **(run.metadata_json or {}),
-            "execution_error": str(exc),
-        }
-        await db.commit()
-        await db.refresh(run)
-        raise
 
     snapshots = await repository.list_snapshots_for_run(run.id)
     summary = _to_run_summary(run)

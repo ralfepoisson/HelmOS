@@ -47,6 +47,15 @@ class AgentTestRepository(SQLAlchemyRepository):
         )
         return list(result.scalars().all())
 
+    async def list_runs_by_status(self, status: str, *, limit: int = 10) -> list[AgentTestRun]:
+        result = await self.session.execute(
+            select(AgentTestRun)
+            .where(AgentTestRun.status == status)
+            .order_by(AgentTestRun.created_at.asc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
     async def list_snapshots_for_run(self, run_id: str) -> list[AgentTestRunSnapshot]:
         result = await self.session.execute(
             select(AgentTestRunSnapshot)
