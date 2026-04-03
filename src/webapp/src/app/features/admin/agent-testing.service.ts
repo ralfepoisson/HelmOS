@@ -101,6 +101,14 @@ export class AgentTestingService {
     return this.requestWithFallback<AgentTestRunDetail>(`/admin/agent-tests/runs/${runId}/execute`, 'POST', {});
   }
 
+  async stopRun(runId: string): Promise<AgentTestRunDetail> {
+    return this.requestWithFallback<AgentTestRunDetail>(`/admin/agent-tests/runs/${runId}/stop`, 'POST', {});
+  }
+
+  async resumeRun(runId: string): Promise<AgentTestRunDetail> {
+    return this.requestWithFallback<AgentTestRunDetail>(`/admin/agent-tests/runs/${runId}/resume`, 'POST', {});
+  }
+
   async deleteRun(runId: string): Promise<void> {
     await this.requestWithFallback<{ status: string; detail?: string }>(`/admin/agent-tests/runs/${runId}`, 'DELETE');
   }

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import asyncio
+import structlog
 
 from app.models.agent_test import AgentTestRun
 from app.schemas.agent import AgentExecutionInput, AgentExecutionOutput
@@ -12,6 +14,14 @@ from app.services.agent_test_fixtures import AgentTestFixture
 from app.services.agent_test_reporting import AgentTestReportRenderer
 from app.services.agent_test_rubrics import RubricDefinition
 from app.services.agent_test_scoring import AgentTestScoringService, ComputedDimensionScore, ComputedEvaluation
+from app.services.runtime_log import persist_runtime_log
+
+
+logger = structlog.get_logger(__name__)
+
+
+class AgentTestExecutionStopped(Exception):
+    """Raised when an operator requests that a running test stop."""
 
 
 @dataclass(slots=True)
@@ -46,7 +56,23 @@ class AgentTestExecutionService:
         rubric: RubricDefinition,
         runtime_agent,
         identity_markdown_path: str | None,
+        stop_event: asyncio.Event | None = None,
     ) -> AgentTestExecutionResult:
+        await persist_runtime_log(
+            level="info",
+            scope="agent-test-execution",
+            event="agent_test_execution_started",
+            message=f"Started agent test execution for run {run.id}",
+            context={
+                "run_id": run.id,
+                "target_agent_key": run.target_agent_key,
+                "fixture_key": fixture.fixture_key,
+                "fixture_version": fixture.fixture_version,
+                "min_turns": fixture.min_turns,
+                "max_turns": fixture.max_turns,
+            },
+            full_context=True,
+        )
         transcript: list[AgentTestTurnInput] = []
         state = ScenarioState(
             known_to_user=self._known_user_facts(fixture),
@@ -67,12 +93,16 @@ class AgentTestExecutionService:
 
         stop_reason = "max_turns_reached"
         while len(transcript) < fixture.max_turns:
+            self._raise_if_stopped(run.id, stop_event)
+            logger.info("agent_test_execution.turn_started", run_id=run.id, transcript_length=len(transcript))
             agent_reply, output = await self._run_target_agent(
                 run=run,
                 runtime_agent=runtime_agent,
                 transcript=transcript,
                 latest_user_message=latest_user_message,
+                stop_event=stop_event,
             )
+            self._raise_if_stopped(run.id, stop_event)
             transcript.append(
                 AgentTestTurnInput(
                     turn_index=len(transcript) + 1,
@@ -102,6 +132,7 @@ class AgentTestExecutionService:
                 transcript=transcript,
                 agent_message=agent_reply,
             )
+            self._raise_if_stopped(run.id, stop_event)
             transcript.append(
                 AgentTestTurnInput(
                     turn_index=len(transcript) + 1,
@@ -166,6 +197,22 @@ class AgentTestExecutionService:
             "stop_reason": stop_reason,
         }
         run.metadata_json = metadata_json
+        await persist_runtime_log(
+            level="info",
+            scope="agent-test-execution",
+            event="agent_test_execution_completed",
+            message=f"Completed agent test execution for run {run.id}",
+            context={
+                "run_id": run.id,
+                "actual_turns": run.actual_turns,
+                "verdict": run.verdict,
+                "overall_score": run.overall_score,
+                "aggregate_confidence": run.aggregate_confidence,
+                "stop_reason": stop_reason,
+                "revealed_fact_ids": sorted(state.revealed_fact_ids),
+            },
+            full_context=True,
+        )
 
         return AgentTestExecutionResult(
             run=run,
@@ -185,7 +232,22 @@ class AgentTestExecutionService:
         runtime_agent,
         transcript: list[AgentTestTurnInput],
         latest_user_message: str,
+        stop_event: asyncio.Event | None,
     ) -> tuple[str, AgentExecutionOutput]:
+        self._raise_if_stopped(run.id, stop_event)
+        await persist_runtime_log(
+            level="info",
+            scope="agent-test-execution",
+            event="agent_test_turn_agent_call_started",
+            message=f"Starting target agent call for run {run.id}",
+            context={
+                "run_id": run.id,
+                "transcript_length": len(transcript),
+                "latest_user_message": latest_user_message,
+                "model": run.target_model_name,
+            },
+            full_context=True,
+        )
         output = await runtime_agent.execute(
             AgentExecutionInput(
                 session_id=f"agent-test-{run.id}",
@@ -203,7 +265,27 @@ class AgentTestExecutionService:
                 requested_artifact_kind=run.target_agent_key,
             )
         )
-        return self._extract_agent_reply(output), output
+        self._raise_if_stopped(run.id, stop_event)
+        reply = self._extract_agent_reply(output)
+        await persist_runtime_log(
+            level="info",
+            scope="agent-test-execution",
+            event="agent_test_turn_agent_call_completed",
+            message=f"Completed target agent call for run {run.id}",
+            context={
+                "run_id": run.id,
+                "transcript_length": len(transcript),
+                "reply": reply,
+                "artifact": output.artifact.model_dump(mode="json"),
+                "structured_output": output.structured_output,
+            },
+            full_context=True,
+        )
+        return reply, output
+
+    def _raise_if_stopped(self, run_id: str, stop_event: asyncio.Event | None) -> None:
+        if stop_event is not None and stop_event.is_set():
+            raise AgentTestExecutionStopped(f"Execution stopped by operator for run {run_id}.")
 
     def _extract_agent_reply(self, output: AgentExecutionOutput) -> str:
         structured = output.structured_output or {}

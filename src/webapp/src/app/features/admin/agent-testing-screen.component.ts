@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectorRef, Component, HostListener, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, HostListener, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
@@ -199,7 +199,7 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
               <button
                 type="button"
                 class="delete-action-button"
-                [disabled]="deleteActionInFlight || runActionInFlight"
+                [disabled]="deleteActionInFlight || runActionInFlight || stopActionInFlight || resumeActionInFlight || canStopSelectedRun"
                 aria-label="Delete test run configuration"
                 title="Delete test run configuration"
                 (click)="deleteSelectedRun()"
@@ -208,13 +208,23 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
               </button>
 
               <button
-                *ngIf="canExecuteSelectedRun"
+                *ngIf="canStopSelectedRun"
+                type="button"
+                class="btn btn-warning btn-lg run-action-button"
+                [disabled]="stopActionInFlight || runActionInFlight || resumeActionInFlight || deleteActionInFlight"
+                (click)="stopSelectedRun()"
+              >
+                {{ stopActionInFlight ? 'Stopping…' : 'Stop' }}
+              </button>
+
+              <button
+                *ngIf="canExecuteSelectedRun || canResumeSelectedRun"
                 type="button"
                 class="btn btn-success btn-lg run-action-button"
-                [disabled]="runActionInFlight || deleteActionInFlight"
-                (click)="executeSelectedRun()"
+                [disabled]="runActionInFlight || resumeActionInFlight || stopActionInFlight || deleteActionInFlight"
+                (click)="canResumeSelectedRun ? resumeSelectedRun() : executeSelectedRun()"
               >
-                {{ runActionInFlight ? 'Starting…' : 'Run' }}
+                {{ primaryActionLabel }}
               </button>
             </div>
           </div>
@@ -920,7 +930,7 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
     `
   ]
 })
-export class AgentTestingScreenComponent implements OnInit {
+export class AgentTestingScreenComponent implements OnInit, OnDestroy {
   protected readonly shell = inject(WorkspaceShellService);
   private readonly agentAdminService = inject(AgentAdminService);
   private readonly agentTestingService = inject(AgentTestingService);
@@ -941,6 +951,8 @@ export class AgentTestingScreenComponent implements OnInit {
   protected modalError: string | null = null;
   protected creatingRun = false;
   protected runActionInFlight = false;
+  protected stopActionInFlight = false;
+  protected resumeActionInFlight = false;
   protected deleteActionInFlight = false;
 
   protected selectedAgentKey: string | null = null;
@@ -961,7 +973,13 @@ export class AgentTestingScreenComponent implements OnInit {
       return 'Saving draft run…';
     }
     if (this.runActionInFlight) {
-      return 'Queueing test run…';
+      return 'Starting test run…';
+    }
+    if (this.stopActionInFlight) {
+      return 'Stopping test run…';
+    }
+    if (this.resumeActionInFlight) {
+      return 'Resuming test run…';
     }
     if (this.loadError) {
       return 'Agent testing unavailable';
@@ -1003,9 +1021,33 @@ export class AgentTestingScreenComponent implements OnInit {
     return !!this.selectedRun && ['draft', 'failed'].includes(this.selectedRun.status);
   }
 
+  protected get canStopSelectedRun(): boolean {
+    return !!this.selectedRun && ['queued', 'running', 'stopping'].includes(this.selectedRun.status);
+  }
+
+  protected get canResumeSelectedRun(): boolean {
+    return !!this.selectedRun && ['stopped', 'failed'].includes(this.selectedRun.status);
+  }
+
+  protected get primaryActionLabel(): string {
+    if (!this.selectedRun) {
+      return 'Run';
+    }
+    if (this.canResumeSelectedRun) {
+      return this.resumeActionInFlight ? 'Resuming…' : 'Resume';
+    }
+    return this.runActionInFlight ? 'Starting…' : 'Start';
+  }
+
+  private runRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
   async ngOnInit(): Promise<void> {
     await Promise.all([this.loadAgents(), this.loadFixtures()]);
     this.changeDetector.detectChanges();
+  }
+
+  ngOnDestroy(): void {
+    this.clearRunRefreshTimer();
   }
 
   protected openNewRunModal(): void {
@@ -1046,6 +1088,7 @@ export class AgentTestingScreenComponent implements OnInit {
     this.changeDetector.detectChanges();
     try {
       this.selectedRun = await this.agentTestingService.getRun(runId);
+      this.syncRunRefreshTimer();
     } finally {
       this.loadingRunDetail = false;
       this.changeDetector.detectChanges();
@@ -1096,8 +1139,54 @@ export class AgentTestingScreenComponent implements OnInit {
       if (this.selectedAgentKey) {
         await this.loadRuns(this.selectedAgentKey, updatedRun.id);
       }
+      await this.hydrateSelectedRunDetail(updatedRun.id);
     } finally {
       this.runActionInFlight = false;
+      this.syncRunRefreshTimer();
+      this.changeDetector.detectChanges();
+    }
+  }
+
+  protected async stopSelectedRun(): Promise<void> {
+    if (!this.selectedRun || this.stopActionInFlight || !this.canStopSelectedRun) {
+      return;
+    }
+
+    this.stopActionInFlight = true;
+    try {
+      const updatedRun = await this.agentTestingService.stopRun(this.selectedRun.id);
+      this.selectedRun = updatedRun;
+      this.selectedRunKey = updatedRun.id;
+      this.runs = this.runs.map((run) => (run.id === updatedRun.id ? { ...run, ...updatedRun } : run));
+      if (this.selectedAgentKey) {
+        await this.loadRuns(this.selectedAgentKey, updatedRun.id);
+      }
+      await this.hydrateSelectedRunDetail(updatedRun.id);
+    } finally {
+      this.stopActionInFlight = false;
+      this.syncRunRefreshTimer();
+      this.changeDetector.detectChanges();
+    }
+  }
+
+  protected async resumeSelectedRun(): Promise<void> {
+    if (!this.selectedRun || this.resumeActionInFlight || !this.canResumeSelectedRun) {
+      return;
+    }
+
+    this.resumeActionInFlight = true;
+    try {
+      const updatedRun = await this.agentTestingService.resumeRun(this.selectedRun.id);
+      this.selectedRun = updatedRun;
+      this.selectedRunKey = updatedRun.id;
+      this.runs = this.runs.map((run) => (run.id === updatedRun.id ? { ...run, ...updatedRun } : run));
+      if (this.selectedAgentKey) {
+        await this.loadRuns(this.selectedAgentKey, updatedRun.id);
+      }
+      await this.hydrateSelectedRunDetail(updatedRun.id);
+    } finally {
+      this.resumeActionInFlight = false;
+      this.syncRunRefreshTimer();
       this.changeDetector.detectChanges();
     }
   }
@@ -1147,6 +1236,7 @@ export class AgentTestingScreenComponent implements OnInit {
     } catch {
       // Keep the newly created draft visible even if detail hydration is delayed.
     } finally {
+      this.syncRunRefreshTimer();
       this.changeDetector.detectChanges();
     }
   }
@@ -1238,6 +1328,9 @@ export class AgentTestingScreenComponent implements OnInit {
         const match = this.runs.find((run) => run.id === nextRunId);
         if (match) {
           this.selectedRunKey = match.id;
+          if (!this.selectedRun || this.selectedRun.id !== match.id) {
+            void this.hydrateSelectedRunDetail(match.id);
+          }
           return;
         }
       }
@@ -1245,7 +1338,30 @@ export class AgentTestingScreenComponent implements OnInit {
       this.selectedRun = null;
     } finally {
       this.loadingRuns = false;
+      this.syncRunRefreshTimer();
       this.changeDetector.detectChanges();
+    }
+  }
+
+  private syncRunRefreshTimer(): void {
+    if (this.selectedRun && ['queued', 'running', 'stopping'].includes(this.selectedRun.status)) {
+      if (!this.runRefreshTimer) {
+        this.runRefreshTimer = setInterval(() => {
+          if (this.selectedRunKey) {
+            void this.hydrateSelectedRunDetail(this.selectedRunKey);
+          }
+        }, 2500);
+      }
+      return;
+    }
+
+    this.clearRunRefreshTimer();
+  }
+
+  private clearRunRefreshTimer(): void {
+    if (this.runRefreshTimer) {
+      clearInterval(this.runRefreshTimer);
+      this.runRefreshTimer = null;
     }
   }
 

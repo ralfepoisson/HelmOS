@@ -95,9 +95,11 @@ class LLMGateway:
                 "model": model,
                 "temperature": temperature,
                 "metadata": metadata or {},
+                "request": request_payload,
                 "system_prompt": system_prompt,
                 "user_prompt": user_prompt,
             },
+            full_context=True,
         )
         await persist_run_audit_log(
             run_id=run_id,
@@ -135,6 +137,9 @@ class LLMGateway:
             provider=self.provider,
             model=model,
             metadata=metadata or {},
+            request=request_payload,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
         )
         try:
             response = await self._client.chat.completions.create(
@@ -157,10 +162,12 @@ class LLMGateway:
                     "model": model,
                     "temperature": temperature,
                     "metadata": metadata or {},
+                    "request": request_payload,
                     "system_prompt": system_prompt,
                     "user_prompt": user_prompt,
                     "error": str(exc),
                 },
+                full_context=True,
             )
             await persist_run_audit_log(
                 run_id=run_id,
@@ -196,15 +203,18 @@ class LLMGateway:
                 },
             )
             raise
+        content = response.choices[0].message.content or ""
+        usage_payload = _json_safe(getattr(response, "usage", None))
+        response_payload = response.model_dump(mode="json") if hasattr(response, "model_dump") else None
         logger.info(
             "llm_gateway.response",
             provider=self.provider,
             model=model,
             usage=getattr(response, "usage", None),
+            metadata=metadata or {},
+            response_content=content,
+            response=response_payload,
         )
-        content = response.choices[0].message.content or ""
-        usage_payload = _json_safe(getattr(response, "usage", None))
-        response_payload = response.model_dump(mode="json") if hasattr(response, "model_dump") else None
         await persist_runtime_log(
             level="info",
             scope="llm-gateway",
@@ -216,9 +226,12 @@ class LLMGateway:
                 "model": model,
                 "temperature": temperature,
                 "metadata": metadata or {},
+                "request": request_payload,
                 "usage": usage_payload,
-                "response_preview": content,
+                "response_content": content,
+                "response": response_payload,
             },
+            full_context=True,
         )
         await persist_run_audit_log(
             run_id=run_id,

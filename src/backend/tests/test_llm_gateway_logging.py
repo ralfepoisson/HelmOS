@@ -89,3 +89,10 @@ async def test_llm_gateway_persists_full_request_and_response_audit_logs(monkeyp
     assert succeeded["payload"]["response"]["choices"][0]["message"]["content"] == '{"reply_to_user":{"content":"Hello"}}'
     assert runtime_logs[0]["event"] == "llm_completion_requested"
     assert runtime_logs[1]["event"] == "llm_completion_succeeded"
+    assert runtime_logs[0]["full_context"] is True
+    assert runtime_logs[1]["full_context"] is True
+    assert runtime_logs[0]["context"]["request"]["messages"][0]["content"] == "system prompt text"
+    assert runtime_logs[0]["context"]["request"]["messages"][1]["content"] == "user prompt text"
+    assert runtime_logs[1]["context"]["request"]["messages"][0]["content"] == "system prompt text"
+    assert runtime_logs[1]["context"]["response_content"] == '{"reply_to_user":{"content":"Hello"}}'
+    assert runtime_logs[1]["context"]["response"]["choices"][0]["message"]["content"] == '{"reply_to_user":{"content":"Hello"}}'

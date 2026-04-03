@@ -3,7 +3,7 @@
 import hashlib
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db_session, get_settings
@@ -230,6 +230,7 @@ async def get_agent_test_run(
 @router.post("/runs/{run_id}/execute", response_model=AgentTestRunDetailResponse)
 async def execute_agent_test_run(
     run_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
 ) -> AgentTestRunDetailResponse:
@@ -320,6 +321,13 @@ async def execute_agent_test_run(
         )
 
     run.status = "queued"
+    run.actual_turns = 0
+    run.overall_score = 0.0
+    run.aggregate_confidence = 0.0
+    run.verdict = "PENDING"
+    run.review_required = False
+    run.report_markdown = None
+    run.report_json = {}
     run.summary = "Execution requested. The run is queued for background execution."
     run.metadata_json = {
         **(run.metadata_json or {}),
@@ -329,6 +337,122 @@ async def execute_agent_test_run(
     await db.commit()
     await db.refresh(run)
 
+    snapshots = await repository.list_snapshots_for_run(run.id)
+    summary = _to_run_summary(run)
+    return AgentTestRunDetailResponse(
+        **summary.model_dump(),
+        report_markdown=run.report_markdown,
+        report_json=run.report_json or {},
+        metadata_json=run.metadata_json or {},
+        snapshots=[
+            {
+                "id": snapshot.id,
+                "snapshot_type": snapshot.snapshot_type,
+                "source_ref": snapshot.source_ref,
+                "checksum": snapshot.checksum,
+                "created_at": snapshot.created_at,
+            }
+            for snapshot in snapshots
+        ],
+    )
+
+
+@router.post("/runs/{run_id}/stop", response_model=AgentTestRunDetailResponse)
+async def stop_agent_test_run(
+    run_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> AgentTestRunDetailResponse:
+    """Request that a queued or running test stop."""
+
+    repository = AgentTestRepository(db)
+    run = await repository.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent test run not found.")
+
+    if run.status == "queued":
+        run.status = "stopped"
+        run.summary = "Execution stopped before the worker started the run."
+        run.metadata_json = {
+            **(run.metadata_json or {}),
+            "execution_stopped_manually": True,
+            "stop_requested": False,
+        }
+    elif run.status == "running":
+        control_events = getattr(request.app.state, "agent_test_control_events", {})
+        control_event = control_events.get(run_id)
+        if control_event is not None:
+            control_event.set()
+        run.status = "stopping"
+        run.summary = "Stop requested. Waiting for the current agent call to finish."
+        run.metadata_json = {
+            **(run.metadata_json or {}),
+            "stop_requested": True,
+        }
+    elif run.status == "stopping":
+        pass
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Run cannot be stopped from status '{run.status}'.",
+        )
+
+    await db.commit()
+    await db.refresh(run)
+    snapshots = await repository.list_snapshots_for_run(run.id)
+    summary = _to_run_summary(run)
+    return AgentTestRunDetailResponse(
+        **summary.model_dump(),
+        report_markdown=run.report_markdown,
+        report_json=run.report_json or {},
+        metadata_json=run.metadata_json or {},
+        snapshots=[
+            {
+                "id": snapshot.id,
+                "snapshot_type": snapshot.snapshot_type,
+                "source_ref": snapshot.source_ref,
+                "checksum": snapshot.checksum,
+                "created_at": snapshot.created_at,
+            }
+            for snapshot in snapshots
+        ],
+    )
+
+
+@router.post("/runs/{run_id}/resume", response_model=AgentTestRunDetailResponse)
+async def resume_agent_test_run(
+    run_id: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> AgentTestRunDetailResponse:
+    """Resume a previously stopped test by re-queueing it."""
+
+    repository = AgentTestRepository(db)
+    run = await repository.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent test run not found.")
+    if run.status not in {"stopped", "failed"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Run cannot be resumed from status '{run.status}'.",
+        )
+
+    run.status = "queued"
+    run.actual_turns = 0
+    run.overall_score = 0.0
+    run.aggregate_confidence = 0.0
+    run.verdict = "PENDING"
+    run.review_required = False
+    run.report_markdown = None
+    run.report_json = {}
+    run.summary = "Execution re-queued. The worker will resume the test from the beginning."
+    run.metadata_json = {
+        **(run.metadata_json or {}),
+        "execution_stopped_manually": False,
+        "stop_requested": False,
+        "resume_requested": True,
+    }
+    await db.commit()
+    await db.refresh(run)
     snapshots = await repository.list_snapshots_for_run(run.id)
     summary = _to_run_summary(run)
     return AgentTestRunDetailResponse(

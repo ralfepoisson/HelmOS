@@ -84,9 +84,10 @@ async def persist_runtime_log(
     event: str,
     message: str,
     context: dict | None = None,
+    full_context: bool = False,
 ) -> None:
     engine = _get_engine()
-    safe_context = _to_json_safe(context or {})
+    safe_context = _to_full_json_safe(context or {}) if full_context else _to_json_safe(context or {})
     try:
         async with engine.begin() as conn:
             await conn.execute(
@@ -142,6 +143,7 @@ async def persist_runtime_log(
             event=_normalize_text(event, "runtime_log", 120),
             message_preview=(message or event or "runtime_log")[:500],
             context_preview=safe_context,
+            full_context=full_context,
         )
         return None
 

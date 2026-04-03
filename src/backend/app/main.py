@@ -20,12 +20,18 @@ async def lifespan(app: FastAPI):
     database = DatabaseManager(settings)
     app.state.settings = settings
     app.state.database = database
+    app.state.agent_test_control_events = {}
     await database.initialize()
     agent_test_worker_stop = asyncio.Event()
     agent_test_worker_task = None
     if settings.agent_test_worker_enabled:
         agent_test_worker_task = asyncio.create_task(
-            run_agent_test_worker(database.session_factory, settings, agent_test_worker_stop)
+            run_agent_test_worker(
+                database.session_factory,
+                settings,
+                agent_test_worker_stop,
+                app.state.agent_test_control_events,
+            )
         )
     try:
         yield
