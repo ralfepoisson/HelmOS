@@ -32,6 +32,10 @@ from app.services.agent_test_scoring import AgentTestScoringService
 router = APIRouter()
 
 
+def _checksum_text(value: str) -> str:
+    return f"sha256:{hashlib.sha256(value.encode('utf-8')).hexdigest()}"
+
+
 def _to_run_summary(run: AgentTestRun) -> AgentTestRunSummaryResponse:
     return AgentTestRunSummaryResponse(
         id=run.id,

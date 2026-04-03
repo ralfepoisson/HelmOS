@@ -170,7 +170,6 @@ export class AgentTestingService {
         error.status === 0 ||
         error.status === 404 ||
         error.status === 200 ||
-        (error.status >= 500 && error.status < 600) ||
         errorBody.trimStart().startsWith('<!doctype') ||
         errorBody.includes('<html')
       );
