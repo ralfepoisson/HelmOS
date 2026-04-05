@@ -11,6 +11,7 @@ package "Agent Experience Layer" {
   [Agent Gateway API (FastAPI)]
   [Agent Admin Screen]
   [Agent Test Admin Screen]
+  [Logs Admin Screen]
 }
 
 package "Identity & Access Layer" {
@@ -115,6 +116,8 @@ package "AWS Production Deployment" {
 [Agent Admin Screen] --> [Node Control Plane API] : create/update agent registry
 [Angular UI] --> [Agent Test Admin Screen]
 [Agent Test Admin Screen] --> [Agent Gateway API (FastAPI)] : fixture discovery and transcript evaluation
+[Angular UI] --> [Logs Admin Screen]
+[Logs Admin Screen] --> [Node Control Plane API] : search backend logs, filter by scope, timed refresh
 [Node Control Plane API] --> [RBAC Policy] : verify JWT, derive user context, enforce access
 [Node Control Plane API] --> [PostgreSQL] : persist workspace feature unlocks and stage availability
 [RBAC Policy] --> [PostgreSQL] : upsert local user, tenant link, app role

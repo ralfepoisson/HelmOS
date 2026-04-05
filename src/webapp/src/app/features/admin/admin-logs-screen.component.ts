@@ -1,11 +1,13 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import {
   faCheck,
   faChevronDown,
   faMagnifyingGlass,
+  faToggleOff,
+  faToggleOn,
   faRotateRight
 } from '@fortawesome/free-solid-svg-icons';
 
@@ -41,10 +43,23 @@ import {
           </p>
         </div>
 
-        <button class="btn btn-outline-secondary refresh-button" type="button" (click)="refresh()">
-          <fa-icon [icon]="rotateIcon"></fa-icon>
-          <span>Refresh</span>
-        </button>
+        <div class="hero-actions">
+          <label class="auto-refresh-toggle" for="auto-refresh-toggle">
+            <input
+              id="auto-refresh-toggle"
+              type="checkbox"
+              [ngModel]="autoRefreshEnabled"
+              (ngModelChange)="setAutoRefresh($event)"
+            />
+            <fa-icon [icon]="autoRefreshEnabled ? toggleOnIcon : toggleOffIcon"></fa-icon>
+            <span>Auto-refresh</span>
+          </label>
+
+          <button class="btn btn-outline-secondary refresh-button" type="button" (click)="refresh()">
+            <fa-icon [icon]="rotateIcon"></fa-icon>
+            <span>Refresh</span>
+          </button>
+        </div>
       </section>
 
       <section class="filters-card helmos-card">
@@ -70,6 +85,19 @@ import {
             <label class="filter-label" for="time-range">Time range</label>
             <select id="time-range" class="form-select" [(ngModel)]="timeRange" (ngModelChange)="applyFilters()">
               <option *ngFor="let option of timeRangeOptions" [value]="option.value">{{ option.label }}</option>
+            </select>
+          </div>
+
+          <div class="filter-group scope-group">
+            <label class="filter-label" for="scope-filter">Scope</label>
+            <select
+              id="scope-filter"
+              class="form-select"
+              [(ngModel)]="selectedScope"
+              (ngModelChange)="applyFilters()"
+            >
+              <option value="">All scopes</option>
+              <option *ngFor="let scope of availableScopes" [value]="scope">{{ scope }}</option>
             </select>
           </div>
         </div>
@@ -153,8 +181,7 @@ import {
                 <th>Context</th>
               </tr>
             </thead>
-            <tbody>
-              <ng-container *ngFor="let log of logs; trackBy: trackByLogId">
+            <tbody *ngFor="let log of logs; trackBy: trackByLogId">
                 <tr>
                   <td>{{ formatTimestamp(log.createdAt) }}</td>
                   <td>
@@ -175,7 +202,6 @@ import {
                     <pre>{{ stringifyContext(log.context) }}</pre>
                   </td>
                 </tr>
-              </ng-container>
             </tbody>
           </table>
         </div>
@@ -231,6 +257,38 @@ import {
         gap: 0.5rem;
       }
 
+      .hero-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .auto-refresh-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.72rem 1rem;
+        border: 1px solid var(--helmos-border);
+        border-radius: 999px;
+        background: rgba(247, 249, 252, 0.9);
+        color: var(--helmos-text);
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      .auto-refresh-toggle input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .auto-refresh-toggle fa-icon {
+        font-size: 1.15rem;
+        color: #356489;
+      }
+
       .filters-card {
         display: flex;
         justify-content: space-between;
@@ -240,7 +298,7 @@ import {
 
       .filters-main {
         display: grid;
-        grid-template-columns: minmax(0, 1.7fr) minmax(220px, 0.7fr);
+        grid-template-columns: minmax(0, 1.7fr) minmax(220px, 0.7fr) minmax(220px, 0.7fr);
         gap: 1rem;
         flex: 1;
       }
@@ -285,6 +343,11 @@ import {
       }
 
       .time-group .form-select {
+        min-height: 3rem;
+        border-radius: 0.9rem;
+      }
+
+      .scope-group .form-select {
         min-height: 3rem;
         border-radius: 0.9rem;
       }
@@ -506,12 +569,14 @@ import {
     `
   ]
 })
-export class AdminLogsScreenComponent implements OnInit {
+export class AdminLogsScreenComponent implements OnInit, OnDestroy {
   readonly shell = {
     productName: 'HelmOS'
   };
   readonly searchIcon = faMagnifyingGlass;
   readonly rotateIcon = faRotateRight;
+  readonly toggleOnIcon = faToggleOn;
+  readonly toggleOffIcon = faToggleOff;
   readonly checkIcon = faCheck;
   readonly chevronDownIcon = faChevronDown;
   readonly levelOrder: LogLevel[] = ['info', 'warn', 'error'];
@@ -527,15 +592,23 @@ export class AdminLogsScreenComponent implements OnInit {
   loadError = '';
   searchQuery = '';
   timeRange: LogTimeRange = '30m';
+  selectedScope = '';
+  autoRefreshEnabled = false;
   selectedLevels: LogLevel[] = ['info', 'warn', 'error'];
   snapshot: AdminLogsSnapshot | null = null;
   logs: AdminLogRecord[] = [];
   expandedContextIds = new Set<string>();
+  private autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly autoRefreshMs = 120_000;
 
   private readonly adminLogsService = inject(AdminLogsService);
 
   ngOnInit(): void {
     void this.refresh();
+  }
+
+  ngOnDestroy(): void {
+    this.stopAutoRefresh();
   }
 
   async refresh(): Promise<void> {
@@ -546,11 +619,16 @@ export class AdminLogsScreenComponent implements OnInit {
       const snapshot = await this.adminLogsService.listLogs({
         query: this.searchQuery,
         timeRange: this.timeRange,
-        levels: this.selectedLevels
+        levels: this.selectedLevels,
+        scope: this.selectedScope
       });
 
       this.snapshot = snapshot;
-      this.logs = snapshot.logs;
+      this.logs = [...snapshot.logs];
+      this.selectedScope = this.resolveSelectedScope(snapshot);
+      this.expandedContextIds = new Set(
+        [...this.expandedContextIds].filter((logId) => this.logs.some((log) => log.id === logId))
+      );
     } catch (error) {
       this.snapshot = null;
       this.logs = [];
@@ -562,6 +640,17 @@ export class AdminLogsScreenComponent implements OnInit {
 
   applyFilters(): void {
     void this.refresh();
+  }
+
+  setAutoRefresh(enabled: boolean): void {
+    this.autoRefreshEnabled = enabled;
+
+    if (enabled) {
+      this.startAutoRefresh();
+      return;
+    }
+
+    this.stopAutoRefresh();
   }
 
   toggleLevel(level: LogLevel): void {
@@ -610,6 +699,10 @@ export class AdminLogsScreenComponent implements OnInit {
     return JSON.stringify(context ?? {}, null, 2);
   }
 
+  get availableScopes(): string[] {
+    return this.snapshot?.availableScopes ?? [];
+  }
+
   formatTimestamp(value: string): string {
     return new Date(value).toLocaleString(undefined, {
       month: 'short',
@@ -623,5 +716,27 @@ export class AdminLogsScreenComponent implements OnInit {
 
   trackByLogId(_index: number, log: AdminLogRecord): string {
     return log.id;
+  }
+
+  private startAutoRefresh(): void {
+    this.stopAutoRefresh();
+    this.autoRefreshTimer = setInterval(() => {
+      void this.refresh();
+    }, this.autoRefreshMs);
+  }
+
+  private stopAutoRefresh(): void {
+    if (this.autoRefreshTimer != null) {
+      clearInterval(this.autoRefreshTimer);
+      this.autoRefreshTimer = null;
+    }
+  }
+
+  private resolveSelectedScope(snapshot: AdminLogsSnapshot): string {
+    if (snapshot.filters.scope && snapshot.availableScopes.includes(snapshot.filters.scope)) {
+      return snapshot.filters.scope;
+    }
+
+    return snapshot.filters.scope ?? '';
   }
 }

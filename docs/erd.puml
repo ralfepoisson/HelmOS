@@ -390,6 +390,17 @@ package "Audit" {
     payload : JSONB
     created_at : TIMESTAMP
   }
+
+  entity "log_entries" as log_entries {
+    *id : UUID <<PK>>
+    --
+    level : VARCHAR(20)
+    scope : VARCHAR(120)
+    event : VARCHAR(120)
+    message : TEXT
+    context : JSONB
+    created_at : TIMESTAMP
+  }
 }
 
 organisations ||--o{ organisation_members

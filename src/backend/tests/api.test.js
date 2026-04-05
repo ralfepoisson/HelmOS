@@ -2451,8 +2451,104 @@ test("GET /api/admin/logs returns filtered backend log entries", async () => {
   assert.equal(response.body.data.summary.matchingLogs, 1);
   assert.equal(response.body.data.summary.filtered.warn, 1);
   assert.equal(response.body.data.summary.stored.info, 1);
+  assert.deepEqual(response.body.data.availableScopes, ["snapshot-service"]);
+  assert.equal(response.body.data.filters.scope, "");
   assert.equal(response.body.data.logs[0].event, "widget_snapshot_failed");
-  assert.equal(prisma.logEntry.createCalls.length, 1);
+  assert.equal(prisma.logEntry.createCalls.length, 0);
+});
+
+test("GET /api/admin/logs filters backend log entries by scope", async () => {
+  const logEntries = [
+    {
+      id: "log-1",
+      level: "info",
+      scope: "admin",
+      event: "get_admin_agents_200",
+      message: "GET /api/admin/agents responded with 200",
+      context: {},
+      createdAt: "2026-03-23T20:58:20.000Z",
+    },
+    {
+      id: "log-2",
+      level: "info",
+      scope: "agent-test-execution",
+      event: "agent_test_execution_started",
+      message: "Agent test execution started.",
+      context: {},
+      createdAt: "2026-03-23T20:57:20.000Z",
+    },
+  ];
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    logEntry: {
+      createCalls: [],
+      lastFindManyArgs: null,
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: "request-log-1", ...data };
+      },
+      async findMany(args) {
+        this.lastFindManyArgs = args;
+        return logEntries.filter((entry) => entry.scope === args.where.scope);
+      },
+      async count({ where }) {
+        return logEntries.filter((entry) => entry.level === where.level).length;
+      },
+    },
+  };
+
+  const app = createApp({ prisma });
+  const response = await withAuth(request(app).get("/api/admin/logs?scope=agent-test-execution"), {
+    email: "ralfepoisson@gmail.com",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(prisma.logEntry.lastFindManyArgs.where.scope, "agent-test-execution");
+  assert.equal(response.body.data.filters.scope, "agent-test-execution");
+  assert.equal(response.body.data.summary.matchingLogs, 1);
+  assert.equal(response.body.data.logs[0].event, "agent_test_execution_started");
+});
+
+test("GET /api/admin/logs does not create a request log entry for itself", async () => {
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: "request-log-1", ...data };
+      },
+      async findMany() {
+        return [];
+      },
+      async count() {
+        return 0;
+      },
+    },
+  };
+
+  const app = createApp({ prisma });
+  const response = await withAuth(request(app).get("/api/admin/logs"), {
+    email: "ralfepoisson@gmail.com",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(prisma.logEntry.createCalls.length, 0);
 });
 
 test("agent gateway client persists outbound agentic-layer API logs", async () => {

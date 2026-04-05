@@ -18,10 +18,12 @@ export interface AdminLogRecord {
 
 export interface AdminLogsSnapshot {
   availableLevels: LogLevel[];
+  availableScopes: string[];
   filters: {
     query: string;
     timeRange: LogTimeRange;
     levels: LogLevel[];
+    scope: string;
   };
   summary: {
     matchingLogs: number;
@@ -48,6 +50,7 @@ export class AdminLogsService {
     query?: string;
     timeRange?: LogTimeRange;
     levels?: LogLevel[];
+    scope?: string;
   }): Promise<AdminLogsSnapshot> {
     const query = new URLSearchParams();
 
@@ -61,6 +64,10 @@ export class AdminLogsService {
 
     if (filters.levels && filters.levels.length > 0) {
       query.set('levels', filters.levels.join(','));
+    }
+
+    if (filters.scope?.trim()) {
+      query.set('scope', filters.scope.trim());
     }
 
     const path = `/admin/logs${query.size > 0 ? `?${query.toString()}` : ''}`;

@@ -33,6 +33,10 @@ function buildLevel(statusCode) {
   return "info";
 }
 
+function shouldSuppressRequestLog(method, pathname) {
+  return method === "GET" && pathname === "/api/admin/logs";
+}
+
 function buildRequestLogger({ prisma }) {
   return (req, res, next) => {
     let logged = false;
@@ -40,12 +44,13 @@ function buildRequestLogger({ prisma }) {
     const originalSend = res.send.bind(res);
 
     const persistLogEntry = async (body) => {
-      if (logged || !req.originalUrl.startsWith("/api")) {
+      const pathname = req.originalUrl.split("?")[0];
+
+      if (logged || !req.originalUrl.startsWith("/api") || shouldSuppressRequestLog(req.method, pathname)) {
         return;
       }
 
       logged = true;
-      const pathname = req.originalUrl.split("?")[0];
       const statusCode = res.statusCode || 200;
       const level = buildLevel(statusCode);
 

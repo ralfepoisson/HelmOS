@@ -72,6 +72,7 @@ function createAdminRouter({ prisma, agentGatewayClient }) {
       query: req.query.q,
       timeRange: req.query.timeRange,
       levels: req.query.levels,
+      scope: req.query.scope,
       limit: 100,
     });
 

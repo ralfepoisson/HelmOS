@@ -35,6 +35,15 @@ function normalizeEvent(event) {
   return event.trim().slice(0, 120);
 }
 
+function normalizeScopeFilter(scope) {
+  if (typeof scope !== "string") {
+    return "";
+  }
+
+  const candidate = scope.trim();
+  return candidate.length > 0 ? candidate.slice(0, 120) : "";
+}
+
 function toSafeContext(context) {
   if (typeof context === "undefined") {
     return null;
@@ -168,6 +177,7 @@ async function searchLogEntries(prisma, filters = {}) {
   const timeRange = normalizeTimeRange(filters.timeRange);
   const levels = normalizeLevels(filters.levels);
   const query = typeof filters.query === "string" ? filters.query.trim().toLowerCase() : "";
+  const scope = normalizeScopeFilter(filters.scope);
   const limit = Number.isInteger(filters.limit) ? Math.max(1, Math.min(filters.limit, 250)) : 100;
 
   if (!delegate || typeof delegate.findMany !== "function") {
@@ -176,12 +186,14 @@ async function searchLogEntries(prisma, filters = {}) {
         query: filters.query ?? "",
         timeRange,
         levels,
+        scope,
       },
       summary: {
         matchingLogs: 0,
         filtered: { info: 0, warn: 0, error: 0 },
         stored: { info: 0, warn: 0, error: 0 },
       },
+      availableScopes: [],
       logs: [],
     };
   }
@@ -194,6 +206,7 @@ async function searchLogEntries(prisma, filters = {}) {
       in: levels,
     },
   };
+  const searchWhere = scope ? { ...baseWhere, scope } : baseWhere;
 
   let candidateLogs = [];
   let storedCounts = SUPPORTED_LEVELS.map((level) => [level, 0]);
@@ -201,7 +214,7 @@ async function searchLogEntries(prisma, filters = {}) {
   try {
     [candidateLogs, storedCounts] = await Promise.all([
       delegate.findMany({
-        where: baseWhere,
+        where: searchWhere,
         orderBy: {
           createdAt: "desc",
         },
@@ -226,13 +239,22 @@ async function searchLogEntries(prisma, filters = {}) {
 
   const matchingLogs = candidateLogs.filter((log) => matchesQuery(log, query));
   const filteredCounts = countByLevel(matchingLogs);
+  const availableScopes = Array.from(
+    new Set(
+      candidateLogs
+        .map((log) => normalizeScopeFilter(log.scope))
+        .filter((entry) => entry.length > 0),
+    ),
+  ).sort((left, right) => left.localeCompare(right));
 
   return {
     filters: {
       query: filters.query ?? "",
       timeRange,
       levels,
+      scope,
     },
+    availableScopes,
     summary: {
       matchingLogs: matchingLogs.length,
       filtered: filteredCounts,
