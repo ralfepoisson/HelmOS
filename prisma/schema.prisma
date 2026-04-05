@@ -117,6 +117,32 @@ enum AgentRunStatus {
   FAILED
 }
 
+enum KnowledgeBaseStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum KnowledgeBaseStorageProvider {
+  LOCAL
+  S3
+}
+
+enum KnowledgeBaseFileProcessingStatus {
+  UPLOADED
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  DELETED
+}
+
+enum KnowledgeBaseJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique @db.VarChar(320)
@@ -140,6 +166,11 @@ model User {
   sentMessages        ChatMessage[]        @relation("MessageSender")
   activityEvents      ActivityLog[]        @relation("ActivityActor")
   prospectingConfiguration ProspectingConfiguration?
+  createdKnowledgeBases KnowledgeBase[]    @relation("KnowledgeBaseCreatedBy")
+  updatedKnowledgeBases KnowledgeBase[]    @relation("KnowledgeBaseUpdatedBy")
+  submittedKnowledgeBaseFiles KnowledgeBaseFile[] @relation("KnowledgeBaseFileSubmittedBy")
+  knowledgeBaseSearchAudits KnowledgeBaseSearchAudit[]
+  knowledgeBaseToolAudits KnowledgeBaseToolAudit[]
 
   @@unique([authProvider, authProviderUserId], map: "users_auth_provider_auth_provider_user_id_key")
   @@map("users")
@@ -444,6 +475,153 @@ model LogEntry {
   @@index([level, createdAt])
   @@index([scope, createdAt])
   @@map("log_entries")
+}
+
+model KnowledgeBase {
+  id          String              @id @default(uuid()) @db.Uuid
+  name        String              @unique @db.VarChar(200)
+  description String?
+  ownerType   String?             @map("owner_type") @db.VarChar(50)
+  ownerId     String?             @map("owner_id") @db.VarChar(255)
+  status      KnowledgeBaseStatus @default(ACTIVE)
+  createdAt   DateTime            @default(now()) @map("created_at")
+  createdById String              @map("created_by") @db.Uuid
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  updatedById String              @map("updated_by") @db.Uuid
+  createdBy   User                @relation("KnowledgeBaseCreatedBy", fields: [createdById], references: [id])
+  updatedBy   User                @relation("KnowledgeBaseUpdatedBy", fields: [updatedById], references: [id])
+  files       KnowledgeBaseFile[]
+  embeddings  KnowledgeBaseEmbedding[]
+  jobs        KnowledgeBaseProcessingJob[]
+  searchAudits KnowledgeBaseSearchAudit[]
+
+  @@index([status, updatedAt])
+  @@index([ownerType, ownerId])
+  @@index([createdById])
+  @@index([updatedById])
+  @@map("knowledge_bases")
+}
+
+model KnowledgeBaseFile {
+  id                String                            @id @default(uuid()) @db.Uuid
+  knowledgeBaseId   String                            @map("knowledge_base_id") @db.Uuid
+  originalFilename  String                            @map("original_filename") @db.VarChar(255)
+  storedObjectKey   String                            @map("stored_object_key")
+  storageProvider   KnowledgeBaseStorageProvider      @map("storage_provider")
+  mimeType          String                            @map("mime_type") @db.VarChar(200)
+  fileExtension     String                            @map("file_extension") @db.VarChar(20)
+  fileSizeBytes     BigInt                            @map("file_size_bytes")
+  checksumSha256    String?                           @map("checksum_sha256") @db.VarChar(64)
+  sourceType        String?                           @map("source_type") @db.VarChar(100)
+  submittedAt       DateTime                          @default(now()) @map("submitted_at")
+  submittedById     String                            @map("submitted_by") @db.Uuid
+  processingStatus  KnowledgeBaseFileProcessingStatus @default(UPLOADED) @map("processing_status")
+  errorMessage      String?                           @map("error_message")
+  mediaDurationMs   Int?                              @map("media_duration_ms")
+  pageCount         Int?                              @map("page_count")
+  imageWidth        Int?                              @map("image_width")
+  imageHeight       Int?                              @map("image_height")
+  deletedAt         DateTime?                         @map("deleted_at")
+  metadataJson      Json?                             @map("metadata_json")
+  knowledgeBase     KnowledgeBase                     @relation(fields: [knowledgeBaseId], references: [id])
+  submittedBy       User                              @relation("KnowledgeBaseFileSubmittedBy", fields: [submittedById], references: [id])
+  tags              KnowledgeBaseFileTag[]
+  embeddings        KnowledgeBaseEmbedding[]
+  jobs              KnowledgeBaseProcessingJob[]
+
+  @@index([knowledgeBaseId, submittedAt])
+  @@index([processingStatus, submittedAt])
+  @@index([submittedById])
+  @@index([mimeType])
+  @@index([deletedAt])
+  @@map("knowledge_base_files")
+}
+
+model KnowledgeBaseFileTag {
+  fileId String            @map("file_id") @db.Uuid
+  tag    String            @db.VarChar(80)
+  file   KnowledgeBaseFile @relation(fields: [fileId], references: [id])
+
+  @@id([fileId, tag])
+  @@index([tag])
+  @@map("knowledge_base_file_tags")
+}
+
+model KnowledgeBaseEmbedding {
+  id             String         @id @default(uuid()) @db.Uuid
+  knowledgeBaseId String        @map("knowledge_base_id") @db.Uuid
+  fileId         String         @map("file_id") @db.Uuid
+  chunkIndex     Int            @map("chunk_index")
+  chunkText      String         @map("chunk_text")
+  chunkSummary   String?        @map("chunk_summary")
+  embeddingModel String         @map("embedding_model") @db.VarChar(120)
+  embedding      Unsupported("vector(2048)")
+  metadataJson   Json?          @map("metadata_json")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  knowledgeBase  KnowledgeBase  @relation(fields: [knowledgeBaseId], references: [id])
+  file           KnowledgeBaseFile @relation(fields: [fileId], references: [id])
+
+  @@unique([fileId, chunkIndex])
+  @@index([knowledgeBaseId, createdAt])
+  @@index([fileId, createdAt])
+  @@map("knowledge_base_embeddings")
+}
+
+model KnowledgeBaseProcessingJob {
+  id              String                 @id @default(uuid()) @db.Uuid
+  knowledgeBaseId String                 @map("knowledge_base_id") @db.Uuid
+  fileId          String                 @map("file_id") @db.Uuid
+  status          KnowledgeBaseJobStatus @default(QUEUED)
+  attemptCount    Int                    @default(0) @map("attempt_count")
+  availableAt     DateTime               @default(now()) @map("available_at")
+  startedAt       DateTime?              @map("started_at")
+  completedAt     DateTime?              @map("completed_at")
+  errorMessage    String?                @map("error_message")
+  payloadJson     Json?                  @map("payload_json")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  knowledgeBase   KnowledgeBase          @relation(fields: [knowledgeBaseId], references: [id])
+  file            KnowledgeBaseFile      @relation(fields: [fileId], references: [id])
+
+  @@index([status, availableAt])
+  @@index([fileId, createdAt])
+  @@index([knowledgeBaseId, createdAt])
+  @@map("knowledge_base_processing_jobs")
+}
+
+model KnowledgeBaseSearchAudit {
+  id              String        @id @default(uuid()) @db.Uuid
+  knowledgeBaseId String?       @map("knowledge_base_id") @db.Uuid
+  actorUserId     String?       @map("actor_user_id") @db.Uuid
+  queryText       String        @map("query_text")
+  tagsJson        Json?         @map("tags_json")
+  mediaTypesJson  Json?         @map("media_types_json")
+  resultCount     Int           @default(0) @map("result_count")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  knowledgeBase   KnowledgeBase? @relation(fields: [knowledgeBaseId], references: [id])
+  actorUser       User?         @relation(fields: [actorUserId], references: [id])
+
+  @@index([knowledgeBaseId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("knowledge_base_search_audits")
+}
+
+model KnowledgeBaseToolAudit {
+  id                    String   @id @default(uuid()) @db.Uuid
+  agentKey              String   @map("agent_key") @db.VarChar(100)
+  action                String   @db.VarChar(50)
+  knowledgeBaseIdsJson  Json     @map("knowledge_base_ids_json")
+  fileId                String?  @map("file_id") @db.Uuid
+  queryText             String?  @map("query_text")
+  resultCount           Int?     @map("result_count")
+  createdAt             DateTime @default(now()) @map("created_at")
+  actorUserId           String?  @map("actor_user_id") @db.Uuid
+  actorUser             User?    @relation(fields: [actorUserId], references: [id])
+
+  @@index([agentKey, createdAt])
+  @@index([fileId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("knowledge_base_tool_audits")
 }
 
 model AgentDefinition {

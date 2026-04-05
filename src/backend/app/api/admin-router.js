@@ -7,6 +7,16 @@ const {
   loadAgentAdminSnapshot,
   updateAgentAdmin,
 } = require("../services/agent-admin.service");
+const {
+  createKnowledgeBase,
+  deleteKnowledgeBase,
+  deleteKnowledgeBaseFile,
+  getKnowledgeBaseDetail,
+  getKnowledgeBaseFileDetail,
+  listKnowledgeBases,
+  updateKnowledgeBase,
+  uploadKnowledgeBaseFile,
+} = require("../services/knowledge-base-processing.service");
 const { searchLogEntries, SUPPORTED_LEVELS } = require("../services/log-entry.service");
 
 const stringField = (max) => {
@@ -21,6 +31,8 @@ const supportedToolNames = ["retrieval", "web_search", "object_storage", "commun
 const modelField = () => z.enum(supportedModelAliases);
 const nullableModelField = () => z.union([modelField(), z.null()]);
 const toolArrayField = () => z.array(z.enum(supportedToolNames)).max(25);
+const uuidField = () => z.string().uuid();
+const stringArrayField = (max) => z.array(stringField(max)).max(25);
 
 const promptConfigSchema = z
   .object({
@@ -28,6 +40,39 @@ const promptConfigSchema = z
     version: stringField(50),
     promptTemplate: z.string().trim().min(1),
     configJson: jsonField().optional(),
+  })
+  .strict();
+
+const knowledgeBaseSchema = z
+  .object({
+    name: stringField(200),
+    description: z.union([z.string().trim(), z.null()]).optional(),
+    ownerType: nullableStringField(50).optional(),
+    ownerId: nullableStringField(255).optional(),
+    status: z.enum(["ACTIVE", "ARCHIVED"]).optional(),
+  })
+  .strict();
+
+const updateKnowledgeBaseSchema = knowledgeBaseSchema.partial().strict();
+
+const knowledgeBaseUploadSchema = z
+  .object({
+    knowledgeBaseId: uuidField(),
+    originalFilename: stringField(255),
+    mimeType: stringField(200),
+    contentBase64: z.string().trim().min(1),
+    sourceType: nullableStringField(100).optional(),
+    tags: stringArrayField(80).optional(),
+  })
+  .strict();
+
+const knowledgeBaseSearchSchema = z
+  .object({
+    query: z.string().trim().min(1),
+    knowledgeBaseIds: z.array(uuidField()).max(25).optional(),
+    tags: stringArrayField(80).optional(),
+    mediaTypes: z.array(z.enum(["text", "document", "image", "audio", "video"])).max(10).optional(),
+    limit: z.number().int().min(1).max(25).optional(),
   })
   .strict();
 
@@ -64,7 +109,7 @@ function ensureUpdatePayload(data) {
   }
 }
 
-function createAdminRouter({ prisma, agentGatewayClient }) {
+function createAdminRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, storageService }) {
   const router = express.Router();
 
   router.get("/logs", async (req, res) => {
@@ -124,6 +169,108 @@ function createAdminRouter({ prisma, agentGatewayClient }) {
 
     res.json({
       data: agent,
+    });
+  });
+
+  router.get("/knowledge-bases", async (_req, res) => {
+    const records = await listKnowledgeBases(prisma);
+
+    res.json({
+      data: records,
+    });
+  });
+
+  router.post("/knowledge-bases", async (req, res) => {
+    const payload = knowledgeBaseSchema.parse(req.body);
+    const record = await createKnowledgeBase(prisma, payload, req.auth.currentUser);
+
+    res.status(201).json({
+      data: record,
+    });
+  });
+
+  router.get("/knowledge-bases/:id", async (req, res) => {
+    const record = await getKnowledgeBaseDetail(prisma, req.params.id);
+
+    if (!record) {
+      res.status(404).json({
+        error: "Knowledge base not found",
+      });
+      return;
+    }
+
+    res.json({
+      data: record,
+    });
+  });
+
+  router.put("/knowledge-bases/:id", async (req, res) => {
+    const payload = updateKnowledgeBaseSchema.parse(req.body);
+    ensureUpdatePayload(payload);
+    const record = await updateKnowledgeBase(prisma, req.params.id, payload, req.auth.currentUser);
+
+    res.json({
+      data: record,
+    });
+  });
+
+  router.delete("/knowledge-bases/:id", async (req, res) => {
+    await deleteKnowledgeBase(prisma, storageService, req.params.id, req.auth.currentUser);
+    res.status(204).send();
+  });
+
+  router.post("/knowledge-base-files/upload", async (req, res) => {
+    const payload = knowledgeBaseUploadSchema.parse(req.body);
+    const record = await uploadKnowledgeBaseFile({
+      prisma,
+      storageService,
+      knowledgeBaseId: payload.knowledgeBaseId,
+      payload,
+      actorUser: req.auth.currentUser,
+    });
+
+    if (knowledgeBaseRuntime) {
+      knowledgeBaseRuntime.triggerProcessingPass().catch(() => {});
+    }
+
+    res.status(201).json({
+      data: record,
+    });
+  });
+
+  router.get("/knowledge-base-files/:id", async (req, res) => {
+    const record = await getKnowledgeBaseFileDetail(prisma, req.params.id);
+
+    if (!record) {
+      res.status(404).json({
+        error: "Knowledge base file not found",
+      });
+      return;
+    }
+
+    res.json({
+      data: record,
+    });
+  });
+
+  router.delete("/knowledge-base-files/:id", async (req, res) => {
+    await deleteKnowledgeBaseFile(prisma, storageService, req.params.id, req.auth.currentUser);
+    res.status(204).send();
+  });
+
+  router.post("/knowledge-base-search", async (req, res) => {
+    const payload = knowledgeBaseSearchSchema.parse(req.body);
+    const results = await knowledgeBaseRuntime.searchService.search({
+      query: payload.query,
+      knowledgeBaseIds: payload.knowledgeBaseIds ?? [],
+      tags: payload.tags ?? [],
+      mediaTypes: payload.mediaTypes ?? [],
+      limit: payload.limit ?? 10,
+      actorUserId: req.auth.currentUser.id,
+    });
+
+    res.json({
+      data: results,
     });
   });
 

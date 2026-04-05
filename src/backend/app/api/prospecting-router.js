@@ -4,7 +4,7 @@ const { z } = require("zod");
 const {
   executeProspectingConfiguration,
   getProspectingConfiguration,
-  runProspectingConfigurationReview,
+  runProspectingOptimizationCycle,
 } = require("../services/prospecting-configuration.service");
 
 const runProspectingReviewSchema = z
@@ -25,7 +25,7 @@ function createProspectingRouter({ prisma, agentGatewayClient }) {
 
   router.post("/configuration/run", async (req, res) => {
     const payload = runProspectingReviewSchema.parse(req.body);
-    const updated = await runProspectingConfigurationReview(
+    const updated = await runProspectingOptimizationCycle(
       prisma,
       agentGatewayClient,
       payload,

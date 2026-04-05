@@ -1,6 +1,7 @@
 """Tool adapters with controlled contracts."""
 
 import html
+import os
 import re
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -128,16 +129,77 @@ class RetrievalAdapter(ToolAdapter):
     description = "Semantic and structured retrieval adapter."
 
     async def invoke(self, invocation: ToolInvocation) -> ToolResult:
+        base_url = os.getenv("HELMOS_NODE_CONTROL_PLANE_URL", "http://127.0.0.1:3001").rstrip("/")
+        api_key = os.getenv("KNOWLEDGE_BASE_TOOL_API_KEY", "").strip()
+
+        if not api_key:
+            return ToolResult(
+                tool_name=self.name,
+                action=invocation.action,
+                success=False,
+                payload={"note": "KNOWLEDGE_BASE_TOOL_API_KEY is not configured."},
+                message="Retrieval tool is unavailable because the internal tool API key is missing.",
+            )
+
+        headers = {"x-helmos-tool-key": api_key}
+        agent_key = str(invocation.payload.get("agent_key") or invocation.actor or "").strip()
+
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            if invocation.action == "search":
+                response = await client.post(
+                    f"{base_url}/api/tools/knowledge-base/search",
+                    headers=headers,
+                    json={
+                        "agentKey": agent_key,
+                        "query": invocation.payload.get("query"),
+                        "knowledgeBaseIds": invocation.payload.get("knowledge_base_ids") or [],
+                        "tags": invocation.payload.get("tags") or [],
+                        "limit": invocation.payload.get("limit", 5),
+                    },
+                )
+            elif invocation.action == "get_file_metadata":
+                file_id = str(invocation.payload.get("file_id") or "").strip()
+                response = await client.get(
+                    f"{base_url}/api/tools/knowledge-base/files/{file_id}",
+                    headers=headers,
+                    params={"agentKey": agent_key},
+                )
+            elif invocation.action == "get_file_chunks":
+                file_id = str(invocation.payload.get("file_id") or "").strip()
+                response = await client.get(
+                    f"{base_url}/api/tools/knowledge-base/files/{file_id}/chunks",
+                    headers=headers,
+                    params={
+                        "agentKey": agent_key,
+                        "limit": invocation.payload.get("limit", 20),
+                        "offset": invocation.payload.get("offset", 0),
+                    },
+                )
+            else:
+                return ToolResult(
+                    tool_name=self.name,
+                    action=invocation.action,
+                    success=False,
+                    payload={},
+                    message="Unsupported retrieval action.",
+                )
+
+        if response.status_code >= 400:
+            return ToolResult(
+                tool_name=self.name,
+                action=invocation.action,
+                success=False,
+                payload={"status_code": response.status_code, "body": response.text},
+                message="Knowledge base retrieval request failed.",
+            )
+
+        payload = response.json().get("data")
         return ToolResult(
             tool_name=self.name,
             action=invocation.action,
             success=True,
-            payload={
-                "query": invocation.payload.get("query"),
-                "documents": [],
-                "note": "TODO: connect pgvector-backed retrieval pipeline.",
-            },
-            message="Retrieval placeholder executed.",
+            payload={"result": payload},
+            message="Knowledge base retrieval executed.",
         )
 
 

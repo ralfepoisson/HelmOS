@@ -1,0 +1,80 @@
+@startuml
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam defaultFontName Arial
+left to right direction
+
+title HelmOS Knowledge Base Capability - Package Diagram
+
+package "Admin UI" {
+  [Knowledge Base List]
+  [Knowledge Base Detail]
+  [Knowledge Base Search]
+}
+
+package "Node Control Plane" {
+  [Admin API Router]
+  [Knowledge Base Services]
+  [Search Service]
+  [Tool Service]
+  [Processing Runtime]
+}
+
+package "Extraction Layer" {
+  [Allow-list Validation]
+  [Extractor Registry]
+  [Text / Document Extractor]
+  [Chunker]
+}
+
+package "Provider Layer" {
+  [Jina Embeddings Provider]
+  [File Storage Service]
+  [Local Storage Adapter]
+  [S3 Storage Adapter]
+}
+
+database "PostgreSQL + pgvector" as db
+collections "Local Files / S3 Objects" as objectStore
+node "AI Agents" as agents
+
+[Knowledge Base List] --> [Admin API Router]
+[Knowledge Base Detail] --> [Admin API Router]
+[Knowledge Base Search] --> [Admin API Router]
+
+[Admin API Router] --> [Knowledge Base Services]
+[Admin API Router] --> [Search Service]
+[Knowledge Base Services] --> [Allow-list Validation]
+[Knowledge Base Services] --> [File Storage Service]
+[Knowledge Base Services] --> [Processing Runtime]
+
+[Processing Runtime] --> [Extractor Registry]
+[Extractor Registry] --> [Text / Document Extractor]
+[Text / Document Extractor] --> [Chunker]
+[Processing Runtime] --> [Jina Embeddings Provider]
+[Processing Runtime] --> db
+
+[Search Service] --> [Jina Embeddings Provider]
+[Search Service] --> db
+[Tool Service] --> [Search Service]
+[Tool Service] --> db
+agents --> [Tool Service]
+
+[File Storage Service] --> [Local Storage Adapter]
+[File Storage Service] --> [S3 Storage Adapter]
+[Local Storage Adapter] --> objectStore
+[S3 Storage Adapter] --> objectStore
+[Knowledge Base Services] --> db
+
+note right of [Extractor Registry]
+Text-oriented extraction is implemented first.
+Image, audio, and video extractors are scaffolded
+behind the same registry contract for later expansion.
+end note
+
+note bottom of [Tool Service]
+Enforces configuration-driven knowledge base scope.
+Agents do not receive direct database or object store access.
+end note
+@enduml

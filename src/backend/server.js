@@ -3,6 +3,12 @@ const { env } = require("./app/config/env");
 const { prisma } = require("./app/config/prisma");
 
 const app = createApp({ prisma });
+const knowledgeBaseRuntime = app.locals.knowledgeBaseRuntime;
+
+knowledgeBaseRuntime?.start?.().catch((error) => {
+  process.stderr.write(`Knowledge base runtime failed to start: ${error.message}\n`);
+});
+
 const server = app.listen(env.port, env.host, () => {
   process.stdout.write(
     `HelmOS backend listening on http://${env.host}:${env.port}\n`,
@@ -20,6 +26,7 @@ async function shutdown(signal) {
   process.stdout.write(`Received ${signal}, shutting down backend\n`);
 
   server.close(async () => {
+    await knowledgeBaseRuntime?.stop?.();
     await prisma.$disconnect();
     process.exit(0);
   });

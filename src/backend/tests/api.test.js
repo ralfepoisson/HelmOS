@@ -2213,7 +2213,7 @@ test("GET /api/idea-foundry/prospecting/configuration returns the persisted pros
   );
 });
 
-test("POST /api/idea-foundry/prospecting/configuration/run executes the prospecting agent review and persists the updated configuration", async () => {
+test("POST /api/idea-foundry/prospecting/configuration/run executes a full prospecting optimization cycle and persists the refreshed result records", async () => {
   const currentSnapshot = {
     agentState: "active",
     strategyMode: "Focused search",
@@ -2255,6 +2255,7 @@ test("POST /api/idea-foundry/prospecting/configuration/run executes the prospect
 
   const configurationUpserts = [];
   let capturedGatewayPayload = null;
+  const searchCalls = [];
 
   const prisma = {
     user: {
@@ -2427,6 +2428,33 @@ test("POST /api/idea-foundry/prospecting/configuration/run executes the prospect
         ],
       },
     }),
+    searchWeb: async (payload) => {
+      searchCalls.push(payload);
+      return {
+        tool_name: "web_search",
+        action: "search",
+        success: true,
+        payload: {
+          query: payload.query,
+          results: [
+            {
+              title: "Operators hate chasing VAT reminders manually",
+              url: "https://example.com/vat-reminders",
+              snippet: "A founder describes recurring VAT reminder pain.",
+              provider: "duckduckgo",
+              rank: 1,
+            },
+            {
+              title: "Manual invoice follow-up is still spreadsheet-based",
+              url: "https://example.com/manual-invoice-follow-up",
+              snippet: "Repeated complaint about admin-heavy invoice follow-up.",
+              provider: "duckduckgo",
+              rank: 2,
+            },
+          ],
+        },
+      };
+    },
   };
 
   const app = createApp({ prisma, agentGatewayClient });
@@ -2447,10 +2475,13 @@ test("POST /api/idea-foundry/prospecting/configuration/run executes the prospect
   assert.equal(response.body.data.snapshot.objective.name, "Recurring compliance pain in fragmented service sectors");
   assert.equal(response.body.data.snapshot.strategySummary, "Lean harder into complaint-led sources and recurring administrative friction.");
   assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
+  assert.equal(response.body.data.runtime.resultRecordCount, 2);
   assert.equal(
     response.body.data.latestReview.recommended_strategy_update.prospecting_objective.objective_name,
     "Recurring compliance pain in fragmented service sectors"
   );
+  assert.equal(searchCalls.length, 1);
+  assert.equal(searchCalls[0].query, "hate doing VAT reminders every month");
   assert.equal(configurationUpserts.length >= 3, true);
   const persistedUpdate = configurationUpserts.at(-1)?.update ?? configurationUpserts.at(-1)?.create ?? {};
   assert.equal(
@@ -2461,6 +2492,9 @@ test("POST /api/idea-foundry/prospecting/configuration/run executes the prospect
     persistedUpdate.uiSnapshotJson?.objective?.name,
     "Recurring compliance pain in fragmented service sectors"
   );
+  assert.equal(Array.isArray(persistedUpdate.lastResultRecords), true);
+  assert.equal(persistedUpdate.lastResultRecords.length, 2);
+  assert.equal(persistedUpdate.lastResultRecords[0].sourceUrl, "https://example.com/vat-reminders");
   assert.equal(
     prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_run_started"),
     true
@@ -2484,6 +2518,14 @@ test("POST /api/idea-foundry/prospecting/configuration/run executes the prospect
   );
   assert.equal(
     prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_persisted"),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_execution_started"),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_execution_persisted"),
     true
   );
 });
@@ -2837,6 +2879,23 @@ test("POST /api/idea-foundry/prospecting/configuration/run accepts a compliant p
         },
       },
     }),
+    searchWeb: async (payload) => ({
+      tool_name: "web_search",
+      action: "search",
+      success: true,
+      payload: {
+        query: payload.query,
+        results: [
+          {
+            title: "Complaint-led source",
+            url: "https://example.com/complaint-led-source",
+            snippet: "Realistic complaint-led source summary.",
+            provider: "duckduckgo",
+            rank: 1,
+          },
+        ],
+      },
+    }),
   };
 
   const app = createApp({ prisma, agentGatewayClient });
@@ -3123,6 +3182,14 @@ test("POST /api/idea-foundry/prospecting/configuration/run preserves the current
         },
       },
     }),
+    searchWeb: async () => ({
+      tool_name: "web_search",
+      action: "search",
+      success: true,
+      payload: {
+        results: [],
+      },
+    }),
   };
 
   const app = createApp({ prisma, agentGatewayClient });
@@ -3380,6 +3447,23 @@ test("POST /api/idea-foundry/prospecting/configuration/run asks the agent to rep
         },
       };
     },
+    searchWeb: async (payload) => ({
+      tool_name: "web_search",
+      action: "search",
+      success: true,
+      payload: {
+        query: payload.query,
+        results: [
+          {
+            title: "Prospecting execution result",
+            url: "https://example.com/prospecting-execution-result",
+            snippet: "Execution completed against the repaired strategy.",
+            provider: "duckduckgo",
+            rank: 1,
+          },
+        ],
+      },
+    }),
   };
 
   const app = createApp({ prisma, agentGatewayClient });
@@ -3521,6 +3605,14 @@ test("POST /api/idea-foundry/prospecting/configuration/run stops after three rep
           title: "Deterministic Summary",
           summary: "A deterministic route handled this request without specialist delegation.",
         },
+      },
+    }),
+    searchWeb: async () => ({
+      tool_name: "web_search",
+      action: "search",
+      success: true,
+      payload: {
+        results: [],
       },
     }),
   };

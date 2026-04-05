@@ -79,6 +79,26 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
 
             <div *ngIf="adminMenuOpen" class="admin-panel helmos-card" role="menu">
               <a
+                routerLink="/admin/knowledge-bases"
+                routerLinkActive="admin-link-active"
+                class="admin-link"
+                role="menuitem"
+                (click)="closeAdminMenu()"
+              >
+                <span class="admin-link-title">Knowledge Bases</span>
+                <span class="admin-link-copy">Create partitions, upload files, and monitor processing status.</span>
+              </a>
+              <a
+                routerLink="/admin/knowledge-base-search"
+                routerLinkActive="admin-link-active"
+                class="admin-link"
+                role="menuitem"
+                (click)="closeAdminMenu()"
+              >
+                <span class="admin-link-title">Knowledge Search</span>
+                <span class="admin-link-copy">Run semantic search across uploaded chunks with filters and provenance.</span>
+              </a>
+              <a
                 routerLink="/admin/agents"
                 routerLinkActive="admin-link-active"
                 class="admin-link"

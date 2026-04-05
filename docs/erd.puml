@@ -15,7 +15,7 @@ skinparam note {
   BorderColor #9ca3af
 }
 
-title HelmOS MVP - Strategy Workspace Data Model ERD
+title HelmOS MVP - Strategy Workspace and Knowledge Base ERD
 
 package "Identity & Ownership" {
   entity "users" as users {
@@ -218,15 +218,126 @@ package "Idea Foundry Control" {
   }
 }
 
+package "Knowledge Base" {
+  entity "knowledge_bases" as knowledge_bases {
+    *id : UUID <<PK>>
+    --
+    name : VARCHAR(200) <<UK>>
+    description : TEXT
+    owner_type : VARCHAR(50)
+    owner_id : VARCHAR(255)
+    status : VARCHAR(20)
+    created_at : TIMESTAMP
+    created_by : UUID <<FK>>
+    updated_at : TIMESTAMP
+    updated_by : UUID <<FK>>
+  }
+
+  entity "knowledge_base_files" as knowledge_base_files {
+    *id : UUID <<PK>>
+    --
+    knowledge_base_id : UUID <<FK>>
+    original_filename : VARCHAR(255)
+    stored_object_key : TEXT
+    storage_provider : VARCHAR(20)
+    mime_type : VARCHAR(200)
+    file_extension : VARCHAR(20)
+    file_size_bytes : BIGINT
+    checksum_sha256 : VARCHAR(64)
+    source_type : VARCHAR(100)
+    submitted_at : TIMESTAMP
+    submitted_by : UUID <<FK>>
+    processing_status : VARCHAR(20)
+    error_message : TEXT
+    media_duration_ms : INTEGER
+    page_count : INTEGER
+    image_width : INTEGER
+    image_height : INTEGER
+    deleted_at : TIMESTAMP
+    metadata_json : JSONB
+  }
+
+  entity "knowledge_base_file_tags" as knowledge_base_file_tags {
+    *file_id : UUID <<PK,FK>>
+    *tag : VARCHAR(80) <<PK>>
+  }
+
+  entity "knowledge_base_embeddings" as knowledge_base_embeddings {
+    *id : UUID <<PK>>
+    --
+    knowledge_base_id : UUID <<FK>>
+    file_id : UUID <<FK>>
+    chunk_index : INTEGER
+    chunk_text : TEXT
+    chunk_summary : TEXT
+    embedding_model : VARCHAR(120)
+    embedding : VECTOR(2048)
+    metadata_json : JSONB
+    created_at : TIMESTAMP
+    --
+    UNIQUE(file_id, chunk_index)
+  }
+
+  entity "knowledge_base_processing_jobs" as knowledge_base_processing_jobs {
+    *id : UUID <<PK>>
+    --
+    knowledge_base_id : UUID <<FK>>
+    file_id : UUID <<FK>>
+    status : VARCHAR(20)
+    attempt_count : INTEGER
+    available_at : TIMESTAMP
+    started_at : TIMESTAMP
+    completed_at : TIMESTAMP
+    error_message : TEXT
+    payload_json : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
+  entity "knowledge_base_search_audits" as knowledge_base_search_audits {
+    *id : UUID <<PK>>
+    --
+    knowledge_base_id : UUID <<FK>>
+    actor_user_id : UUID <<FK>>
+    query_text : TEXT
+    tags_json : JSONB
+    media_types_json : JSONB
+    result_count : INTEGER
+    created_at : TIMESTAMP
+  }
+
+  entity "knowledge_base_tool_audits" as knowledge_base_tool_audits {
+    *id : UUID <<PK>>
+    --
+    agent_key : VARCHAR(100)
+    action : VARCHAR(50)
+    knowledge_base_ids_json : JSONB
+    file_id : UUID
+    query_text : TEXT
+    result_count : INTEGER
+    created_at : TIMESTAMP
+    actor_user_id : UUID <<FK>>
+  }
+}
+
 note right of prospecting_configurations
 Stores the persisted Prospecting Configuration UI state,
 the latest prospecting-agent review payload, and the
 normalized result-record sample supplied to the next
 review run and populated by Prospecting Execution.
+latest_review_json stores the Prospecting Agent's latest strategy assessment.
+last_result_records stores the latest normalized execution results and feeds
+the next Prospecting Agent review so strategy quality can evolve over time.
 Prospecting reviews now depend on shared registry visibility
 for agent_definitions and prompt_configs, while the FastAPI
 gateway keeps its own runtime persistence schema for sessions,
 runs, checkpoints, and audit history.
+end note
+
+note right of knowledge_bases
+Knowledge bases partition retrieval scope for admins and agents.
+Files are registered before processing, embeddings stay traceable
+to the parent file, and background jobs drive asynchronous ingestion.
 end note
 
 package "Conversation & Agent Orchestration" {
@@ -477,6 +588,18 @@ users ||--o{ companies : created_by
 companies ||--o{ workspaces
 users ||--o{ workspaces : created_by
 users ||--|| prospecting_configurations : owns
+users ||--o{ knowledge_bases : created_by
+users ||--o{ knowledge_bases : updated_by
+knowledge_bases ||--o{ knowledge_base_files
+users ||--o{ knowledge_base_files : submitted_by
+knowledge_base_files ||--o{ knowledge_base_file_tags
+knowledge_bases ||--o{ knowledge_base_embeddings
+knowledge_base_files ||--o{ knowledge_base_embeddings
+knowledge_bases ||--o{ knowledge_base_processing_jobs
+knowledge_base_files ||--o{ knowledge_base_processing_jobs
+knowledge_bases ||--o{ knowledge_base_search_audits
+users ||--o{ knowledge_base_search_audits : actor
+users ||--o{ knowledge_base_tool_audits : actor
 
 note bottom of prompt_configs
 Prompt configs are linked to agents by key convention

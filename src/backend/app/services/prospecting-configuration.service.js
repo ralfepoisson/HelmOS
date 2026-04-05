@@ -431,7 +431,68 @@ async function runProspectingConfigurationReview(prisma, agentGatewayClient, pay
   }
 }
 
-async function executeProspectingConfiguration(prisma, agentGatewayClient, currentUser) {
+async function runProspectingOptimizationCycle(prisma, agentGatewayClient, payload, currentUser) {
+  await createLogEntry(prisma, {
+    level: "info",
+    scope: "idea-foundry",
+    event: "prospecting_optimization_cycle_started",
+    message: "Started a full prospecting optimization cycle.",
+    context: {
+      userId: currentUser.id,
+    },
+  });
+
+  try {
+    const reviewed = await runProspectingConfigurationReview(
+      prisma,
+      agentGatewayClient,
+      payload,
+      currentUser,
+    );
+    const executed = await executeProspectingConfiguration(
+      prisma,
+      agentGatewayClient,
+      currentUser,
+      {
+        snapshot: reviewed.snapshot,
+        latestReview: reviewed.latestReview,
+      },
+    );
+
+    await createLogEntry(prisma, {
+      level: "info",
+      scope: "idea-foundry",
+      event: "prospecting_optimization_cycle_completed",
+      message: "Completed a full prospecting optimization cycle.",
+      context: {
+        userId: currentUser.id,
+        latestRunStatus: executed?.runtime?.latestRunStatus ?? null,
+        resultRecordCount: executed?.runtime?.resultRecordCount ?? 0,
+      },
+    });
+
+    return {
+      snapshot: executed.snapshot,
+      latestReview: reviewed.latestReview ?? executed.latestReview ?? null,
+      runtime: executed.runtime,
+    };
+  } catch (error) {
+    await createLogEntry(prisma, {
+      level: "error",
+      scope: "idea-foundry",
+      event: "prospecting_optimization_cycle_failed",
+      message: "The full prospecting optimization cycle failed.",
+      context: {
+        userId: currentUser.id,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+
+    throw error;
+  }
+}
+
+async function executeProspectingConfiguration(prisma, agentGatewayClient, currentUser, options = {}) {
   if (!agentGatewayClient || typeof agentGatewayClient.searchWeb !== "function") {
     const error = new Error("The agent gateway client is not configured for prospecting execution.");
     error.statusCode = 503;
@@ -439,7 +500,8 @@ async function executeProspectingConfiguration(prisma, agentGatewayClient, curre
   }
 
   const record = await loadProspectingConfiguration(prisma, currentUser.id);
-  const currentSnapshot = normalizeSnapshotInput(record?.uiSnapshotJson, null);
+  const currentSnapshot = normalizeSnapshotInput(options?.snapshot, record?.uiSnapshotJson);
+  const latestReview = options?.latestReview ?? record?.latestReviewJson ?? null;
   const executionPlan = buildProspectingExecutionPlan(currentSnapshot);
 
   if (Object.keys(currentSnapshot).length === 0) {
@@ -465,7 +527,7 @@ async function executeProspectingConfiguration(prisma, agentGatewayClient, curre
     latestRunStatus: "RUNNING",
     latestGatewayRunId: record?.latestGatewayRunId ?? null,
     uiSnapshotJson: currentSnapshot,
-    latestReviewJson: record?.latestReviewJson ?? null,
+    latestReviewJson: latestReview,
     lastResultRecords: record?.lastResultRecords ?? null,
     lastRunAt: record?.lastRunAt ?? null,
     nextRunAt: record?.nextRunAt ?? null,
@@ -505,7 +567,7 @@ async function executeProspectingConfiguration(prisma, agentGatewayClient, curre
       latestRunStatus: "COMPLETED",
       latestGatewayRunId: record?.latestGatewayRunId ?? null,
       uiSnapshotJson: currentSnapshot,
-      latestReviewJson: record?.latestReviewJson ?? null,
+      latestReviewJson: latestReview,
       lastResultRecords: deduplicatedResults,
       lastRunAt: now,
       nextRunAt,
@@ -525,11 +587,11 @@ async function executeProspectingConfiguration(prisma, agentGatewayClient, curre
 
     return {
       snapshot: currentSnapshot,
-      latestReview: record?.latestReviewJson ?? null,
+      latestReview,
       runtime: buildRuntimeState({
         ...persisted,
         uiSnapshotJson: currentSnapshot,
-        latestReviewJson: record?.latestReviewJson ?? null,
+        latestReviewJson: latestReview,
         lastResultRecords: deduplicatedResults,
       }),
     };
@@ -539,7 +601,7 @@ async function executeProspectingConfiguration(prisma, agentGatewayClient, curre
       latestRunStatus: "FAILED",
       latestGatewayRunId: record?.latestGatewayRunId ?? null,
       uiSnapshotJson: currentSnapshot,
-      latestReviewJson: record?.latestReviewJson ?? null,
+      latestReviewJson: latestReview,
       lastResultRecords: record?.lastResultRecords ?? null,
       lastRunAt: record?.lastRunAt ?? null,
       nextRunAt: record?.nextRunAt ?? null,
@@ -1638,6 +1700,7 @@ module.exports = {
   buildProspectingReviewPrompt,
   buildUiSnapshotFromAgentReview,
   getProspectingConfiguration,
+  runProspectingOptimizationCycle,
   validateProspectingReviewOutput,
   runProspectingConfigurationReview,
 };

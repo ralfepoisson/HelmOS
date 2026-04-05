@@ -115,11 +115,11 @@ package "AWS Production Deployment" {
 [Angular UI] --> [Idea Foundry Shell]
 [Idea Foundry Shell] --> [Idea Foundry Overview Board] : pipeline navigation and overview stages
 [Idea Foundry Shell] --> [Prospecting Configuration Screen] : prospecting submenu and operator controls
-[Prospecting Configuration Screen] --> [Prospecting Configuration API] : load config, trigger agent reviews, and run prospecting execution
+[Prospecting Configuration Screen] --> [Prospecting Configuration API] : load config, trigger agent optimization cycles, and run prospecting execution
 [Prospecting Configuration API] --> [Node Control Plane API] : authenticated control-plane request path
 [Prospecting Configuration API] --> [Gateway Registry Preflight] : verify requested agent is registered before review runs
 [Node Control Plane API] --> [Audit Logs] : persist gateway request traces, raw LLM output, and parsed JSON output for agent-driven workflows
-[Node Control Plane API] --> [Prospecting Execution Service] : execute latest saved prospecting strategy
+[Node Control Plane API] --> [Prospecting Execution Service] : execute latest saved prospecting strategy and close the review-feedback loop
 [Gateway Registry Preflight] --> [Agent Gateway API (FastAPI)] : fetch runtime registry snapshot
 [Angular UI] --> [Node Control Plane API] : load workspace unlock state and available strategy tools
 [Angular UI] --> [Value Proposition Screen]
@@ -184,7 +184,7 @@ package "AWS Production Deployment" {
 [Workflow Graph Engine] --> [Output Normaliser]
 [Workflow Graph Engine] --> [Document Export Service]
 [Prospecting Execution Service] --> [Agent Gateway API (FastAPI)] : invoke shared web-search tool
-[Prospecting Execution Service] --> [Shared Registry PostgreSQL] : store normalized result records in prospecting configuration state
+[Prospecting Execution Service] --> [Shared Registry PostgreSQL] : store normalized result records for the next prospecting review cycle
 
 [Ideation Agent] --> [Tool Registry]
 [Value Proposition Agent] --> [Tool Registry]

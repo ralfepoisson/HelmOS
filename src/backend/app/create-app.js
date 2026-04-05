@@ -4,6 +4,9 @@ const { createApiRouter } = require("./api/router");
 const { errorHandler } = require("./api/error-handler");
 const { buildRequestLogger } = require("./api/request-log-middleware");
 const { createAgentGatewayClient } = require("./services/agent-gateway-client");
+const { getKnowledgeBaseConfig } = require("./services/knowledge-base.config");
+const { createKnowledgeBaseProcessingRuntime } = require("./services/knowledge-base-processing.service");
+const { createFileStorageService } = require("./services/knowledge-base-storage.service");
 
 function getAllowedOrigins() {
   const configuredOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? "")
@@ -34,6 +37,13 @@ function isAllowedOrigin(origin, allowedOrigins = getAllowedOrigins()) {
 function createApp({ prisma, agentGatewayClient }) {
   const app = express();
   const allowedOrigins = getAllowedOrigins();
+  const knowledgeBaseConfig = getKnowledgeBaseConfig();
+  const storageService = createFileStorageService(knowledgeBaseConfig);
+  const knowledgeBaseRuntime = createKnowledgeBaseProcessingRuntime({
+    prisma,
+    storageService,
+    config: knowledgeBaseConfig,
+  });
   const gatewayClient =
     agentGatewayClient ??
     createAgentGatewayClient({
@@ -48,7 +58,7 @@ function createApp({ prisma, agentGatewayClient }) {
     if (isAllowedOrigin(origin, allowedOrigins)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Vary", "Origin");
-      res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+      res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     }
 
@@ -58,10 +68,18 @@ function createApp({ prisma, agentGatewayClient }) {
 
     next();
   });
-  app.use(express.json({ limit: "1mb" }));
+  app.use(express.json({ limit: "30mb" }));
   app.use(buildRequestLogger({ prisma }));
 
-  app.use("/api", createApiRouter({ prisma, agentGatewayClient: gatewayClient }));
+  app.use(
+    "/api",
+    createApiRouter({
+      prisma,
+      agentGatewayClient: gatewayClient,
+      knowledgeBaseRuntime,
+      storageService,
+    }),
+  );
 
   app.use((req, res) => {
     res.status(404).json({
@@ -70,6 +88,9 @@ function createApp({ prisma, agentGatewayClient }) {
   });
 
   app.use(errorHandler);
+
+  app.locals.knowledgeBaseRuntime = knowledgeBaseRuntime;
+  app.locals.storageService = storageService;
 
   return app;
 }

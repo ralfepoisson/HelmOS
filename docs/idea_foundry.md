@@ -93,6 +93,7 @@ Current implementation note:
 * Prospecting Configuration stores the latest prospecting strategy
 * Prospecting Execution uses that saved strategy to run shared web search queries
 * Normalised source records are persisted for the next Prospecting Agent review cycle
+* Running the Prospecting Agent now forms a closed loop: it reviews the latest stored result records, tweaks the strategy, then immediately re-executes the updated strategy so quality can improve over time
 
 #### Output:
 

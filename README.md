@@ -234,6 +234,34 @@ Human input should be required mainly for:
 -   requirement clarification
 -   high-level design decisions
 
+## Knowledge Base Configuration
+
+The admin control plane now includes a Knowledge Base capability for
+partitioned file ingestion, asynchronous embedding, and semantic
+search.
+
+Environment variables:
+
+-   `JINA_API_KEY`
+-   `KNOWLEDGE_BASE_STORAGE_MODE` (`local` or `s3`)
+-   `KNOWLEDGE_BASE_LOCAL_STORAGE_ROOT`
+-   `KNOWLEDGE_BASE_S3_BUCKET_NAME`
+-   `KNOWLEDGE_BASE_S3_REGION`
+-   `KNOWLEDGE_BASE_S3_ACCESS_KEY_ID`
+-   `KNOWLEDGE_BASE_S3_SECRET_ACCESS_KEY`
+-   `KNOWLEDGE_BASE_QUEUE_POLL_MS`
+-   `KNOWLEDGE_BASE_QUEUE_BATCH_SIZE`
+-   `KNOWLEDGE_BASE_CHUNK_SIZE`
+-   `KNOWLEDGE_BASE_CHUNK_OVERLAP`
+-   `KNOWLEDGE_BASE_MAX_UPLOAD_BYTES`
+-   `KNOWLEDGE_BASE_AGENT_SCOPES`
+-   `KNOWLEDGE_BASE_TOOL_API_KEY`
+
+See
+[knowledge_base_developer_guide.md](/Users/ralfe/Dev/HelmOS/docs/knowledge_base_developer_guide.md)
+for architecture notes, storage behaviour, worker setup, allowed file
+types, and agent access patterns.
+
 ------------------------------------------------------------------------
 
 # Initial Architecture (Conceptual)

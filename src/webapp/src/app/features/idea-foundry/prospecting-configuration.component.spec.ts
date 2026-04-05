@@ -32,7 +32,7 @@ describe('ProspectingConfigurationComponent', () => {
         isRunning: false,
         lastRun: '2026-04-05T14:30:00.000Z',
         nextRun: '2026-04-05T18:30:00.000Z',
-        resultRecordCount: 0
+        resultRecordCount: 7
       }
     })),
     executeProspectingRun: vi.fn(async () => ({
@@ -112,6 +112,9 @@ describe('ProspectingConfigurationComponent', () => {
     );
     expect(fixture.nativeElement.textContent).toContain(
       'The Prospecting Agent reviewed the current strategy and saved an updated configuration.'
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Re-executed the updated strategy and stored 7 normalized source records.'
     );
   });
 

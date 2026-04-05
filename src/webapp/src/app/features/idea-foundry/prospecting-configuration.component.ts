@@ -1039,11 +1039,11 @@ export class ProspectingConfigurationComponent implements OnInit {
       const replyContent =
         typeof reply?.content === 'string'
           ? reply.content
-          : 'Prospecting Agent completed the review and updated the saved configuration.';
-      this.surfaceMessage = replyContent;
+          : 'Prospecting Agent completed the review, updated the saved configuration, and re-ran prospecting execution.';
+      this.surfaceMessage = `${replyContent} Re-executed the updated strategy and stored ${payload.runtime.resultRecordCount} normalized source records.`;
       this.logStrategyChange(
         'Ran Prospecting Agent review',
-        'The agent reviewed the current strategy, considered recent search results, and persisted a refined configuration.'
+        `The agent reviewed the current strategy, considered recent search results, persisted a refined configuration, and re-executed it to store ${payload.runtime.resultRecordCount} normalized source records.`
       );
     } catch (error) {
       this.runtimeState = {

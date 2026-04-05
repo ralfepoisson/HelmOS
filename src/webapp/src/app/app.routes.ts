@@ -8,6 +8,9 @@ import { AuthStatusPageComponent } from './features/auth/auth-status-page.compon
 import { AgentAdminScreenComponent } from './features/admin/agent-admin-screen.component';
 import { AgentTestingScreenComponent } from './features/admin/agent-testing-screen.component';
 import { AdminLogsScreenComponent } from './features/admin/admin-logs-screen.component';
+import { KnowledgeBaseDetailScreenComponent } from './features/admin/knowledge-base-detail-screen.component';
+import { KnowledgeBaseListScreenComponent } from './features/admin/knowledge-base-list-screen.component';
+import { KnowledgeBaseSearchScreenComponent } from './features/admin/knowledge-base-search-screen.component';
 import { NewIdeaPageComponent } from './features/ideation/new-idea-page.component';
 import { IdeationScreenComponent } from './features/ideation/ideation-screen.component';
 import { ValuePropositionScreenComponent } from './features/value-proposition/value-proposition-screen.component';
@@ -122,6 +125,24 @@ export const routes: Routes = [
   {
     path: 'ideation',
     redirectTo: 'strategy-copilot/ideation'
+  },
+  {
+    path: 'admin/knowledge-bases',
+    component: KnowledgeBaseListScreenComponent,
+    canActivate: [adminGuard],
+    title: 'HelmOS Knowledge Bases'
+  },
+  {
+    path: 'admin/knowledge-bases/:id',
+    component: KnowledgeBaseDetailScreenComponent,
+    canActivate: [adminGuard],
+    title: 'HelmOS Knowledge Base Detail'
+  },
+  {
+    path: 'admin/knowledge-base-search',
+    component: KnowledgeBaseSearchScreenComponent,
+    canActivate: [adminGuard],
+    title: 'HelmOS Knowledge Base Search'
   },
   {
     path: 'admin/agents',
