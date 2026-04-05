@@ -2137,6 +2137,1416 @@ test("POST /api/business-ideas/:workspaceId/ideation/messages derives an agent r
   assert.equal(chatMessageCreates.at(-1).messageText, response.body.data.chat.messages.at(-1).content);
 });
 
+test("GET /api/idea-foundry/prospecting/configuration returns the persisted prospecting configuration", async () => {
+  const persistedSnapshot = {
+    agentState: "active",
+    strategyMode: "Focused search",
+    lastRun: "2026-04-05T10:15:00.000Z",
+    nextRun: "2026-04-05T14:15:00.000Z",
+    objective: {
+      name: "Recurring compliance pain",
+      description: "Find repeated operator pain in compliance-heavy workflows.",
+      targetDomain: "European SMB services",
+      searchPosture: "Targeted exploration",
+      includeKeywords: "compliance, reconciliation, invoicing",
+      excludeThemes: "generic AI commentary",
+      operatorNote: "Keep the search practical and workflow-led.",
+    },
+    strategySummary: "The strategy is currently focused on recurring administrative pain.",
+    steeringHypothesis: "Repeated compliance pain is easiest to monetise first.",
+    strategyPatterns: [],
+    themes: [],
+    sources: [],
+    queryFamilies: [],
+    signalRules: [],
+    cadence: {
+      runMode: "Scheduled",
+      cadence: "Every 4 hours",
+      maxResultsPerRun: 40,
+      reviewThreshold: "Repeated evidence only",
+      geographicScope: "United Kingdom, Ireland",
+      languageScope: "English",
+      budgetGuardrail: "Prefer lower-cost sources first.",
+    },
+    recentMetrics: [],
+    recentChanges: [],
+  };
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-prospecting-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    prospectingConfiguration: {
+      findUnique: async () => ({
+        id: "prospecting-config-1",
+        ownerUserId: "user-prospecting-1",
+        agentState: "active",
+        latestRunStatus: "COMPLETED",
+        lastRunAt: new Date("2026-04-05T10:15:00Z"),
+        nextRunAt: new Date("2026-04-05T14:15:00Z"),
+        uiSnapshotJson: persistedSnapshot,
+        latestReviewJson: {
+          reply_to_user: {
+            content: "The current strategy is usable and slightly biased toward recurring compliance pain.",
+          },
+        },
+        lastResultRecords: [{ id: "result-1" }, { id: "result-2" }],
+      }),
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient: {} });
+  const response = await withAuth(request(app).get("/api/idea-foundry/prospecting/configuration"));
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.snapshot.objective.name, "Recurring compliance pain");
+  assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
+  assert.equal(response.body.data.runtime.resultRecordCount, 2);
+  assert.equal(
+    response.body.data.latestReview.reply_to_user.content,
+    "The current strategy is usable and slightly biased toward recurring compliance pain."
+  );
+});
+
+test("POST /api/idea-foundry/prospecting/configuration/run executes the prospecting agent review and persists the updated configuration", async () => {
+  const currentSnapshot = {
+    agentState: "active",
+    strategyMode: "Focused search",
+    lastRun: "2026-04-04T09:10:00.000Z",
+    nextRun: "2026-04-04T13:10:00.000Z",
+    objective: {
+      name: "Recurring compliance pain",
+      description: "Find repeated operator pain in compliance-heavy workflows.",
+      targetDomain: "European SMB services",
+      searchPosture: "Targeted exploration",
+      includeKeywords: "compliance, reconciliation, invoicing",
+      excludeThemes: "generic AI commentary",
+      operatorNote: "Keep the search practical and workflow-led.",
+    },
+    strategySummary: "Current focus is recurring compliance and admin pain.",
+    steeringHypothesis: "Complaint-rich sources will reveal the strongest signals.",
+    strategyPatterns: [],
+    themes: [],
+    sources: [],
+    queryFamilies: [],
+    signalRules: [],
+    cadence: {
+      runMode: "Scheduled",
+      cadence: "Every 4 hours",
+      maxResultsPerRun: 40,
+      reviewThreshold: "Repeated evidence only",
+      geographicScope: "United Kingdom, Ireland",
+      languageScope: "English",
+      budgetGuardrail: "Prefer lower-cost sources first.",
+    },
+    recentMetrics: [],
+    recentChanges: [],
+  };
+
+  const storedResultRecords = Array.from({ length: 35 }, (_, index) => ({
+    id: `result-${index + 1}`,
+    title: `Stored result ${index + 1}`,
+  }));
+
+  const configurationUpserts = [];
+  let capturedGatewayPayload = null;
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-prospecting-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    prospectingConfiguration: {
+      findUnique: async () => ({
+        id: "prospecting-config-1",
+        ownerUserId: "user-prospecting-1",
+        agentState: "active",
+        latestRunStatus: "COMPLETED",
+        lastRunAt: new Date("2026-04-04T09:10:00Z"),
+        nextRunAt: new Date("2026-04-04T13:10:00Z"),
+        uiSnapshotJson: currentSnapshot,
+        latestReviewJson: null,
+        lastResultRecords: storedResultRecords,
+      }),
+      upsert: async ({ create, update }) => {
+        configurationUpserts.push({ create, update });
+        return {
+          id: "prospecting-config-1",
+          ownerUserId: "user-prospecting-1",
+          ...create,
+          ...update,
+        };
+      },
+    },
+    agentDefinition: {
+      findMany: async () => [
+        {
+          key: "prospecting",
+          name: "Prospecting Agent",
+          updatedAt: new Date("2026-04-04T08:00:00Z"),
+        },
+      ],
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+  };
+
+  const agentGatewayClient = {
+    startRun: async (payload) => {
+      capturedGatewayPayload = payload;
+      return {
+        id: "gateway-prospecting-run-1",
+        status: "running",
+      };
+    },
+    waitForRunCompletion: async () => ({
+      id: "gateway-prospecting-run-1",
+      status: "completed",
+      normalized_output: {
+        reply_to_user: {
+          content: "I tightened the prospecting configuration around recurring compliance pain and reduced weaker channels.",
+        },
+        strategy_review_overview: {
+          assessment: {
+            label: "Promising with refinement needed",
+            reason: "Strong direction, but a few channels still invite lower-signal noise.",
+            next_best_action: "Keep complaint-led search active and trim weaker proxy sources.",
+          },
+        },
+        current_strategy_assessment: {
+          summary: "The strategy is coherent and focused on recurring operator pain.",
+          observed_strengths: ["Complaint-led sources are producing useful evidence."],
+          observed_weaknesses: ["A few query families overlap."],
+          notable_gaps: ["Cross-border friction is still under-represented."],
+          status: {
+            label: "Focused search",
+            tone: "positive",
+            agent_confidence: "High confidence",
+            explanation: "The strategy is directionally strong.",
+          },
+        },
+        recommended_strategy_update: {
+          prospecting_objective: {
+            objective_name: "Recurring compliance pain in fragmented service sectors",
+            description: "Surface repeated workflow pain in compliance-heavy service businesses.",
+            target_domain: "European SMB services",
+            include_themes: ["recurring admin burden", "fragmented compliance workflows"],
+            exclude_themes: ["generic AI commentary"],
+          },
+          search_strategy: {
+            summary: "Lean harder into complaint-led sources and recurring administrative friction.",
+            strategy_patterns: [
+              {
+                key: "complaint-mining",
+                label: "Complaint mining",
+                enabled: true,
+                priority: "high",
+                rationale: "This pattern keeps surfacing concrete operator pain.",
+              },
+            ],
+            steering_hypothesis: "Recurring compliance pain remains the highest-confidence lane.",
+          },
+          search_themes: [
+            {
+              label: "fragmented compliance workflows",
+              status: "active",
+              priority: "high",
+              rationale: "Compliance pain remains frequent and monetisable.",
+            },
+          ],
+          source_mix: [
+            {
+              label: "Reddit / forums",
+              enabled: true,
+              expected_signal_type: "Complaint language and workaround discussions",
+              rationale: "Forums keep producing the clearest operator pain evidence.",
+              review_frequency: "Every run",
+            },
+          ],
+          query_families: [
+            {
+              title: "Complaint language around invoicing / VAT / reminders",
+              intent: "Detect recurring frustration around mandatory admin work.",
+              representative_queries: ["hate doing VAT reminders every month"],
+              theme_link: "fragmented compliance workflows",
+              source_applicability: ["Reddit / forums"],
+              status: "active",
+              rationale: "High-evidence lane for repeated pain.",
+            },
+          ],
+          signal_quality_criteria: [
+            {
+              title: "Favour repeated mentions over isolated anecdotes",
+              description: "Repeated pain across sources is stronger than a single complaint.",
+              enabled: true,
+              strictness: "high",
+              rationale: "This reduces false positives.",
+            },
+          ],
+          scan_policy: {
+            run_mode: "scheduled",
+            cadence: "Every 4 hours",
+            max_results_per_run: 40,
+            promotion_threshold: "Only promote repeated or costly pain signals.",
+            geographic_scope: ["United Kingdom", "Ireland"],
+            language_scope: ["English"],
+            guardrails: ["Prefer complaint-rich sources before higher-cost report pulls"],
+          },
+        },
+        proposed_changes: [
+          {
+            change_type: "tighten_source_mix",
+            target: "job boards",
+            summary: "Keep job boards paused while stronger complaint-led sources outperform them.",
+            reason: "The current objective is better served by direct operator pain.",
+            expected_effect: "Cleaner queue quality with less noise.",
+            risk: "May miss a few labour-intensive workflow hints.",
+          },
+        ],
+        review_flags: [
+          {
+            severity: "medium",
+            area: "Source mix",
+            message: "Job-board style sources are currently weak contributors.",
+            recommended_operator_action: "Keep them paused until the strategy broadens again.",
+          },
+        ],
+      },
+    }),
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/prospecting/configuration/run")
+      .send({ snapshot: currentSnapshot })
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(capturedGatewayPayload.request_type, "prospecting_configuration_review");
+  assert.equal(capturedGatewayPayload.requested_agent, "prospecting");
+  assert.ok(
+    capturedGatewayPayload.input_text.includes("Review the current prospecting strategy and the recent search results.")
+  );
+  assert.ok(capturedGatewayPayload.input_text.includes('"Stored result 30"'));
+  assert.equal(capturedGatewayPayload.input_text.includes('"Stored result 31"'), false);
+  assert.equal(response.body.data.snapshot.objective.name, "Recurring compliance pain in fragmented service sectors");
+  assert.equal(response.body.data.snapshot.strategySummary, "Lean harder into complaint-led sources and recurring administrative friction.");
+  assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
+  assert.equal(
+    response.body.data.latestReview.recommended_strategy_update.prospecting_objective.objective_name,
+    "Recurring compliance pain in fragmented service sectors"
+  );
+  assert.equal(configurationUpserts.length >= 3, true);
+  const persistedUpdate = configurationUpserts.at(-1)?.update ?? configurationUpserts.at(-1)?.create ?? {};
+  assert.equal(
+    persistedUpdate.latestReviewJson?.recommended_strategy_update?.prospecting_objective?.objective_name,
+    "Recurring compliance pain in fragmented service sectors"
+  );
+  assert.equal(
+    persistedUpdate.uiSnapshotJson?.objective?.name,
+    "Recurring compliance pain in fragmented service sectors"
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_run_started"),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_prompt_prepared"),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_gateway_summary_received"),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some(
+      (entry) =>
+        entry.event === "prospecting_configuration_gateway_summary_received" &&
+        entry.context.parsedJsonOutput?.recommended_strategy_update?.prospecting_objective?.objective_name ===
+          "Recurring compliance pain in fragmented service sectors"
+    ),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_persisted"),
+    true
+  );
+});
+
+test("POST /api/idea-foundry/prospecting/configuration/execute runs prospecting execution and stores normalized result records", async () => {
+  const storedSnapshot = {
+    agentState: "active",
+    strategyMode: "Focused search",
+    lastRun: "2026-04-05T09:10:00.000Z",
+    nextRun: "2026-04-05T13:10:00.000Z",
+    objective: {
+      name: "Recurring compliance pain",
+      description: "Find repeated operator pain in compliance-heavy workflows.",
+      targetDomain: "European SMB services",
+      searchPosture: "Targeted exploration",
+      includeKeywords: "compliance, reconciliation, invoicing",
+      excludeThemes: "generic AI commentary",
+      operatorNote: "Keep the search practical and workflow-led.",
+    },
+    strategySummary: "Current focus is recurring compliance and admin pain.",
+    steeringHypothesis: "Complaint-rich sources will reveal the strongest signals.",
+    strategyPatterns: [],
+    themes: [
+      {
+        id: "theme-1",
+        label: "fragmented compliance workflows",
+        status: "active",
+        priority: "High",
+        rationale: "High-evidence workflow pain."
+      }
+    ],
+    sources: [
+      {
+        id: "source-1",
+        label: "Reddit / forums",
+        description: "Operator complaint language.",
+        enabled: true,
+        freshness: "Fresh",
+        signalType: "Complaints",
+        noiseProfile: "Balanced",
+        reviewFrequency: "Every run"
+      }
+    ],
+    queryFamilies: [
+      {
+        id: "query-1",
+        title: "Complaint language around invoicing / VAT / reminders",
+        intent: "Detect recurring frustration around mandatory admin work.",
+        representativeQueries: [
+          "hate doing VAT reminders every month",
+          "manual invoice follow up small business"
+        ],
+        themeLink: "fragmented compliance workflows",
+        sourceApplicability: ["Reddit / forums"],
+        status: "Active",
+        confidence: "Promising",
+        expanded: true,
+        priorityRank: 1
+      }
+    ],
+    signalRules: [],
+    cadence: {
+      runMode: "Scheduled",
+      cadence: "Every 4 hours",
+      maxResultsPerRun: 40,
+      reviewThreshold: "Repeated evidence only",
+      geographicScope: "United Kingdom, Ireland",
+      languageScope: "English",
+      budgetGuardrail: "Prefer lower-cost sources first.",
+    },
+    recentMetrics: [],
+    recentChanges: [],
+  };
+
+  const configurationUpserts = [];
+  const searchCalls = [];
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-prospecting-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    prospectingConfiguration: {
+      findUnique: async () => ({
+        id: "prospecting-config-1",
+        ownerUserId: "user-prospecting-1",
+        agentState: "active",
+        latestRunStatus: "COMPLETED",
+        lastRunAt: new Date("2026-04-05T09:10:00Z"),
+        nextRunAt: new Date("2026-04-05T13:10:00Z"),
+        uiSnapshotJson: storedSnapshot,
+        latestReviewJson: {
+          reply_to_user: {
+            content: "Latest prospecting strategy is ready for execution."
+          }
+        },
+        lastResultRecords: [],
+      }),
+      upsert: async ({ create, update }) => {
+        configurationUpserts.push({ create, update });
+        return {
+          id: "prospecting-config-1",
+          ownerUserId: "user-prospecting-1",
+          ...create,
+          ...update,
+        };
+      },
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+  };
+
+  const agentGatewayClient = {
+    searchWeb: async (payload) => {
+      searchCalls.push(payload);
+      return {
+        tool_name: "web_search",
+        action: "search",
+        success: true,
+        payload: {
+          query: payload.query,
+          results: [
+            {
+              title: "Operators hate chasing VAT reminders manually",
+              url: "https://example.com/vat-reminders",
+              snippet: "A founder describes recurring VAT reminder pain.",
+              provider: "duckduckgo",
+              rank: 1,
+            },
+            {
+              title: "Manual invoice follow-up is still spreadsheet-based",
+              url: "https://example.com/manual-invoice-follow-up",
+              snippet: "Repeated complaint about admin-heavy invoice follow-up.",
+              provider: "duckduckgo",
+              rank: 2,
+            },
+          ],
+        },
+      };
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/prospecting/configuration/execute")
+      .send({})
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(searchCalls.length, 2);
+  assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
+  assert.equal(response.body.data.runtime.resultRecordCount, 2);
+  const persistedUpdate = configurationUpserts.at(-1)?.update ?? configurationUpserts.at(-1)?.create ?? {};
+  assert.equal(Array.isArray(persistedUpdate.lastResultRecords), true);
+  assert.equal(persistedUpdate.lastResultRecords.length, 2);
+  assert.equal(persistedUpdate.lastResultRecords[0].queryFamilyTitle, "Complaint language around invoicing / VAT / reminders");
+  assert.equal(persistedUpdate.lastResultRecords[0].themeLink, "fragmented compliance workflows");
+  assert.equal(persistedUpdate.lastResultRecords[0].sourceUrl, "https://example.com/vat-reminders");
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_execution_started"),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_execution_query_completed"),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_execution_persisted"),
+    true
+  );
+});
+
+test("POST /api/idea-foundry/prospecting/configuration/run accepts a compliant prospecting review embedded inside the gateway agent envelope", async () => {
+  const currentSnapshot = {};
+
+  const compliantRawOutput = JSON.stringify({
+    reply_to_user: {
+      content: "I tightened the strategy and kept the strongest complaint-led sources active.",
+    },
+    strategy_review_overview: {
+      assessment: {
+        label: "Focused search",
+        reason: "The strategy is coherent and only needs minor tuning.",
+        next_best_action: "Keep the query family mix tight and complaint-led.",
+      },
+    },
+    current_strategy_assessment: {
+      summary: "The strategy is coherent and close to production-ready.",
+      observed_strengths: ["Clear complaint-led posture"],
+      observed_weaknesses: ["Sparse recent results"],
+      notable_gaps: ["Cross-border evidence is still thin"],
+      status: {
+        label: "Focused search",
+        tone: "positive",
+        agent_confidence: "High confidence",
+        explanation: "The current strategy is usable with only minor changes.",
+      },
+    },
+    recommended_strategy_update: {
+      prospecting_objective: {
+        objective_name: "Recurring compliance pain",
+        description: "Surface repeated workflow pain in compliance-heavy service businesses.",
+        target_domain: "European SMB services",
+        include_themes: ["recurring admin burden"],
+        exclude_themes: ["generic AI commentary"],
+      },
+      search_strategy: {
+        summary: "Lean into complaint-led sources and recurring operator burden.",
+        strategy_patterns: [
+          {
+            key: "complaint-mining",
+            label: "Complaint mining",
+            enabled: true,
+            priority: "high",
+            rationale: "It continues to surface concrete operator pain.",
+          },
+        ],
+        steering_hypothesis: "Recurring compliance pain remains the strongest lane.",
+      },
+      search_themes: [
+        {
+          label: "recurring admin burden",
+          status: "active",
+          priority: "high",
+          rationale: "Repeated admin work remains strong evidence of durable pain.",
+        },
+      ],
+      source_mix: [
+        {
+          label: "Reddit / forums",
+          enabled: true,
+          expected_signal_type: "Complaint language",
+          rationale: "Forum complaint language remains the strongest source.",
+          review_frequency: "Every run",
+        },
+      ],
+      query_families: [
+        {
+          title: "Complaint language around invoicing",
+          intent: "Detect recurring administrative frustration.",
+          representative_queries: ["hate doing invoicing every month"],
+          theme_link: "recurring admin burden",
+          source_applicability: ["Reddit / forums"],
+          status: "active",
+          rationale: "High-evidence lane.",
+        },
+      ],
+      signal_quality_criteria: [
+        {
+          title: "Favour repeated mentions over isolated anecdotes",
+          description: "Repeated pain is stronger than a single complaint.",
+          enabled: true,
+          strictness: "high",
+          rationale: "This reduces false positives.",
+        },
+      ],
+      scan_policy: {
+        run_mode: "scheduled",
+        cadence: "Every 4 hours",
+        max_results_per_run: 40,
+        promotion_threshold: "Repeated evidence only",
+        geographic_scope: ["United Kingdom"],
+        language_scope: ["English"],
+        guardrails: ["Prefer complaint-rich sources first"],
+      },
+    },
+    proposed_changes: [],
+    review_flags: [],
+  });
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-prospecting-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    prospectingConfiguration: {
+      findUnique: async () => ({
+        id: "prospecting-config-1",
+        ownerUserId: "user-prospecting-1",
+        agentState: "active",
+        latestRunStatus: "COMPLETED",
+        lastRunAt: new Date("2026-04-04T09:10:00Z"),
+        nextRunAt: new Date("2026-04-04T13:10:00Z"),
+        uiSnapshotJson: currentSnapshot,
+        latestReviewJson: null,
+        lastResultRecords: [],
+      }),
+      upsert: async ({ create, update }) => ({
+        id: "prospecting-config-1",
+        ownerUserId: "user-prospecting-1",
+        ...create,
+        ...update,
+      }),
+    },
+    agentDefinition: {
+      findMany: async () => [
+        {
+          key: "prospecting",
+          name: "Prospecting Agent",
+          updatedAt: new Date("2026-04-04T08:00:00Z"),
+        },
+      ],
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+  };
+
+  const agentGatewayClient = {
+    startRun: async () => ({
+      id: "gateway-prospecting-envelope-run-1",
+      status: "running",
+    }),
+    waitForRunCompletion: async () => ({
+      id: "gateway-prospecting-envelope-run-1",
+      status: "completed",
+      normalized_output: {
+        agent_key: "prospecting",
+        version: "1.0.0",
+        artifact: {
+          kind: "prospecting",
+          title: "Prospecting Agent",
+          summary: "Structured prospecting review.",
+          sections: [
+            {
+              heading: "Generated Output",
+              content: compliantRawOutput,
+            },
+          ],
+        },
+        debug: {
+          raw_llm_output: compliantRawOutput,
+        },
+      },
+    }),
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/prospecting/configuration/run")
+      .send({ snapshot: currentSnapshot })
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.latestReview.reply_to_user.content.includes("tightened the strategy"), true);
+  assert.equal(response.body.data.latestReview.meta.usedFallback ?? false, false);
+  assert.equal(
+    prisma.logEntry.createCalls.some(
+      (entry) =>
+        entry.event === "prospecting_configuration_gateway_summary_received" &&
+        entry.context.rawLlmOutput === compliantRawOutput
+    ),
+    true
+  );
+});
+
+test("POST /api/idea-foundry/prospecting/configuration/run returns a clear error when prospecting storage is unavailable", async () => {
+  const missingTableError = new Error("The table `helmos.prospecting_configurations` does not exist in the current database.");
+  missingTableError.code = "P2021";
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-prospecting-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    prospectingConfiguration: {
+      findUnique: async () => {
+        throw missingTableError;
+      },
+      upsert: async () => {
+        throw missingTableError;
+      },
+    },
+    agentDefinition: {
+      findMany: async () => [
+        {
+          key: "prospecting",
+          name: "Prospecting Agent",
+          updatedAt: new Date("2026-04-04T08:00:00Z"),
+        },
+      ],
+    },
+  };
+
+  const agentGatewayClient = {
+    startRun: async () => {
+      throw new Error("should not be called");
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/prospecting/configuration/run")
+      .send({
+        snapshot: {
+          agentState: "active",
+          strategyMode: "Focused search",
+        },
+      })
+  );
+
+  assert.equal(response.statusCode, 503);
+  assert.equal(
+    response.body.error,
+    "Prospecting configuration storage is not available yet. Apply the database migration for prospecting configurations and try again."
+  );
+});
+
+test("POST /api/idea-foundry/prospecting/configuration/run returns a clear error when the gateway registry is missing the prospecting agent", async () => {
+  const currentSnapshot = {
+    agentState: "active",
+    strategyMode: "Focused search",
+  };
+
+  let startRunCalled = false;
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-prospecting-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    prospectingConfiguration: {
+      findUnique: async () => ({
+        id: "prospecting-config-1",
+        ownerUserId: "user-prospecting-1",
+        agentState: "active",
+        latestRunStatus: "IDLE",
+        lastRunAt: null,
+        nextRunAt: null,
+        uiSnapshotJson: currentSnapshot,
+        latestReviewJson: null,
+        lastResultRecords: [],
+      }),
+      upsert: async ({ create, update }) => ({
+        id: "prospecting-config-1",
+        ownerUserId: "user-prospecting-1",
+        ...create,
+        ...update,
+      }),
+    },
+    agentDefinition: {
+      findMany: async () => [
+        {
+          key: "prospecting",
+          name: "Prospecting Agent",
+          updatedAt: new Date("2026-04-04T08:00:00Z"),
+        },
+      ],
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+  };
+
+  const agentGatewayClient = {
+    getAdminSnapshot: async () => ({
+      configured: true,
+      status: "online",
+      message: "Agent gateway responded successfully.",
+      baseUrl: "http://127.0.0.1:8000/api/v1",
+      service: "helmos-agent-gateway",
+      checkedAt: "2026-04-05T17:48:38.548Z",
+      agents: [
+        { key: "ideation" },
+        { key: "research" },
+        { key: "roadmap" },
+      ],
+    }),
+    startRun: async () => {
+      startRunCalled = true;
+      return { id: "should-not-run" };
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/prospecting/configuration/run")
+      .send({ snapshot: currentSnapshot })
+  );
+
+  assert.equal(response.statusCode, 503);
+  assert.match(response.body.error, /does not have the 'prospecting' agent registered/i);
+  assert.equal(startRunCalled, false);
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_gateway_registry_mismatch"),
+    true
+  );
+});
+
+test("POST /api/idea-foundry/prospecting/configuration/run preserves the current configuration when the gateway returns an unstructured completed artifact", async () => {
+  const currentSnapshot = {
+    agentState: "active",
+    strategyMode: "Focused search",
+    lastRun: "2026-04-04T09:10:00.000Z",
+    nextRun: "2026-04-04T13:10:00.000Z",
+    objective: {
+      name: "Recurring compliance pain",
+      description: "Find repeated operator pain in compliance-heavy workflows.",
+      targetDomain: "European SMB services",
+      searchPosture: "Targeted exploration",
+      includeKeywords: "compliance, reconciliation, invoicing",
+      excludeThemes: "generic AI commentary",
+      operatorNote: "Keep the search practical and workflow-led.",
+    },
+    strategySummary: "Current focus is recurring compliance and admin pain.",
+    steeringHypothesis: "Complaint-rich sources will reveal the strongest signals.",
+    strategyPatterns: [],
+    themes: [],
+    sources: [],
+    queryFamilies: [],
+    signalRules: [],
+    cadence: {
+      runMode: "Scheduled",
+      cadence: "Every 4 hours",
+      maxResultsPerRun: 40,
+      reviewThreshold: "Repeated evidence only",
+      geographicScope: "United Kingdom, Ireland",
+      languageScope: "English",
+      budgetGuardrail: "Prefer lower-cost sources first.",
+    },
+    recentMetrics: [],
+    recentChanges: [],
+  };
+
+  const configurationUpserts = [];
+  const gatewayStartCalls = [];
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-prospecting-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    prospectingConfiguration: {
+      findUnique: async () => ({
+        id: "prospecting-config-1",
+        ownerUserId: "user-prospecting-1",
+        agentState: "active",
+        latestRunStatus: "COMPLETED",
+        lastRunAt: new Date("2026-04-04T09:10:00Z"),
+        nextRunAt: new Date("2026-04-04T13:10:00Z"),
+        uiSnapshotJson: currentSnapshot,
+        latestReviewJson: null,
+        lastResultRecords: [],
+      }),
+      upsert: async ({ create, update }) => {
+        configurationUpserts.push({ create, update });
+        return {
+          id: "prospecting-config-1",
+          ownerUserId: "user-prospecting-1",
+          ...create,
+          ...update,
+        };
+      },
+    },
+    agentDefinition: {
+      findMany: async () => [
+        {
+          key: "prospecting",
+          name: "Prospecting Agent",
+          updatedAt: new Date("2026-04-04T08:00:00Z"),
+        },
+      ],
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+  };
+
+  const agentGatewayClient = {
+    startRun: async (payload) => {
+      gatewayStartCalls.push(payload);
+      return {
+        id:
+          gatewayStartCalls.length === 1
+            ? "gateway-prospecting-run-2"
+            : `gateway-prospecting-run-2-repair-${gatewayStartCalls.length - 1}`,
+        status: "running",
+      };
+    },
+    waitForRunCompletion: async (runId) => ({
+      id: runId,
+      status: "completed",
+      normalized_output: {
+        debug: {
+          raw_llm_output: "raw gateway output",
+        },
+        version: "1.0.0",
+        artifact: {
+          kind: "generic",
+          title: "Deterministic Summary",
+          summary: "A deterministic route handled this request without specialist delegation.",
+          sections: [
+            {
+              heading: "Prompt echo",
+              content: "Review the current prospecting strategy and the recent search results.",
+            },
+          ],
+        },
+      },
+    }),
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/prospecting/configuration/run")
+      .send({ snapshot: currentSnapshot })
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.body.data.snapshot.objective, currentSnapshot.objective);
+  assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
+  assert.match(
+    response.body.data.latestReview.reply_to_user.content,
+    /did not return a compliant structured configuration update/i
+  );
+  assert.equal(gatewayStartCalls.length, 4);
+  assert.equal(gatewayStartCalls[1].request_type, "prospecting_configuration_review_repair");
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_unstructured_gateway_output"),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some(
+      (entry) =>
+        entry.event === "prospecting_configuration_gateway_summary_received" &&
+        entry.context.rawLlmOutput === "raw gateway output"
+    ),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_output_validation_failed"),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_repair_requested"),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_repair_validation_failed"),
+    true
+  );
+  assert.equal(configurationUpserts.length >= 3, true);
+});
+
+test("POST /api/idea-foundry/prospecting/configuration/run asks the agent to repair a non-compliant response and persists the repaired output within three attempts", async () => {
+  const currentSnapshot = {
+    agentState: "active",
+    strategyMode: "Focused search",
+    lastRun: "2026-04-04T09:10:00.000Z",
+    nextRun: "2026-04-04T13:10:00.000Z",
+    objective: {
+      name: "Recurring compliance pain",
+      description: "Find repeated operator pain in compliance-heavy workflows.",
+      targetDomain: "European SMB services",
+      searchPosture: "Targeted exploration",
+      includeKeywords: "compliance, reconciliation, invoicing",
+      excludeThemes: "generic AI commentary",
+      operatorNote: "Keep the search practical and workflow-led.",
+    },
+    strategySummary: "Current focus is recurring compliance and admin pain.",
+    steeringHypothesis: "Complaint-rich sources will reveal the strongest signals.",
+    strategyPatterns: [],
+    themes: [],
+    sources: [],
+    queryFamilies: [],
+    signalRules: [],
+    cadence: {
+      runMode: "Scheduled",
+      cadence: "Every 4 hours",
+      maxResultsPerRun: 40,
+      reviewThreshold: "Repeated evidence only",
+      geographicScope: "United Kingdom, Ireland",
+      languageScope: "English",
+      budgetGuardrail: "Prefer lower-cost sources first.",
+    },
+    recentMetrics: [],
+    recentChanges: [],
+  };
+
+  const configurationUpserts = [];
+  const gatewayStartCalls = [];
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-prospecting-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    prospectingConfiguration: {
+      findUnique: async () => ({
+        id: "prospecting-config-1",
+        ownerUserId: "user-prospecting-1",
+        agentState: "active",
+        latestRunStatus: "COMPLETED",
+        lastRunAt: new Date("2026-04-04T09:10:00Z"),
+        nextRunAt: new Date("2026-04-04T13:10:00Z"),
+        uiSnapshotJson: currentSnapshot,
+        latestReviewJson: null,
+        lastResultRecords: [],
+      }),
+      upsert: async ({ create, update }) => {
+        configurationUpserts.push({ create, update });
+        return {
+          id: "prospecting-config-1",
+          ownerUserId: "user-prospecting-1",
+          ...create,
+          ...update,
+        };
+      },
+    },
+    agentDefinition: {
+      findMany: async () => [
+        {
+          key: "prospecting",
+          name: "Prospecting Agent",
+          updatedAt: new Date("2026-04-04T08:00:00Z"),
+        },
+      ],
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+  };
+
+  const agentGatewayClient = {
+    startRun: async (payload) => {
+      gatewayStartCalls.push(payload);
+      return {
+        id:
+          gatewayStartCalls.length === 1
+            ? "gateway-prospecting-run-3"
+            : `gateway-prospecting-run-3-repair-${gatewayStartCalls.length - 1}`,
+        status: "running",
+      };
+    },
+    waitForRunCompletion: async (runId) => {
+      if (runId === "gateway-prospecting-run-3" || runId === "gateway-prospecting-run-3-repair-1" || runId === "gateway-prospecting-run-3-repair-2") {
+        return {
+          id: runId,
+          status: "completed",
+          normalized_output: {
+            version: "1.0.0",
+            artifact: {
+              kind: "generic",
+              title: "Deterministic Summary",
+              summary: "A deterministic route handled this request without specialist delegation.",
+            },
+          },
+        };
+      }
+
+      return {
+        id: runId,
+        status: "completed",
+        normalized_output: {
+          reply_to_user: {
+            content: "I corrected the response format and tightened the search configuration.",
+          },
+          strategy_review_overview: {
+            assessment: {
+              label: "Compliant after repair",
+              reason: "The first reply missed required fields, so the schema was reissued correctly.",
+              next_best_action: "Keep complaint-led discovery active and monitor cross-border pain.",
+            },
+          },
+          current_strategy_assessment: {
+            summary: "The repaired output keeps the strategy focused on recurring compliance pain.",
+            observed_strengths: ["The complaint-led posture remains clear."],
+            observed_weaknesses: ["The first response missed the contract."],
+            notable_gaps: ["Cross-border pain still needs more signal depth."],
+            status: {
+              label: "Focused search",
+              tone: "positive",
+              agent_confidence: "Medium confidence",
+              explanation: "The repaired response now complies with the expected structure.",
+            },
+          },
+          recommended_strategy_update: {
+            prospecting_objective: {
+              objective_name: "Recurring compliance pain in fragmented service sectors",
+              description: "Surface repeated workflow pain in compliance-heavy service businesses.",
+              target_domain: "European SMB services",
+              include_themes: ["recurring admin burden", "fragmented compliance workflows"],
+              exclude_themes: ["generic AI commentary"],
+            },
+            search_strategy: {
+              summary: "Lean harder into complaint-led sources and recurring administrative friction.",
+              strategy_patterns: [
+                {
+                  key: "complaint-mining",
+                  label: "Complaint mining",
+                  enabled: true,
+                  priority: "high",
+                  rationale: "This pattern keeps surfacing concrete operator pain.",
+                },
+              ],
+              steering_hypothesis: "Recurring compliance pain remains the highest-confidence lane.",
+            },
+            search_themes: [
+              {
+                label: "fragmented compliance workflows",
+                status: "active",
+                priority: "high",
+                rationale: "Compliance pain remains frequent and monetisable.",
+              },
+            ],
+            source_mix: [
+              {
+                label: "Reddit / forums",
+                enabled: true,
+                expected_signal_type: "Complaint language and workaround discussions",
+                rationale: "Forums keep producing the clearest operator pain evidence.",
+                review_frequency: "Every run",
+              },
+            ],
+            query_families: [
+              {
+                title: "Complaint language around invoicing / VAT / reminders",
+                intent: "Detect recurring frustration around mandatory admin work.",
+                representative_queries: ["hate doing VAT reminders every month"],
+                theme_link: "fragmented compliance workflows",
+                source_applicability: ["Reddit / forums"],
+                status: "active",
+                rationale: "High-evidence lane for repeated pain.",
+              },
+            ],
+            signal_quality_criteria: [
+              {
+                title: "Favour repeated mentions over isolated anecdotes",
+                description: "Repeated pain across sources is stronger than a single complaint.",
+                enabled: true,
+                strictness: "high",
+                rationale: "This reduces false positives.",
+              },
+            ],
+            scan_policy: {
+              run_mode: "scheduled",
+              cadence: "Every 4 hours",
+              max_results_per_run: 40,
+              promotion_threshold: "Only promote repeated or costly pain signals.",
+              geographic_scope: ["United Kingdom", "Ireland"],
+              language_scope: ["English"],
+              guardrails: ["Prefer complaint-rich sources before higher-cost report pulls"],
+            },
+          },
+          proposed_changes: [],
+          review_flags: [],
+        },
+      };
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/prospecting/configuration/run")
+      .send({ snapshot: currentSnapshot })
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(gatewayStartCalls.length, 4);
+  assert.equal(gatewayStartCalls[0].request_type, "prospecting_configuration_review");
+  assert.equal(gatewayStartCalls[1].request_type, "prospecting_configuration_review_repair");
+  assert.equal(gatewayStartCalls[2].request_type, "prospecting_configuration_review_repair");
+  assert.equal(gatewayStartCalls[3].request_type, "prospecting_configuration_review_repair");
+  assert.match(gatewayStartCalls[1].input_text, /did not comply with the required prospecting configuration review json schema/i);
+  assert.match(gatewayStartCalls[1].input_text, /repair attempt 1 of 3/i);
+  assert.match(gatewayStartCalls[2].input_text, /repair attempt 2 of 3/i);
+  assert.match(gatewayStartCalls[3].input_text, /repair attempt 3 of 3/i);
+  assert.equal(response.body.data.snapshot.objective.name, "Recurring compliance pain in fragmented service sectors");
+  assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
+  assert.equal(response.body.data.latestReview.meta.repairedAfterValidationFailure, true);
+  assert.equal(response.body.data.latestReview.meta.repairAttemptsUsed, 3);
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_output_validation_failed"),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_repair_requested"),
+    true
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_repair_summary_received"),
+    true
+  );
+  assert.equal(configurationUpserts.length >= 3, true);
+});
+
+test("POST /api/idea-foundry/prospecting/configuration/run stops after three repair attempts and falls back safely", async () => {
+  const currentSnapshot = {
+    agentState: "active",
+    strategyMode: "Focused search",
+    lastRun: "2026-04-04T09:10:00.000Z",
+    nextRun: "2026-04-04T13:10:00.000Z",
+    objective: {
+      name: "Recurring compliance pain",
+      description: "Find repeated operator pain in compliance-heavy workflows.",
+      targetDomain: "European SMB services",
+      searchPosture: "Targeted exploration",
+      includeKeywords: "compliance, reconciliation, invoicing",
+      excludeThemes: "generic AI commentary",
+      operatorNote: "Keep the search practical and workflow-led.",
+    },
+    strategySummary: "Current focus is recurring compliance and admin pain.",
+    steeringHypothesis: "Complaint-rich sources will reveal the strongest signals.",
+    strategyPatterns: [],
+    themes: [],
+    sources: [],
+    queryFamilies: [],
+    signalRules: [],
+    cadence: {
+      runMode: "Scheduled",
+      cadence: "Every 4 hours",
+      maxResultsPerRun: 40,
+      reviewThreshold: "Repeated evidence only",
+      geographicScope: "United Kingdom, Ireland",
+      languageScope: "English",
+      budgetGuardrail: "Prefer lower-cost sources first.",
+    },
+    recentMetrics: [],
+    recentChanges: [],
+  };
+
+  const gatewayStartCalls = [];
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-prospecting-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    prospectingConfiguration: {
+      findUnique: async () => ({
+        id: "prospecting-config-1",
+        ownerUserId: "user-prospecting-1",
+        agentState: "active",
+        latestRunStatus: "COMPLETED",
+        lastRunAt: new Date("2026-04-04T09:10:00Z"),
+        nextRunAt: new Date("2026-04-04T13:10:00Z"),
+        uiSnapshotJson: currentSnapshot,
+        latestReviewJson: null,
+        lastResultRecords: [],
+      }),
+      upsert: async ({ create, update }) => ({
+        id: "prospecting-config-1",
+        ownerUserId: "user-prospecting-1",
+        ...create,
+        ...update,
+      }),
+    },
+    agentDefinition: {
+      findMany: async () => [
+        {
+          key: "prospecting",
+          name: "Prospecting Agent",
+          updatedAt: new Date("2026-04-04T08:00:00Z"),
+        },
+      ],
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+  };
+
+  const agentGatewayClient = {
+    startRun: async (payload) => {
+      gatewayStartCalls.push(payload);
+      return {
+        id:
+          gatewayStartCalls.length === 1
+            ? "gateway-prospecting-run-4"
+            : `gateway-prospecting-run-4-repair-${gatewayStartCalls.length - 1}`,
+        status: "running",
+      };
+    },
+    waitForRunCompletion: async (runId) => ({
+      id: runId,
+      status: "completed",
+      normalized_output: {
+        version: "1.0.0",
+        artifact: {
+          kind: "generic",
+          title: "Deterministic Summary",
+          summary: "A deterministic route handled this request without specialist delegation.",
+        },
+      },
+    }),
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/prospecting/configuration/run")
+      .send({ snapshot: currentSnapshot })
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(gatewayStartCalls.length, 4);
+  assert.equal(response.body.data.latestReview.meta.usedFallback, true);
+  assert.equal(response.body.data.latestReview.meta.repairAttemptsUsed, 3);
+  assert.equal(response.body.data.latestReview.meta.fallbackReason, "non_compliant_output_after_max_repairs");
+  assert.equal(
+    prisma.logEntry.createCalls.filter((entry) => entry.event === "prospecting_configuration_repair_requested").length,
+    3
+  );
+  assert.equal(
+    prisma.logEntry.createCalls.filter((entry) => entry.event === "prospecting_configuration_repair_validation_failed").length,
+    3
+  );
+});
+
 test("POST /api/business-ideas/:workspaceId/ideation/messages does not derive ideation sections from a generic idea brief artifact", async () => {
   const initialWorkspace = buildStrategyHubWorkspaceRecord({
     id: "workspace-existing-1",

@@ -2,6 +2,7 @@
 
 from app.models.agent_test import (
     AgentTestAnnotation,
+    AgentTestFixtureRecord,
     AgentTestRun,
     AgentTestRunSnapshot,
     AgentTestScore,
@@ -18,6 +19,7 @@ from app.models.session import Session
 
 __all__ = [
     "AgentTestAnnotation",
+    "AgentTestFixtureRecord",
     "AgentTestRun",
     "AgentTestRunSnapshot",
     "AgentTestScore",

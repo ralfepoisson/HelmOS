@@ -108,4 +108,25 @@ describe('TopNavComponent', () => {
 
     expect(compiled.textContent).toContain('Agent Testing');
   });
+
+  it('shows Idea Foundry in the primary navigation', async () => {
+    const fixture = await renderComponent();
+    const navLinks = fixture.debugElement
+      .queryAll((node) => node.providerTokens.includes(RouterLinkWithHref))
+      .map((node) => ({
+        classes: node.nativeElement.className,
+        href: node.injector.get(RouterLinkWithHref).href,
+        text: node.nativeElement.textContent?.trim()
+      }));
+
+    expect(navLinks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classes: expect.stringContaining('primary-nav-link'),
+          href: '/idea-foundry',
+          text: 'Idea Foundry'
+        })
+      ])
+    );
+  });
 });

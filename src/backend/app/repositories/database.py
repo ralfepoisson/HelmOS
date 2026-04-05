@@ -11,10 +11,10 @@ from app.models import Base
 class DatabaseManager:
     """Owns the async SQLAlchemy engine and session factory."""
 
-    def __init__(self, settings):
+    def __init__(self, settings, *, database_url_override: str | None = None):
         self._settings = settings
         self.engine: AsyncEngine = create_async_engine(
-            settings.database_url,
+            database_url_override or settings.database_url,
             future=True,
             pool_pre_ping=True,
         )

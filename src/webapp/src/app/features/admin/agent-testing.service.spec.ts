@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideHttpClient } from '@angular/common/http';
+import { expect } from 'vitest';
 
 import { AgentTestingService } from './agent-testing.service';
 
@@ -8,6 +9,7 @@ describe('AgentTestingService', () => {
   let httpTesting: HttpTestingController;
 
   beforeEach(() => {
+    TestBed.resetTestingModule();
     (window as typeof window & { __HELMOS_CONFIG__?: unknown }).__HELMOS_CONFIG__ = undefined;
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting()]
@@ -18,6 +20,7 @@ describe('AgentTestingService', () => {
   afterEach(() => {
     httpTesting.verify();
     delete (window as typeof window & { __HELMOS_CONFIG__?: unknown }).__HELMOS_CONFIG__;
+    TestBed.resetTestingModule();
   });
 
   it('does not retry draft creation against the direct backend when the proxied API returns a JSON 500', async () => {
@@ -31,7 +34,7 @@ describe('AgentTestingService', () => {
       operator_notes: 'debug'
     });
 
-    const request = httpTesting.expectOne('http://localhost:4200/api/v1/admin/agent-tests/runs');
+    const request = httpTesting.expectOne('http://localhost:3000/api/v1/admin/agent-tests/runs');
     expect(request.request.method).toBe('POST');
     request.flush(
       { detail: 'draft creation failed' },
@@ -44,7 +47,7 @@ describe('AgentTestingService', () => {
       }
     );
 
-    await expectAsync(createPromise).toBeRejected();
+    await expect(createPromise).rejects.toBeTruthy();
   });
 
   it('falls back to the direct backend when the proxied API is unreachable', async () => {
@@ -58,11 +61,14 @@ describe('AgentTestingService', () => {
       operator_notes: 'debug'
     });
 
-    const proxiedRequest = httpTesting.expectOne('http://localhost:4200/api/v1/admin/agent-tests/runs');
+    const proxiedRequest = httpTesting.expectOne('http://localhost:3000/api/v1/admin/agent-tests/runs');
     expect(proxiedRequest.request.method).toBe('POST');
     proxiedRequest.error(new ProgressEvent('error'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const fallbackRequest = httpTesting.expectOne('http://localhost:8000/api/v1/admin/agent-tests/runs');
+    const fallbackRequests = httpTesting.match('http://localhost:8000/api/v1/admin/agent-tests/runs');
+    expect(fallbackRequests).toHaveLength(1);
+    const fallbackRequest = fallbackRequests[0]!;
     expect(fallbackRequest.request.method).toBe('POST');
     fallbackRequest.flush(
       {
@@ -100,8 +106,8 @@ describe('AgentTestingService', () => {
       }
     );
 
-    await expectAsync(createPromise).toBeResolvedTo(
-      jasmine.objectContaining({
+    await expect(createPromise).resolves.toEqual(
+      expect.objectContaining({
         id: 'run-1',
         status: 'draft'
       })

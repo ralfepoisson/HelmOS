@@ -56,6 +56,13 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
             >
               Strategy Copilot
             </a>
+            <a
+              routerLink="/idea-foundry"
+              class="primary-nav-link"
+              [class.primary-nav-link-active]="isIdeaFoundrySection"
+            >
+              Idea Foundry
+            </a>
           </div>
           <div *ngIf="resolvedShowAdminMenu" class="admin-menu" [class.open]="adminMenuOpen">
             <button
@@ -419,6 +426,10 @@ export class TopNavComponent {
 
   get isStrategyCopilotSection(): boolean {
     return this.router.url.startsWith('/strategy-copilot');
+  }
+
+  get isIdeaFoundrySection(): boolean {
+    return this.router.url.startsWith('/idea-foundry');
   }
 
   get resolvedShowAdminMenu(): boolean {

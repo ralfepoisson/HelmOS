@@ -18,8 +18,14 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     configure_logging(settings.log_level)
     database = DatabaseManager(settings)
+    registry_database = (
+        database
+        if settings.registry_database_url == settings.database_url
+        else DatabaseManager(settings, database_url_override=settings.registry_database_url)
+    )
     app.state.settings = settings
     app.state.database = database
+    app.state.registry_database = registry_database
     app.state.agent_test_control_events = {}
     await database.initialize()
     agent_test_worker_stop = asyncio.Event()
@@ -43,6 +49,8 @@ async def lifespan(app: FastAPI):
                 await agent_test_worker_task
             except asyncio.CancelledError:
                 pass
+        if registry_database is not database:
+            await registry_database.dispose()
         await database.dispose()
 
 

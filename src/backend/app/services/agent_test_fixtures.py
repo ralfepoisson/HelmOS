@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.agent_test import AgentTestFixtureRecord
+
 
 @dataclass(slots=True)
 class FixtureRevealableFact:
@@ -198,4 +203,137 @@ class AgentTestFixtureRepository:
             sections=sections,
             revealable_facts=_parse_revealable_facts(sections.get("Revealable Facts", "")),
             blocked_facts=_parse_bullets(sections.get("Blocked Facts", "")),
+        )
+
+
+class DatabaseAgentTestFixtureRepository:
+    """Database-backed fixture registry with filesystem sync support."""
+
+    def __init__(self, session: AsyncSession, filesystem_repository: AgentTestFixtureRepository | None = None):
+        self.session = session
+        self.filesystem_repository = filesystem_repository or AgentTestFixtureRepository()
+
+    async def sync_from_filesystem(self) -> list[AgentTestFixture]:
+        fixtures = self.filesystem_repository.list_fixtures()
+        for fixture in fixtures:
+            existing = await self._get_record(fixture.fixture_key, fixture.fixture_version)
+            if existing is None:
+                self.session.add(self._build_record(fixture))
+                continue
+            self._update_record(existing, fixture)
+        await self.session.flush()
+        return fixtures
+
+    async def list_fixtures(self) -> list[AgentTestFixture]:
+        result = await self.session.execute(
+            select(AgentTestFixtureRecord).order_by(
+                AgentTestFixtureRecord.fixture_class.asc(),
+                AgentTestFixtureRecord.title.asc(),
+                AgentTestFixtureRecord.fixture_key.asc(),
+                AgentTestFixtureRecord.fixture_version.desc(),
+            )
+        )
+        return [self._to_fixture(record) for record in result.scalars().all()]
+
+    async def load_fixture(self, fixture_key: str, fixture_version: str | None = None) -> AgentTestFixture:
+        statement = select(AgentTestFixtureRecord).where(AgentTestFixtureRecord.fixture_key == fixture_key)
+        if fixture_version:
+            statement = statement.where(AgentTestFixtureRecord.fixture_version == fixture_version)
+        statement = statement.order_by(AgentTestFixtureRecord.updated_at.desc(), AgentTestFixtureRecord.created_at.desc())
+        result = await self.session.execute(statement.limit(1))
+        record = result.scalars().first()
+        if record is None:
+            raise LookupError(f"Fixture '{fixture_key}' was not found.")
+        return self._to_fixture(record)
+
+    async def _get_record(self, fixture_key: str, fixture_version: str) -> AgentTestFixtureRecord | None:
+        result = await self.session.execute(
+            select(AgentTestFixtureRecord).where(
+                AgentTestFixtureRecord.fixture_key == fixture_key,
+                AgentTestFixtureRecord.fixture_version == fixture_version,
+            )
+        )
+        return result.scalars().first()
+
+    @staticmethod
+    def _build_record(fixture: AgentTestFixture) -> AgentTestFixtureRecord:
+        return AgentTestFixtureRecord(
+            fixture_key=fixture.fixture_key,
+            fixture_version=fixture.fixture_version,
+            fixture_class=fixture.fixture_class,
+            title=fixture.title,
+            applicable_agents=fixture.applicable_agents,
+            rubric_version_hint=fixture.rubric_version_hint,
+            driver_version_hint=fixture.driver_version_hint,
+            min_turns=fixture.min_turns,
+            max_turns=fixture.max_turns,
+            scenario_dimensions=fixture.scenario_dimensions,
+            primary_goal=fixture.primary_goal,
+            raw_markdown=fixture.raw_markdown,
+            path=fixture.path,
+            sections=fixture.sections,
+            revealable_facts=[
+                {
+                    "fact_id": fact.fact_id,
+                    "content": fact.content,
+                    "reveal_conditions": fact.reveal_conditions,
+                    "must_not_be_disclosed_before_turn": fact.must_not_be_disclosed_before_turn,
+                }
+                for fact in fixture.revealable_facts
+            ],
+            blocked_facts=fixture.blocked_facts,
+        )
+
+    @staticmethod
+    def _update_record(record: AgentTestFixtureRecord, fixture: AgentTestFixture) -> None:
+        record.fixture_class = fixture.fixture_class
+        record.title = fixture.title
+        record.applicable_agents = fixture.applicable_agents
+        record.rubric_version_hint = fixture.rubric_version_hint
+        record.driver_version_hint = fixture.driver_version_hint
+        record.min_turns = fixture.min_turns
+        record.max_turns = fixture.max_turns
+        record.scenario_dimensions = fixture.scenario_dimensions
+        record.primary_goal = fixture.primary_goal
+        record.raw_markdown = fixture.raw_markdown
+        record.path = fixture.path
+        record.sections = fixture.sections
+        record.revealable_facts = [
+            {
+                "fact_id": fact.fact_id,
+                "content": fact.content,
+                "reveal_conditions": fact.reveal_conditions,
+                "must_not_be_disclosed_before_turn": fact.must_not_be_disclosed_before_turn,
+            }
+            for fact in fixture.revealable_facts
+        ]
+        record.blocked_facts = fixture.blocked_facts
+
+    @staticmethod
+    def _to_fixture(record: AgentTestFixtureRecord) -> AgentTestFixture:
+        return AgentTestFixture(
+            fixture_key=record.fixture_key,
+            fixture_version=record.fixture_version,
+            fixture_class=record.fixture_class,
+            title=record.title,
+            applicable_agents=[str(item) for item in (record.applicable_agents or [])],
+            rubric_version_hint=record.rubric_version_hint,
+            driver_version_hint=record.driver_version_hint,
+            min_turns=record.min_turns,
+            max_turns=record.max_turns,
+            scenario_dimensions=[str(item) for item in (record.scenario_dimensions or [])],
+            primary_goal=record.primary_goal,
+            raw_markdown=record.raw_markdown,
+            path=record.path,
+            sections=record.sections or {},
+            revealable_facts=[
+                FixtureRevealableFact(
+                    fact_id=str(fact.get("fact_id", "")),
+                    content=str(fact.get("content", "")),
+                    reveal_conditions=[str(item) for item in fact.get("reveal_conditions", [])],
+                    must_not_be_disclosed_before_turn=int(fact.get("must_not_be_disclosed_before_turn", 1)),
+                )
+                for fact in (record.revealable_facts or [])
+            ],
+            blocked_facts=[str(item) for item in (record.blocked_facts or [])],
         )

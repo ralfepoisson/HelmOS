@@ -64,6 +64,30 @@ class AgentTestRepository(SQLAlchemyRepository):
         )
         return list(result.scalars().all())
 
+    async def list_turns_for_run(self, run_id: str) -> list[AgentTestTurn]:
+        result = await self.session.execute(
+            select(AgentTestTurn)
+            .where(AgentTestTurn.test_run_id == run_id)
+            .order_by(AgentTestTurn.turn_index.asc(), AgentTestTurn.created_at.asc())
+        )
+        return list(result.scalars().all())
+
+    async def list_annotations_for_run(self, run_id: str) -> list[AgentTestAnnotation]:
+        result = await self.session.execute(
+            select(AgentTestAnnotation)
+            .where(AgentTestAnnotation.test_run_id == run_id)
+            .order_by(AgentTestAnnotation.turn_index.asc(), AgentTestAnnotation.created_at.asc())
+        )
+        return list(result.scalars().all())
+
+    async def list_scores_for_run(self, run_id: str) -> list[AgentTestScore]:
+        result = await self.session.execute(
+            select(AgentTestScore)
+            .where(AgentTestScore.test_run_id == run_id)
+            .order_by(AgentTestScore.created_at.asc(), AgentTestScore.dimension_key.asc())
+        )
+        return list(result.scalars().all())
+
     async def clear_execution_artifacts(self, run_id: str) -> None:
         await self.session.execute(
             delete(AgentTestAnnotation).where(AgentTestAnnotation.test_run_id == run_id)

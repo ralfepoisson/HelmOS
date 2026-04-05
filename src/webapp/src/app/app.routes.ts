@@ -13,6 +13,10 @@ import { IdeationScreenComponent } from './features/ideation/ideation-screen.com
 import { ValuePropositionScreenComponent } from './features/value-proposition/value-proposition-screen.component';
 import { MyBusinessIdeasPageComponent } from './features/strategy-copilot/my-business-ideas-page.component';
 import { StrategyCopilotHomeComponent } from './features/strategy-copilot/strategy-copilot-home.component';
+import { IdeaFoundryOverviewComponent } from './features/idea-foundry/idea-foundry-overview.component';
+import { IdeaFoundryShellComponent } from './features/idea-foundry/idea-foundry-shell.component';
+import { IdeaFoundryStagePageComponent } from './features/idea-foundry/idea-foundry-stage-page.component';
+import { ProspectingConfigurationComponent } from './features/idea-foundry/prospecting-configuration.component';
 
 export const rootIdeaSelectionRedirectGuard: CanActivateFn = async () => {
   const router = inject(Router);
@@ -62,6 +66,58 @@ export const routes: Routes = [
     component: ValuePropositionScreenComponent,
     canActivate: [authGuard],
     title: 'HelmOS Strategy Copilot Value Proposition'
+  },
+  {
+    path: 'idea-foundry',
+    component: IdeaFoundryShellComponent,
+    canActivate: [authGuard],
+    title: 'HelmOS Idea Foundry',
+    children: [
+      {
+        path: '',
+        component: IdeaFoundryOverviewComponent,
+        pathMatch: 'full',
+        title: 'HelmOS Idea Foundry Overview'
+      },
+      {
+        path: 'prospecting-configuration',
+        component: ProspectingConfigurationComponent,
+        title: 'HelmOS Idea Foundry Prospecting Configuration',
+      },
+      {
+        path: 'proto-idea-extraction',
+        component: IdeaFoundryStagePageComponent,
+        title: 'HelmOS Idea Foundry Proto-Idea Extraction',
+        data: {
+          title: 'Proto-Idea Extraction',
+          summary: 'Convert unstructured source material into normalized proto-ideas with clear problems, signals, and opportunity framing.',
+          detail:
+            'This screen is scaffolded and ready for extraction prompts, normalization templates, and review tooling for weak signal cleanup.'
+        }
+      },
+      {
+        path: 'idea-refinement',
+        component: IdeaFoundryStagePageComponent,
+        title: 'HelmOS Idea Foundry Idea Refinement',
+        data: {
+          title: 'Idea Refinement',
+          summary: 'Challenge, reshape, and strengthen candidate ideas until they are clearer, more differentiated, and more viable.',
+          detail:
+            'This screen is scaffolded and ready for refinement loops, cognitive tool application, and structured quality-improvement workflows.'
+        }
+      },
+      {
+        path: 'idea-evaluator',
+        component: IdeaFoundryStagePageComponent,
+        title: 'HelmOS Idea Foundry Idea Evaluator',
+        data: {
+          title: 'Idea Evaluator',
+          summary: 'Apply quality gates that decide whether an opportunity is promoted, recycled for further refinement, or parked as latent.',
+          detail:
+            'This screen is scaffolded and ready for progression criteria, evaluator rubrics, and downstream Strategy Copilot handoff controls.'
+        }
+      }
+    ]
   },
   {
     path: 'ideation',

@@ -1751,6 +1751,13 @@ The admin UI must support:
 - marking false negatives
 - marking a run as `gold_standard`
 
+Current implementation status:
+
+- the Admin Agent Testing run-detail view renders persisted transcript turns
+- per-turn annotations and per-dimension score evidence are visible alongside the run summary
+- immutable snapshot payloads are exposed for review, including text and JSON snapshot content
+- report markdown and structured report findings are shown without requiring database inspection
+
 ### 22.2 Override policy
 
 Override records must store:

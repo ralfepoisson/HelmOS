@@ -3,6 +3,7 @@ const express = require("express");
 const { createAuthMiddleware, createAuthServiceSignInHandler, requireAdmin } = require("./auth");
 const { createAdminRouter } = require("./admin-router");
 const { createBusinessIdeasRouter } = require("./business-ideas-router");
+const { createProspectingRouter } = require("./prospecting-router");
 const { createCrudRouter } = require("./create-crud-router");
 const { prismaEnums, resourceConfigs } = require("./resources");
 
@@ -32,6 +33,7 @@ function createApiRouter({ prisma, agentGatewayClient }) {
 
   router.use("/admin", authenticate, requireAdmin, createAdminRouter({ prisma, agentGatewayClient }));
   router.use("/business-ideas", authenticate, createBusinessIdeasRouter({ prisma, agentGatewayClient }));
+  router.use("/idea-foundry/prospecting", authenticate, createProspectingRouter({ prisma, agentGatewayClient }));
 
   resourceConfigs.forEach((config) => {
     router.use(`/${config.path}`, authenticate, createCrudRouter({ prisma, config }));

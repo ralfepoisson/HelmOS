@@ -40,6 +40,14 @@ async def get_db_session(request: Request) -> AsyncIterator[AsyncSession]:
         yield session
 
 
+async def get_registry_db_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """Yield a request-scoped async session for the shared agent registry database."""
+
+    database = getattr(request.app.state, "registry_database", request.app.state.database)
+    async with database.session_factory() as session:
+        yield session
+
+
 def get_settings(request: Request) -> Settings:
     """Return app settings."""
 
@@ -85,13 +93,18 @@ def build_specialist_registry(
     )
 
 
-def build_runtime(*, session: AsyncSession, settings: Settings) -> OrchestrationRuntime:
+def build_runtime(
+    *,
+    session: AsyncSession,
+    registry_session: AsyncSession,
+    settings: Settings,
+) -> OrchestrationRuntime:
     """Compose the orchestration runtime for request or worker usage."""
 
     run_repository = RunRepository(session)
     session_repository = SessionRepository(session)
     approval_repository = ApprovalRepository(session)
-    registry_repository = RegistryRepository(session)
+    registry_repository = RegistryRepository(registry_session)
     specialist_agents = build_specialist_registry(
         settings,
         registry_repository=registry_repository,

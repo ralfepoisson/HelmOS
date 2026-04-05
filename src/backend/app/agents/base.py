@@ -36,6 +36,9 @@ class SpecialistAgent(ABC):
         return self.descriptor.allowed_tools
 
     def build_prompt(self, execution_input: AgentExecutionInput) -> str:
+        if not self.template_renderer.has_placeholders(self.instruction_template):
+            return execution_input.prompt
+
         chat_history = execution_input.context.get(
             "chat_history",
             execution_input.context.get("recent_messages", []),

@@ -39,6 +39,33 @@ class AgentTestRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
 
+class AgentTestFixtureRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Database-backed registry record for one test fixture version."""
+
+    __tablename__ = "agent_test_fixtures"
+
+    fixture_key: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    fixture_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    fixture_class: Mapped[str] = mapped_column(String(100), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    applicable_agents: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    rubric_version_hint: Mapped[str] = mapped_column(String(100), nullable=False)
+    driver_version_hint: Mapped[str] = mapped_column(String(100), nullable=False)
+    min_turns: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    max_turns: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    scenario_dimensions: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    primary_goal: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    raw_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    path: Mapped[str] = mapped_column(String(255), nullable=False)
+    sections: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    revealable_facts: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    blocked_facts: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+
+    __table_args__ = (
+        {"sqlite_autoincrement": False},
+    )
+
+
 class AgentTestRunSnapshot(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """Immutable snapshot content used by a test run."""
 

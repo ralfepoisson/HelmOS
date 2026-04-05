@@ -43,6 +43,25 @@ function normalizeRunStatus(status) {
   return typeof status === "string" ? status.trim().toLowerCase() : "";
 }
 
+function extractRawLlmOutput(summary) {
+  const candidate = summary?.normalized_output?.debug?.raw_llm_output;
+  return typeof candidate === "string" && candidate.trim().length > 0 ? candidate : null;
+}
+
+function extractParsedJsonOutput(summary) {
+  const rawLlmOutput = extractRawLlmOutput(summary);
+  if (rawLlmOutput) {
+    try {
+      return JSON.parse(rawLlmOutput);
+    } catch {
+      return null;
+    }
+  }
+
+  const normalizedOutput = summary?.normalized_output;
+  return normalizedOutput && typeof normalizedOutput === "object" ? normalizedOutput : null;
+}
+
 function createAgentGatewayClient({
   baseUrl,
   timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -254,6 +273,18 @@ function createAgentGatewayClient({
       });
     },
 
+    async searchWeb({ query, maxResults = 5, actor = "system" }) {
+      return requestJson("/tools/web-search", {
+        method: "POST",
+        body: {
+          query,
+          max_results: maxResults,
+          actor,
+        },
+        timeoutOverrideMs: 15000,
+      });
+    },
+
     async waitForRunCompletion(
       runId,
       { maxAttempts = DEFAULT_RUN_POLL_ATTEMPTS, delayMs = DEFAULT_RUN_POLL_DELAY_MS } = {}
@@ -262,6 +293,19 @@ function createAgentGatewayClient({
         const summary = await this.getRunSummary(runId);
 
         if (TERMINAL_RUN_STATUSES.has(normalizeRunStatus(summary.status))) {
+          await createLogEntry(prisma, {
+            level: "info",
+            scope: "agentic-layer",
+            event: "agent_gateway_run_terminal_summary_received",
+            message: `Run ${runId} reached terminal state ${summary.status ?? "unknown"}`,
+            context: {
+              runId,
+              gatewayStatus: summary.status ?? null,
+              rawLlmOutput: extractRawLlmOutput(summary),
+              parsedJsonOutput: extractParsedJsonOutput(summary),
+              normalizedOutput: summary?.normalized_output ?? null,
+            },
+          });
           return summary;
         }
 
@@ -270,6 +314,19 @@ function createAgentGatewayClient({
 
       const summary = await this.getRunSummary(runId);
       if (TERMINAL_RUN_STATUSES.has(normalizeRunStatus(summary.status))) {
+        await createLogEntry(prisma, {
+          level: "info",
+          scope: "agentic-layer",
+          event: "agent_gateway_run_terminal_summary_received",
+          message: `Run ${runId} reached terminal state ${summary.status ?? "unknown"}`,
+          context: {
+            runId,
+            gatewayStatus: summary.status ?? null,
+            rawLlmOutput: extractRawLlmOutput(summary),
+            parsedJsonOutput: extractParsedJsonOutput(summary),
+            normalizedOutput: summary?.normalized_output ?? null,
+          },
+        });
         return summary;
       }
 

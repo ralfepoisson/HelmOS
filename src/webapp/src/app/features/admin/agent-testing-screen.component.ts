@@ -8,10 +8,13 @@ import { TopNavComponent } from '../../core/layout/top-nav.component';
 import { WorkspaceShellService } from '../../core/services/workspace-shell.service';
 import { AgentAdminRecord, AgentAdminService } from './agent-admin.service';
 import {
+  AgentTestAnnotation,
   AgentTestFixtureSummary,
+  AgentTestRunSnapshot,
   AgentTestingService,
   AgentTestRunDetail,
-  AgentTestRunSummary
+  AgentTestRunSummary,
+  AgentTestTranscriptTurn
 } from './agent-testing.service';
 
 interface TestingAgentRecord {
@@ -68,7 +71,8 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
           <h1>Agent Testing</h1>
           <p>
             Review testable agents, configure draft runs, and execute selected tests from a single
-            workspace. Agent and fixture data are live; transcript execution remains the next layer.
+            workspace. Completed runs include transcript evidence, score breakdowns, and immutable
+            execution snapshots for review.
           </p>
         </div>
 
@@ -301,9 +305,22 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
 
             <article class="detail-card">
               <h3>Execution Report</h3>
-              <p *ngIf="selectedRun.report_markdown; else pendingReportCopy">
-                Execution artifacts are available for this run.
-              </p>
+              <div *ngIf="selectedRun.report_markdown || hasReportFindings; else pendingReportCopy" class="detail-stack">
+                <p *ngIf="reportSummary">{{ reportSummary }}</p>
+                <div *ngIf="reportQualityFailures.length > 0" class="evidence-group">
+                  <div class="evidence-label">Quality failures</div>
+                  <ul class="evidence-list">
+                    <li *ngFor="let failure of reportQualityFailures">{{ stringifyEvidence(failure) }}</li>
+                  </ul>
+                </div>
+                <div *ngIf="reportMissedOpportunities.length > 0" class="evidence-group">
+                  <div class="evidence-label">Missed opportunities</div>
+                  <ul class="evidence-list">
+                    <li *ngFor="let item of reportMissedOpportunities">{{ stringifyEvidence(item) }}</li>
+                  </ul>
+                </div>
+                <pre *ngIf="selectedRun.report_markdown" class="code-block">{{ selectedRun.report_markdown }}</pre>
+              </div>
               <ng-template #pendingReportCopy>
                 <p>
                   Report output will appear here after the execution pipeline produces transcript,
@@ -314,10 +331,64 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
 
             <article class="detail-card">
               <h3>Transcript Review</h3>
-              <p>
-                Transcript review remains empty until the execution pipeline generates a message
-                history for this run.
-              </p>
+              <div *ngIf="selectedRun.turns.length > 0; else pendingTranscriptCopy" class="transcript-list">
+                <div *ngFor="let turn of selectedRun.turns" class="transcript-turn">
+                  <div class="transcript-turn-meta">
+                    <span class="turn-badge">{{ formatActorLabel(turn.actor_type) }}</span>
+                    <span>Turn {{ turn.turn_index }}</span>
+                    <span>{{ turn.created_at | date: 'shortTime' }}</span>
+                  </div>
+                  <p class="transcript-message">{{ turn.message_text }}</p>
+                  <div *ngIf="annotationsForTurn(turn).length > 0" class="annotation-list">
+                    <span *ngFor="let annotation of annotationsForTurn(turn)" class="annotation-pill">
+                      {{ annotation.tag }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <ng-template #pendingTranscriptCopy>
+                <p>
+                  Transcript review remains empty until the execution pipeline generates a message
+                  history for this run.
+                </p>
+              </ng-template>
+            </article>
+
+            <article class="detail-card">
+              <h3>Score Evidence</h3>
+              <div *ngIf="selectedRun.scores.length > 0; else pendingScoresCopy" class="score-list">
+                <div *ngFor="let score of selectedRun.scores" class="score-card">
+                  <div class="score-card-top">
+                    <strong>{{ score.dimension_key }}</strong>
+                    <span>{{ score.normalized_score | number: '1.2-2' }}</span>
+                  </div>
+                  <p>
+                    {{ score.layer_key }} layer, raw {{ score.raw_score }}, weight {{ score.weight_percent }}%.
+                    Evidence turns: {{ score.evidence_turn_refs.join(', ') || 'none' }}.
+                  </p>
+                </div>
+              </div>
+              <ng-template #pendingScoresCopy>
+                <p>Per-dimension score evidence will appear here when the evaluation completes.</p>
+              </ng-template>
+            </article>
+
+            <article class="detail-card">
+              <h3>Snapshot Artifacts</h3>
+              <div *ngIf="selectedRun.snapshots.length > 0; else pendingArtifactsCopy" class="artifact-list">
+                <div *ngFor="let snapshot of selectedRun.snapshots" class="artifact-card">
+                  <div class="artifact-card-top">
+                    <strong>{{ snapshot.snapshot_type }}</strong>
+                    <span>{{ snapshot.created_at | date: 'short' }}</span>
+                  </div>
+                  <p>{{ snapshot.source_ref || 'Inline snapshot' }}</p>
+                  <pre *ngIf="snapshot.content_text" class="code-block">{{ snapshot.content_text }}</pre>
+                  <pre *ngIf="hasJsonContent(snapshot)" class="code-block">{{ snapshot.content_json | json }}</pre>
+                </div>
+              </div>
+              <ng-template #pendingArtifactsCopy>
+                <p>Immutable snapshots and generated artifacts will appear here after execution.</p>
+              </ng-template>
             </article>
           </div>
 
@@ -759,6 +830,97 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
         margin-top: 1rem !important;
       }
 
+      .detail-stack,
+      .transcript-list,
+      .score-list,
+      .artifact-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+      }
+
+      .evidence-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+
+      .evidence-label {
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+        color: #6b8098;
+      }
+
+      .evidence-list {
+        margin: 0;
+        padding-left: 1.1rem;
+        color: var(--helmos-text);
+      }
+
+      .transcript-turn,
+      .score-card,
+      .artifact-card {
+        padding: 0.9rem;
+        border: 1px solid rgba(53, 100, 137, 0.12);
+        border-radius: 0.9rem;
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      .transcript-turn-meta,
+      .score-card-top,
+      .artifact-card-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .turn-badge,
+      .annotation-pill {
+        padding: 0.2rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+
+      .turn-badge {
+        color: #1f5e8f;
+        background: rgba(222, 236, 249, 0.95);
+      }
+
+      .transcript-message {
+        margin-top: 0.6rem !important;
+        color: var(--helmos-text) !important;
+        white-space: pre-wrap;
+      }
+
+      .annotation-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-top: 0.7rem;
+      }
+
+      .annotation-pill {
+        color: #7a4f01;
+        background: rgba(255, 238, 201, 0.95);
+      }
+
+      .code-block {
+        margin: 0;
+        padding: 0.9rem;
+        border-radius: 0.8rem;
+        background: #f5f8fb;
+        color: #213547;
+        font-size: 0.82rem;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        overflow-x: auto;
+      }
+
       .run-action-button {
         min-width: 160px;
         box-shadow: 0 18px 34px rgba(25, 135, 84, 0.18);
@@ -1039,6 +1201,23 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
     return this.runActionInFlight ? 'Starting…' : 'Start';
   }
 
+  protected get reportSummary(): string | null {
+    const summary = this.selectedRun?.report_json['summary'];
+    return typeof summary === 'string' && summary.trim() ? summary : null;
+  }
+
+  protected get reportQualityFailures(): unknown[] {
+    return this.asArray(this.selectedRun?.report_json['quality_failures']);
+  }
+
+  protected get reportMissedOpportunities(): unknown[] {
+    return this.asArray(this.selectedRun?.report_json['missed_opportunities']);
+  }
+
+  protected get hasReportFindings(): boolean {
+    return this.reportQualityFailures.length > 0 || this.reportMissedOpportunities.length > 0;
+  }
+
   private runRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   async ngOnInit(): Promise<void> {
@@ -1222,7 +1401,10 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
       metadata_json: {
         operator_notes: run.operator_notes ?? ''
       },
-      snapshots: []
+      snapshots: [],
+      turns: [],
+      annotations: [],
+      scores: []
     };
   }
 
@@ -1269,6 +1451,41 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
       (candidate) => candidate.fixture_key === fixtureKey && candidate.fixture_version === fixtureVersion
     );
     return fixture ? fixture.title : fixtureKey;
+  }
+
+  protected formatActorLabel(actorType: string): string {
+    if (actorType === 'target_agent') {
+      return 'Target agent';
+    }
+    if (actorType === 'driver') {
+      return 'Scenario driver';
+    }
+    return actorType.replace(/[_-]/g, ' ').replace(/\b\w/g, (value) => value.toUpperCase());
+  }
+
+  protected annotationsForTurn(turn: AgentTestTranscriptTurn): AgentTestAnnotation[] {
+    if (!this.selectedRun) {
+      return [];
+    }
+    return this.selectedRun.annotations.filter((annotation) => annotation.turn_index === turn.turn_index);
+  }
+
+  protected hasJsonContent(snapshot: AgentTestRunSnapshot): boolean {
+    return Object.keys(snapshot.content_json ?? {}).length > 0;
+  }
+
+  protected stringifyEvidence(value: unknown): string {
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (value && typeof value === 'object' && 'message' in value && typeof value['message'] === 'string') {
+      return value['message'];
+    }
+    return JSON.stringify(value);
+  }
+
+  private asArray(value: unknown): unknown[] {
+    return Array.isArray(value) ? value : [];
   }
 
   private async loadAgents(): Promise<void> {
@@ -1366,7 +1583,7 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
   }
 
   private isTestableAgent(agent: AgentAdminRecord): boolean {
-    return agent.active && ['ideation', 'value-proposition', 'value_proposition'].includes(agent.key);
+    return agent.active;
   }
 
   private resolvePurpose(agent: AgentAdminRecord): string {

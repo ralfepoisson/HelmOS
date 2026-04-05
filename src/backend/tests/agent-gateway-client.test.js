@@ -56,3 +56,55 @@ test("agent gateway client throws when a run never reaches a terminal state", as
     }
   );
 });
+
+test("agent gateway client logs raw and parsed LLM output when a run completes", async () => {
+  const prisma = {
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+  };
+  const rawLlmOutput = JSON.stringify({
+    reply_to_user: {
+      content: "Structured reply from the LLM.",
+    },
+  });
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => ({
+      id: "run-3",
+      status: "completed",
+      normalized_output: {
+        agent_key: "prospecting",
+        debug: {
+          raw_llm_output: rawLlmOutput,
+        },
+      },
+    }),
+  });
+  const client = createAgentGatewayClient({
+    baseUrl: "http://127.0.0.1:8000/api/v1",
+    fetchImpl,
+    prisma,
+  });
+
+  const summary = await client.waitForRunCompletion("run-3", {
+    maxAttempts: 1,
+    delayMs: 0,
+  });
+
+  assert.equal(summary.status, "completed");
+  assert.equal(
+    prisma.logEntry.createCalls.some(
+      (entry) =>
+        entry.event === "agent_gateway_run_terminal_summary_received" &&
+        entry.context.runId === "run-3" &&
+        entry.context.rawLlmOutput === rawLlmOutput &&
+        entry.context.parsedJsonOutput.reply_to_user.content === "Structured reply from the LLM."
+    ),
+    true
+  );
+});

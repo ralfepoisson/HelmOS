@@ -1,6 +1,8 @@
 """Runtime settings for the HelmOS backend."""
 
 from functools import lru_cache
+import os
+from pathlib import Path
 from typing import cast
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -10,6 +12,42 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/helmos"
+REPO_ROOT = Path(__file__).resolve().parents[4]
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_ENV_FILES = (
+    str(BACKEND_ROOT / ".env"),
+    str(REPO_ROOT / ".env"),
+)
+
+
+@lru_cache(maxsize=None)
+def _read_env_file(path: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    candidate = Path(path)
+    if not candidate.exists():
+        return values
+
+    for raw_line in candidate.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, raw_value = line.split("=", 1)
+        value = raw_value.strip().strip('"').strip("'")
+        values[key.strip()] = value
+    return values
+
+
+def read_explicit_setting(key: str, *, env_files: tuple[str, ...] = DEFAULT_ENV_FILES) -> str | None:
+    env_value = os.environ.get(key)
+    if env_value is not None and env_value.strip():
+        return env_value.strip()
+
+    for path in env_files:
+        value = _read_env_file(path).get(key)
+        if value is not None and value.strip():
+            return value.strip()
+
+    return None
 
 
 def normalize_database_url(value: str | None) -> str:
@@ -39,14 +77,18 @@ def normalize_database_url(value: str | None) -> str:
     return urlunsplit(parts._replace(query=urlencode(options_items)))
 
 
-def resolve_database_url(database_url: str | None, prisma_database_url: str | None) -> str:
+def resolve_database_url(
+    database_url: str | None,
+    prisma_database_url: str | None,
+) -> str:
     """Prefer the gateway-specific URL when present, otherwise reuse Prisma's DATABASE_URL."""
 
     normalized_database_url = (database_url or "").strip()
     normalized_prisma_url = (prisma_database_url or "").strip()
 
     if normalized_prisma_url and (
-        not normalized_database_url or normalized_database_url == DEFAULT_DATABASE_URL
+        not normalized_database_url
+        or normalized_database_url == DEFAULT_DATABASE_URL
     ):
         preferred = normalized_prisma_url
     else:
@@ -55,14 +97,49 @@ def resolve_database_url(database_url: str | None, prisma_database_url: str | No
     return normalize_database_url(preferred)
 
 
+def resolve_registry_database_url(
+    registry_database_url: str | None,
+    database_url: str | None,
+    prisma_database_url: str | None,
+    *,
+    env: str = "local",
+) -> str:
+    """Resolve the registry database separately from the runtime persistence database."""
+
+    normalized_registry_database_url = (registry_database_url or "").strip()
+    normalized_database_url = normalize_database_url(database_url)
+    normalized_prisma_url = (prisma_database_url or "").strip()
+
+    if normalized_registry_database_url:
+        return normalize_database_url(normalized_registry_database_url)
+
+    if env.lower() == "local" and normalized_prisma_url:
+        return normalize_database_url(normalized_prisma_url)
+
+    return normalized_database_url
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     env: str = Field(default="local", alias="HELMOS_ENV")
     log_level: str = Field(default="INFO", alias="HELMOS_LOG_LEVEL")
     api_prefix: str = Field(default="/api/v1", alias="HELMOS_API_PREFIX")
-    database_url: str = Field(default=DEFAULT_DATABASE_URL, alias="HELMOS_DATABASE_URL")
-    prisma_database_url: str | None = Field(default=None, alias="DATABASE_URL")
+    runtime_database_url: str = Field(
+        default=DEFAULT_DATABASE_URL,
+        alias="HELMOS_DATABASE_URL",
+        validation_alias="HELMOS_DATABASE_URL",
+    )
+    registry_database_url: str | None = Field(
+        default=None,
+        alias="HELMOS_REGISTRY_DATABASE_URL",
+        validation_alias="HELMOS_REGISTRY_DATABASE_URL",
+    )
+    prisma_database_url: str | None = Field(
+        default=None,
+        alias="DATABASE_URL",
+        validation_alias="DATABASE_URL",
+    )
     redis_url: str = Field(default="redis://localhost:6379/0", alias="HELMOS_REDIS_URL")
     s3_endpoint_url: str | None = Field(default=None, alias="HELMOS_S3_ENDPOINT_URL")
     s3_bucket: str = Field(default="helmos-artifacts", alias="HELMOS_S3_BUCKET")
@@ -90,19 +167,43 @@ class Settings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=DEFAULT_ENV_FILES,
         env_file_encoding="utf-8",
-        populate_by_name=True,
         case_sensitive=False,
         extra="ignore",
     )
 
     @model_validator(mode="after")
     def apply_database_url_fallback(self) -> "Settings":
-        """Normalize the configured gateway URL and fall back to Prisma's DATABASE_URL."""
+        """Normalize runtime and registry database URLs."""
 
-        self.database_url = resolve_database_url(self.database_url, self.prisma_database_url)
+        explicit_runtime_database_url = read_explicit_setting("HELMOS_DATABASE_URL")
+        explicit_registry_database_url = read_explicit_setting("HELMOS_REGISTRY_DATABASE_URL")
+        explicit_prisma_database_url = (
+            os.environ.get("DATABASE_URL")
+            or _read_env_file(str(REPO_ROOT / ".env")).get("DATABASE_URL")
+            or _read_env_file(str(BACKEND_ROOT / ".env")).get("DATABASE_URL")
+        )
+
+        if explicit_runtime_database_url:
+            self.runtime_database_url = normalize_database_url(explicit_runtime_database_url)
+        else:
+            self.runtime_database_url = resolve_database_url(
+                self.runtime_database_url,
+                explicit_prisma_database_url or self.prisma_database_url,
+            )
+        self.registry_database_url = resolve_registry_database_url(
+            explicit_registry_database_url or self.registry_database_url,
+            self.runtime_database_url,
+            explicit_prisma_database_url or self.prisma_database_url,
+            env=self.env,
+        )
+        self.prisma_database_url = explicit_prisma_database_url or self.prisma_database_url
         return self
+
+    @property
+    def database_url(self) -> str:
+        return self.runtime_database_url
 
 
 @lru_cache(maxsize=1)

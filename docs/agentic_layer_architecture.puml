@@ -6,8 +6,13 @@ package "Agent Experience Layer" {
   [Auth Callback & Route Guards]
   [Root Idea Selection Redirect]
   [My Business Ideas Page]
+  [Idea Foundry Shell]
+  [Idea Foundry Overview Board]
+  [Prospecting Configuration Screen]
   [Value Proposition Screen]
   [Node Control Plane API]
+  [Prospecting Configuration API]
+  [Gateway Registry Preflight]
   [Agent Gateway API (FastAPI)]
   [Agent Admin Screen]
   [Agent Test Admin Screen]
@@ -43,13 +48,16 @@ package "Agent Testing Framework" {
   [Agent Test Execution Service]
   [Agent Test Queue Worker]
   [Scenario Driver]
+  [Fixture Registry Sync]
   [Fixture Repository]
   [Rubric Registry]
   [Comparison Engine]
   [Report Renderer]
+  [Run Detail Evidence API]
 }
 
 package "Deterministic Services" {
+  [Prospecting Execution Service]
   [Template Renderer]
   [Rules Engine]
   [Output Normaliser]
@@ -65,7 +73,8 @@ package "Tool Layer" {
 }
 
 package "Data Layer" {
-  [PostgreSQL]
+  [Gateway Runtime PostgreSQL]
+  [Shared Registry PostgreSQL]
   [pgvector]
   [Redis]
   [Object Storage]
@@ -103,6 +112,15 @@ package "AWS Production Deployment" {
 [Root Idea Selection Redirect] --> [Node Control Plane API] : list business ideas for current user
 [Angular UI] --> [My Business Ideas Page]
 [My Business Ideas Page] --> [Node Control Plane API] : list business ideas and select active workspace
+[Angular UI] --> [Idea Foundry Shell]
+[Idea Foundry Shell] --> [Idea Foundry Overview Board] : pipeline navigation and overview stages
+[Idea Foundry Shell] --> [Prospecting Configuration Screen] : prospecting submenu and operator controls
+[Prospecting Configuration Screen] --> [Prospecting Configuration API] : load config, trigger agent reviews, and run prospecting execution
+[Prospecting Configuration API] --> [Node Control Plane API] : authenticated control-plane request path
+[Prospecting Configuration API] --> [Gateway Registry Preflight] : verify requested agent is registered before review runs
+[Node Control Plane API] --> [Audit Logs] : persist gateway request traces, raw LLM output, and parsed JSON output for agent-driven workflows
+[Node Control Plane API] --> [Prospecting Execution Service] : execute latest saved prospecting strategy
+[Gateway Registry Preflight] --> [Agent Gateway API (FastAPI)] : fetch runtime registry snapshot
 [Angular UI] --> [Node Control Plane API] : load workspace unlock state and available strategy tools
 [Angular UI] --> [Value Proposition Screen]
 [Value Proposition Screen] --> [Node Control Plane API] : load value proposition canvas and persist chat-driven updates
@@ -115,16 +133,18 @@ package "AWS Production Deployment" {
 [Angular UI] --> [Agent Admin Screen]
 [Agent Admin Screen] --> [Node Control Plane API] : create/update agent registry
 [Angular UI] --> [Agent Test Admin Screen]
-[Agent Test Admin Screen] --> [Agent Gateway API (FastAPI)] : fixture discovery and transcript evaluation
+[Agent Test Admin Screen] --> [Agent Gateway API (FastAPI)] : fixture discovery, run control, and review data
+[Agent Test Admin Screen] --> [Run Detail Evidence API] : transcript turns, score evidence, and snapshot artifacts
 [Angular UI] --> [Logs Admin Screen]
 [Logs Admin Screen] --> [Node Control Plane API] : search backend logs, filter by scope, timed refresh
 [Node Control Plane API] --> [RBAC Policy] : verify JWT, derive user context, enforce access
-[Node Control Plane API] --> [PostgreSQL] : persist workspace feature unlocks and stage availability
-[RBAC Policy] --> [PostgreSQL] : upsert local user, tenant link, app role
+[Node Control Plane API] --> [Shared Registry PostgreSQL] : persist workspace feature unlocks and stage availability
+[RBAC Policy] --> [Shared Registry PostgreSQL] : upsert local user, tenant link, app role
 [Node Control Plane API] --> [Agent Gateway API (FastAPI)] : runtime snapshot
 [Node Control Plane API] --> [Agent Registry] : create/update definitions
 [Node Control Plane API] --> [Prompt Registry] : create/update active prompts
 [Agent Gateway API (FastAPI)] --> [Supervisor Agent]
+[Agent Gateway API (FastAPI)] --> [Audit Logs] : persist run audit events and normalized outputs with raw LLM traces
 [Supervisor Agent] --> [Planner / Router]
 [Planner / Router] --> [Workflow Graph Engine]
 [Workflow Graph Engine] --> [State & Checkpoint Manager]
@@ -141,11 +161,15 @@ package "AWS Production Deployment" {
 [Agent Test Queue Worker] --> [Agent Test Execution Service]
 [Agent Test Execution Service] --> [Scenario Driver]
 [Agent Test Execution Service] --> [Fixture Repository]
+[Fixture Registry Sync] --> [Fixture Repository]
 [Agent Test Execution Service] --> [Rubric Registry]
 [Agent Test Execution Service] --> [Report Renderer]
+[Run Detail Evidence API] --> [Agent Gateway API (FastAPI)] : admin run detail responses
+[Run Detail Evidence API] --> [Gateway Runtime PostgreSQL] : read run, transcript, annotation, and score records
 [Agent Test Execution Service] --> [Ideation Agent]
 [Agent Test Execution Service] --> [Value Proposition Agent]
 [Test Harness Service] --> [Fixture Repository]
+[Agent Gateway API (FastAPI)] --> [Fixture Registry Sync] : sync docs-authored fixtures into runtime DB
 [Test Harness Service] --> [Rubric Registry]
 [Test Harness Service] --> [Testing Agent]
 [Test Harness Service] --> [Report Renderer]
@@ -159,6 +183,8 @@ package "AWS Production Deployment" {
 [Workflow Graph Engine] --> [Rules Engine]
 [Workflow Graph Engine] --> [Output Normaliser]
 [Workflow Graph Engine] --> [Document Export Service]
+[Prospecting Execution Service] --> [Agent Gateway API (FastAPI)] : invoke shared web-search tool
+[Prospecting Execution Service] --> [Shared Registry PostgreSQL] : store normalized result records in prospecting configuration state
 
 [Ideation Agent] --> [Tool Registry]
 [Value Proposition Agent] --> [Tool Registry]
@@ -170,7 +196,8 @@ package "AWS Production Deployment" {
 [Tool Registry] --> [Storage Adapter]
 [Tool Registry] --> [External Integrations]
 
-[State & Checkpoint Manager] --> [PostgreSQL]
+[Agent Gateway API (FastAPI)] --> [Shared Registry PostgreSQL] : read agent definitions and prompt configs
+[State & Checkpoint Manager] --> [Gateway Runtime PostgreSQL]
 [Retrieval Adapter] --> [pgvector]
 [Workflow Graph Engine] --> [Redis]
 [Storage Adapter] --> [Object Storage]
@@ -184,7 +211,8 @@ package "AWS Production Deployment" {
 [Test Harness Service] --> [Agent Registry]
 [Test Harness Service] --> [Prompt Registry]
 [Test Harness Service] --> [Object Storage]
-[Test Harness Service] --> [PostgreSQL]
+[Test Harness Service] --> [Gateway Runtime PostgreSQL]
+[Fixture Registry Sync] --> [Gateway Runtime PostgreSQL]
 
 [Route 53] --> [ACM]
 [Route 53] --> [CloudFront]

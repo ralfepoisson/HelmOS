@@ -435,7 +435,7 @@ class GenericSpecialistAgent(SpecialistAgent):
 
         return True, None
 
-    async def _coerce_ideation_structured_output(
+    async def _coerce_structured_output(
         self,
         *,
         execution_input: AgentExecutionInput,
@@ -465,7 +465,7 @@ class GenericSpecialistAgent(SpecialistAgent):
             system_prompt=system_prompt,
             temperature=float(self.config.temperature),
             user_prompt=(
-                "The previous response did not conform to the required ideation JSON structure.\n\n"
+                "The previous response did not conform to the required structured JSON output.\n\n"
                 "Original request sent to the model:\n"
                 f"System prompt:\n{system_prompt}\n\n"
                 f"User prompt:\n{user_prompt}\n\n"
@@ -497,7 +497,7 @@ class GenericSpecialistAgent(SpecialistAgent):
             return corrected_parsed, corrected_output
 
         raise ValueError(
-            "Ideation agent returned invalid structured JSON after a correction attempt: "
+            "Agent returned invalid structured JSON after a correction attempt: "
             f"{corrected_error}"
         )
 
@@ -558,8 +558,10 @@ class GenericSpecialistAgent(SpecialistAgent):
             llm_error = llm_output.removeprefix("[llm_unavailable] ").strip()
             llm_output = None
         structured_output = None
-        if self.descriptor.key in {"ideation", "value_proposition"} and llm_output:
-            structured_output, llm_output = await self._coerce_ideation_structured_output(
+        if llm_output and (
+            self.descriptor.key in {"ideation", "value_proposition"} or self._expected_output_schema() is not None
+        ):
+            structured_output, llm_output = await self._coerce_structured_output(
                 execution_input=execution_input,
                 system_prompt=self.system_prompt,
                 llm_output=llm_output,
@@ -597,6 +599,7 @@ class GenericSpecialistAgent(SpecialistAgent):
             debug={
                 "llm_traces": llm_traces,
                 "expected_output_schema": self._expected_output_schema(),
+                "raw_llm_output": llm_output,
             },
             intermediate_notes=[note for note in notes if note],
             next_actions=self.config.next_actions,

@@ -74,6 +74,7 @@ async def start_run(
     background_tasks.add_task(
         execute_new_run,
         request.app.state.database.session_factory,
+        request.app.state.registry_database.session_factory,
         settings,
         {
             "run_id": run.id,
@@ -134,6 +135,7 @@ async def resume_run(
     background_tasks.add_task(
         execute_new_run,
         request.app.state.database.session_factory,
+        request.app.state.registry_database.session_factory,
         settings,
         {},
         checkpoint_ref=checkpoint_ref,

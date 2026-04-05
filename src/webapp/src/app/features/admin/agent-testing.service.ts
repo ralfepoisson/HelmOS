@@ -49,13 +49,62 @@ export interface AgentTestRunDetail extends AgentTestRunSummary {
   report_markdown?: string | null;
   report_json: Record<string, unknown>;
   metadata_json: Record<string, unknown>;
-  snapshots: Array<{
-    id: string;
-    snapshot_type: string;
-    source_ref?: string | null;
-    checksum?: string | null;
-    created_at: string;
-  }>;
+  snapshots: AgentTestRunSnapshot[];
+  turns: AgentTestTranscriptTurn[];
+  annotations: AgentTestAnnotation[];
+  scores: AgentTestScore[];
+}
+
+export interface AgentTestRunSnapshot {
+  id: string;
+  snapshot_type: string;
+  source_ref?: string | null;
+  checksum?: string | null;
+  created_at: string;
+  content_text?: string | null;
+  content_json: Record<string, unknown>;
+}
+
+export interface AgentTestTranscriptTurn {
+  id: string;
+  turn_index: number;
+  actor_type: string;
+  message_role: string;
+  message_text: string;
+  structured_payload: Record<string, unknown>;
+  token_usage_json: Record<string, unknown>;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AgentTestAnnotation {
+  id: string;
+  turn_index: number;
+  actor_type: string;
+  tag: string;
+  severity: string;
+  confidence: number;
+  evidence_text?: string | null;
+  evidence_span: Record<string, unknown>;
+  linked_scoring_dimensions: string[];
+  source_type: string;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AgentTestScore {
+  id: string;
+  layer_key: string;
+  dimension_key: string;
+  raw_score: number;
+  normalized_score: number;
+  weight_percent: number;
+  blocking: boolean;
+  blocking_threshold?: number | null;
+  confidence: number;
+  evidence_turn_refs: number[];
+  metadata_json: Record<string, unknown>;
+  created_at: string;
 }
 
 export interface CreateAgentTestRunPayload {

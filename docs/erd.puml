@@ -193,6 +193,42 @@ including IDEATION and VALUE_PROPOSITION.
 Each document keeps its own chat thread and section set.
 end note
 
+note right of workspaces
+Idea Foundry is now available as a dedicated UI surface.
+Its pipeline board is currently scaffolded with seeded view data only;
+source artefacts, proto-ideas, and curated opportunities are not yet
+persisted in the MVP schema.
+end note
+
+package "Idea Foundry Control" {
+  entity "prospecting_configurations" as prospecting_configurations {
+    *id : UUID <<PK>>
+    --
+    owner_user_id : UUID <<FK>>
+    agent_state : VARCHAR(20)
+    latest_run_status : VARCHAR(30)
+    latest_gateway_run_id : VARCHAR(255)
+    last_run_at : TIMESTAMP
+    next_run_at : TIMESTAMP
+    ui_snapshot_json : JSONB
+    latest_review_json : JSONB
+    last_result_records : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+}
+
+note right of prospecting_configurations
+Stores the persisted Prospecting Configuration UI state,
+the latest prospecting-agent review payload, and the
+normalized result-record sample supplied to the next
+review run and populated by Prospecting Execution.
+Prospecting reviews now depend on shared registry visibility
+for agent_definitions and prompt_configs, while the FastAPI
+gateway keeps its own runtime persistence schema for sessions,
+runs, checkpoints, and audit history.
+end note
+
 package "Conversation & Agent Orchestration" {
   entity "chat_threads" as chat_threads {
     *id : UUID <<PK>>
@@ -282,6 +318,29 @@ package "Agent Registry & Admin" {
 }
 
 package "Agent Testing" {
+  entity "agent_test_fixtures" as agent_test_fixtures {
+    *id : UUID <<PK>>
+    --
+    fixture_key : VARCHAR(150)
+    fixture_version : VARCHAR(50)
+    fixture_class : VARCHAR(100)
+    title : VARCHAR(255)
+    applicable_agents : JSONB
+    rubric_version_hint : VARCHAR(100)
+    driver_version_hint : VARCHAR(100)
+    min_turns : INTEGER
+    max_turns : INTEGER
+    scenario_dimensions : JSONB
+    primary_goal : TEXT
+    raw_markdown : TEXT
+    path : VARCHAR(255)
+    sections : JSONB
+    revealable_facts : JSONB
+    blocked_facts : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
   entity "agent_test_runs" as agent_test_runs {
     *id : UUID <<PK>>
     --
@@ -403,6 +462,13 @@ package "Audit" {
   }
 }
 
+note right of log_entries
+Stores Node control-plane operational logs, including
+agent gateway request/response traces and, for agent-driven
+flows, the raw LLM text plus any parsed JSON payload captured
+at the time the terminal gateway summary is received.
+end note
+
 organisations ||--o{ organisation_members
 users ||--o{ organisation_members
 users ||--o{ organisations : created_by
@@ -410,6 +476,7 @@ organisations ||--o{ companies
 users ||--o{ companies : created_by
 companies ||--o{ workspaces
 users ||--o{ workspaces : created_by
+users ||--|| prospecting_configurations : owns
 
 note bottom of prompt_configs
 Prompt configs are linked to agents by key convention
@@ -438,6 +505,7 @@ users ||--o{ activity_log : actor
 
 agent_runs ||--o{ section_versions
 agent_runs ||--o{ agent_test_runs : production_root
+agent_test_fixtures ||..o{ agent_test_runs : fixture_key/version
 agent_test_runs ||--o{ agent_test_run_snapshots
 agent_test_runs ||--o{ agent_test_turns
 agent_test_runs ||--o{ agent_test_annotations
@@ -476,7 +544,9 @@ end note
 note bottom of agent_test_runs
 Stores evaluation-specific transcript execution, scorecards,
 and review artifacts, while canonical product conversation
-execution remains in agent_runs.
+execution remains in agent_runs. The admin run-detail API
+returns related transcript, score, annotation, and snapshot
+records directly for reviewer inspection.
 end note
 
 @enduml

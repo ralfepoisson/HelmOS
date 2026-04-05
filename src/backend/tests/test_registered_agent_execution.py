@@ -382,6 +382,7 @@ async def test_ideation_agent_preserves_valid_structured_output():
     assert output.structured_output is not None
     assert output.structured_output["reply_to_user"]["content"] == "I tightened the draft."
     assert "reply_to_user" in output.debug["llm_traces"][0]["payload"]["response_content"]
+    assert "reply_to_user" in output.debug["raw_llm_output"]
 
 
 @pytest.mark.asyncio
@@ -473,3 +474,172 @@ async def test_ideation_agent_requests_one_correction_when_json_is_invalid():
     assert "Previous model response:\nNot valid JSON at all" in gateway.calls[1]["user_prompt"]
     assert "The response must conform exactly to this JSON structure:" in gateway.calls[1]["user_prompt"]
     assert '"reply_to_user"' in gateway.calls[1]["user_prompt"]
+    assert "Corrected response." in output.debug["raw_llm_output"]
+
+
+@pytest.mark.asyncio
+async def test_prospecting_agent_promotes_valid_structured_output_from_raw_llm_json():
+    raw_response = """
+    {
+      "reply_to_user": {"content": "I refined the prospecting strategy."},
+      "strategy_review_overview": {
+        "assessment": {
+          "label": "Focused search",
+          "reason": "The strategy is coherent and only needs small refinements.",
+          "next_best_action": "Keep the strongest complaint-led sources active."
+        }
+      },
+      "current_strategy_assessment": {
+        "summary": "The current strategy is directionally strong.",
+        "observed_strengths": ["Clear objective"],
+        "observed_weaknesses": ["A few themes are still broad"],
+        "notable_gaps": ["Limited cross-border evidence"],
+        "status": {
+          "label": "Focused search",
+          "tone": "positive",
+          "agent_confidence": "High confidence",
+          "explanation": "The strategy is usable and coherent."
+        }
+      },
+      "recommended_strategy_update": {
+        "prospecting_objective": {
+          "objective_name": "Recurring compliance pain",
+          "description": "Surface repeated workflow pain in compliance-heavy service businesses.",
+          "target_domain": "European SMB services",
+          "include_themes": ["recurring admin burden"],
+          "exclude_themes": ["generic AI commentary"]
+        },
+        "search_strategy": {
+          "summary": "Lean into repeated operator pain and complaint-led sources.",
+          "strategy_patterns": [
+            {
+              "key": "complaint-mining",
+              "label": "Complaint mining",
+              "enabled": true,
+              "priority": "high",
+              "rationale": "It continues to surface concrete evidence."
+            }
+          ],
+          "steering_hypothesis": "Recurring pain in fragmented service workflows remains promising."
+        },
+        "search_themes": [
+          {
+            "label": "recurring admin burden",
+            "status": "active",
+            "priority": "high",
+            "rationale": "Repeated admin work is durable pain."
+          }
+        ],
+        "source_mix": [
+          {
+            "label": "Reddit / forums",
+            "enabled": true,
+            "expected_signal_type": "Complaint language",
+            "rationale": "Forum complaints remain the strongest input.",
+            "review_frequency": "Every run"
+          }
+        ],
+        "query_families": [
+          {
+            "title": "Complaint language around invoicing",
+            "intent": "Detect recurring administrative frustration.",
+            "representative_queries": ["hate doing invoicing every month"],
+            "theme_link": "recurring admin burden",
+            "source_applicability": ["Reddit / forums"],
+            "status": "active",
+            "rationale": "High-evidence lane."
+          }
+        ],
+        "signal_quality_criteria": [
+          {
+            "title": "Favour repeated mentions over isolated anecdotes",
+            "description": "Repeated pain is stronger than a single complaint.",
+            "enabled": true,
+            "strictness": "high",
+            "rationale": "This reduces false positives."
+          }
+        ],
+        "scan_policy": {
+          "run_mode": "scheduled",
+          "cadence": "Every 4 hours",
+          "max_results_per_run": 40,
+          "promotion_threshold": "Repeated evidence only",
+          "geographic_scope": ["United Kingdom"],
+          "language_scope": ["English"],
+          "guardrails": ["Prefer complaint-rich sources first"]
+        }
+      },
+      "proposed_changes": [],
+      "review_flags": []
+    }
+    """
+    gateway = _FakeEnabledLLMGateway([raw_response])
+    agent = GenericSpecialistAgent(
+        descriptor=AgentDescriptor(
+            key="prospecting",
+            name="Prospecting Agent",
+            version="1.0.0",
+            purpose="Review prospecting strategy.",
+            default_model="helmos-default",
+            allowed_tools=["web_search"],
+        ),
+        instruction_template="Review the prospecting strategy: {prompt}",
+        config_json={
+            "artifact_kind": "prospecting",
+            "promptSections": {
+                "outputFormat": raw_response,
+            },
+        },
+        tool_registry=ToolRegistry(adapters=[]),
+        template_renderer=TemplateRenderer(),
+        llm_gateway=gateway,
+    )
+
+    output = await agent.execute(
+        AgentExecutionInput(
+            session_id="session-1",
+            run_id="run-1",
+            prompt="Review the current prospecting strategy.",
+            context={},
+            constraints={"model": "helmos-default"},
+        )
+    )
+
+    assert output.structured_output is not None
+    assert output.structured_output["reply_to_user"]["content"] == "I refined the prospecting strategy."
+    assert output.debug["raw_llm_output"] is not None
+
+
+def test_registered_agent_uses_user_prompt_when_instruction_template_has_no_placeholders():
+    agent = GenericSpecialistAgent(
+        descriptor=AgentDescriptor(
+            key="prospecting",
+            name="Prospecting Agent",
+            version="1.0.0",
+            purpose="Review prospecting strategy.",
+            default_model="helmos-default",
+            allowed_tools=["web_search"],
+        ),
+        instruction_template='{"reply_to_user":{"content":""}}',
+        config_json={},
+        tool_registry=ToolRegistry(adapters=[]),
+        template_renderer=TemplateRenderer(),
+        llm_gateway=LLMGateway(
+            provider="disabled",
+            base_url="http://localhost:4000",
+            api_key="unused",
+            timeout_seconds=1,
+        ),
+    )
+
+    prompt = agent.build_prompt(
+        AgentExecutionInput(
+            session_id="session-1",
+            run_id="run-1",
+            prompt="Review the current prospecting strategy.",
+            context={},
+            constraints={"model": "helmos-default"},
+        )
+    )
+
+    assert prompt == "Review the current prospecting strategy."

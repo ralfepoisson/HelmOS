@@ -88,6 +88,12 @@ Prospecting → Proto-Idea Extraction → Idea Refinement ↔ Idea Evaluation �
 * URL/content deduplication
 * Content normalisation
 
+Current implementation note:
+
+* Prospecting Configuration stores the latest prospecting strategy
+* Prospecting Execution uses that saved strategy to run shared web search queries
+* Normalised source records are persisted for the next Prospecting Agent review cycle
+
 #### Output:
 
 * Normalised raw source artefacts

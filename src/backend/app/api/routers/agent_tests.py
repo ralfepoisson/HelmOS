@@ -9,21 +9,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db_session, get_settings
 from app.config.settings import Settings
 from app.models.agent_test import AgentTestRun, AgentTestRunSnapshot
+from app.models.agent_test import AgentTestAnnotation, AgentTestScore, AgentTestTurn
 from app.repositories.registry_repository import RegistryRepository
 from app.repositories.agent_test_repository import AgentTestRepository
 from app.schemas.common import StatusResponse
 from app.schemas.agent_test import (
+    AgentTestAnnotationResponse,
     AgentTestRunDetailResponse,
     AgentTestRunListResponse,
+    AgentTestRunSnapshotResponse,
     AgentTestRunSummaryResponse,
     AgentTestEvaluationResponse,
     AgentTestScoreSummary,
+    AgentTestScoreResponse,
+    AgentTestTurnResponse,
     CreateAgentTestRunRequest,
     FixtureListResponse,
     FixtureSummary,
     EvaluateTranscriptRequest,
 )
 from app.services.agent_test_fixtures import AgentTestFixtureRepository
+from app.services.agent_test_fixtures import DatabaseAgentTestFixtureRepository
 from app.services.agent_test_reporting import AgentTestReportRenderer
 from app.services.agent_test_rubrics import RubricRegistry
 from app.services.agent_test_scoring import AgentTestScoringService
@@ -79,12 +85,98 @@ def _resolve_identity_markdown_path(agent_key: str) -> Path | None:
     return None
 
 
+def _to_snapshot_response(snapshot: AgentTestRunSnapshot) -> AgentTestRunSnapshotResponse:
+    return AgentTestRunSnapshotResponse(
+        id=snapshot.id,
+        snapshot_type=snapshot.snapshot_type,
+        source_ref=snapshot.source_ref,
+        checksum=snapshot.checksum,
+        created_at=snapshot.created_at,
+        content_text=snapshot.content_text,
+        content_json=snapshot.content_json or {},
+    )
+
+
+def _to_turn_response(turn: AgentTestTurn) -> AgentTestTurnResponse:
+    return AgentTestTurnResponse(
+        id=turn.id,
+        turn_index=turn.turn_index,
+        actor_type=turn.actor_type,
+        message_role=turn.message_role,
+        message_text=turn.message_text,
+        structured_payload=turn.structured_payload or {},
+        token_usage_json=turn.token_usage_json or {},
+        metadata_json=turn.metadata_json or {},
+        created_at=turn.created_at,
+    )
+
+
+def _to_annotation_response(annotation: AgentTestAnnotation) -> AgentTestAnnotationResponse:
+    return AgentTestAnnotationResponse(
+        id=annotation.id,
+        turn_index=annotation.turn_index,
+        actor_type=annotation.actor_type,
+        tag=annotation.tag,
+        severity=annotation.severity,
+        confidence=annotation.confidence,
+        evidence_text=annotation.evidence_text,
+        evidence_span=annotation.evidence_span or {},
+        linked_scoring_dimensions=annotation.linked_scoring_dimensions or [],
+        source_type=annotation.source_type,
+        metadata_json=annotation.metadata_json or {},
+        created_at=annotation.created_at,
+    )
+
+
+def _to_score_response(score: AgentTestScore) -> AgentTestScoreResponse:
+    return AgentTestScoreResponse(
+        id=score.id,
+        layer_key=score.layer_key,
+        dimension_key=score.dimension_key,
+        raw_score=score.raw_score,
+        normalized_score=score.normalized_score,
+        weight_percent=score.weight_percent,
+        blocking=score.blocking,
+        blocking_threshold=score.blocking_threshold,
+        confidence=score.confidence,
+        evidence_turn_refs=score.evidence_turn_refs or [],
+        metadata_json=score.metadata_json or {},
+        created_at=score.created_at,
+    )
+
+
+def _build_run_detail_response(
+    *,
+    run: AgentTestRun,
+    snapshots: list[AgentTestRunSnapshot],
+    turns: list[AgentTestTurn],
+    annotations: list[AgentTestAnnotation],
+    scores: list[AgentTestScore],
+) -> AgentTestRunDetailResponse:
+    summary = _to_run_summary(run)
+    return AgentTestRunDetailResponse(
+        **summary.model_dump(),
+        report_markdown=run.report_markdown,
+        report_json=run.report_json or {},
+        metadata_json=run.metadata_json or {},
+        snapshots=[_to_snapshot_response(snapshot) for snapshot in snapshots],
+        turns=[_to_turn_response(turn) for turn in turns],
+        annotations=[_to_annotation_response(annotation) for annotation in annotations],
+        scores=[_to_score_response(score) for score in scores],
+    )
+
+
 @router.get("/fixtures", response_model=FixtureListResponse)
-async def list_agent_test_fixtures() -> FixtureListResponse:
+async def list_agent_test_fixtures(
+    db: AsyncSession = Depends(get_db_session),
+) -> FixtureListResponse:
     """List available versioned agent-test fixtures."""
 
-    repository = AgentTestFixtureRepository()
-    fixtures = repository.list_fixtures()
+    filesystem_repository = AgentTestFixtureRepository()
+    repository = DatabaseAgentTestFixtureRepository(db, filesystem_repository)
+    await repository.sync_from_filesystem()
+    await db.commit()
+    fixtures = await repository.list_fixtures()
     return FixtureListResponse(
         fixtures=[
             FixtureSummary(
@@ -126,11 +218,13 @@ async def create_agent_test_run(
 ) -> AgentTestRunSummaryResponse:
     """Create a configured draft test run without executing it."""
 
-    fixture_repository = AgentTestFixtureRepository()
+    fixture_repository = DatabaseAgentTestFixtureRepository(db, AgentTestFixtureRepository())
     registry_repository = RegistryRepository(db)
 
+    await fixture_repository.sync_from_filesystem()
+
     try:
-        fixture = fixture_repository.load_fixture(payload.fixture_key, payload.fixture_version)
+        fixture = await fixture_repository.load_fixture(payload.fixture_key, payload.fixture_version)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -212,22 +306,15 @@ async def get_agent_test_run(
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent test run not found.")
     snapshots = await repository.list_snapshots_for_run(run_id)
-    summary = _to_run_summary(run)
-    return AgentTestRunDetailResponse(
-        **summary.model_dump(),
-        report_markdown=run.report_markdown,
-        report_json=run.report_json or {},
-        metadata_json=run.metadata_json or {},
-        snapshots=[
-            {
-                "id": snapshot.id,
-                "snapshot_type": snapshot.snapshot_type,
-                "source_ref": snapshot.source_ref,
-                "checksum": snapshot.checksum,
-                "created_at": snapshot.created_at,
-            }
-            for snapshot in snapshots
-        ],
+    turns = await repository.list_turns_for_run(run_id)
+    annotations = await repository.list_annotations_for_run(run_id)
+    scores = await repository.list_scores_for_run(run_id)
+    return _build_run_detail_response(
+        run=run,
+        snapshots=snapshots,
+        turns=turns,
+        annotations=annotations,
+        scores=scores,
     )
 
 
@@ -342,22 +429,15 @@ async def execute_agent_test_run(
     await db.refresh(run)
 
     snapshots = await repository.list_snapshots_for_run(run.id)
-    summary = _to_run_summary(run)
-    return AgentTestRunDetailResponse(
-        **summary.model_dump(),
-        report_markdown=run.report_markdown,
-        report_json=run.report_json or {},
-        metadata_json=run.metadata_json or {},
-        snapshots=[
-            {
-                "id": snapshot.id,
-                "snapshot_type": snapshot.snapshot_type,
-                "source_ref": snapshot.source_ref,
-                "checksum": snapshot.checksum,
-                "created_at": snapshot.created_at,
-            }
-            for snapshot in snapshots
-        ],
+    turns = await repository.list_turns_for_run(run.id)
+    annotations = await repository.list_annotations_for_run(run.id)
+    scores = await repository.list_scores_for_run(run.id)
+    return _build_run_detail_response(
+        run=run,
+        snapshots=snapshots,
+        turns=turns,
+        annotations=annotations,
+        scores=scores,
     )
 
 
@@ -404,22 +484,15 @@ async def stop_agent_test_run(
     await db.commit()
     await db.refresh(run)
     snapshots = await repository.list_snapshots_for_run(run.id)
-    summary = _to_run_summary(run)
-    return AgentTestRunDetailResponse(
-        **summary.model_dump(),
-        report_markdown=run.report_markdown,
-        report_json=run.report_json or {},
-        metadata_json=run.metadata_json or {},
-        snapshots=[
-            {
-                "id": snapshot.id,
-                "snapshot_type": snapshot.snapshot_type,
-                "source_ref": snapshot.source_ref,
-                "checksum": snapshot.checksum,
-                "created_at": snapshot.created_at,
-            }
-            for snapshot in snapshots
-        ],
+    turns = await repository.list_turns_for_run(run.id)
+    annotations = await repository.list_annotations_for_run(run.id)
+    scores = await repository.list_scores_for_run(run.id)
+    return _build_run_detail_response(
+        run=run,
+        snapshots=snapshots,
+        turns=turns,
+        annotations=annotations,
+        scores=scores,
     )
 
 
@@ -458,22 +531,15 @@ async def resume_agent_test_run(
     await db.commit()
     await db.refresh(run)
     snapshots = await repository.list_snapshots_for_run(run.id)
-    summary = _to_run_summary(run)
-    return AgentTestRunDetailResponse(
-        **summary.model_dump(),
-        report_markdown=run.report_markdown,
-        report_json=run.report_json or {},
-        metadata_json=run.metadata_json or {},
-        snapshots=[
-            {
-                "id": snapshot.id,
-                "snapshot_type": snapshot.snapshot_type,
-                "source_ref": snapshot.source_ref,
-                "checksum": snapshot.checksum,
-                "created_at": snapshot.created_at,
-            }
-            for snapshot in snapshots
-        ],
+    turns = await repository.list_turns_for_run(run.id)
+    annotations = await repository.list_annotations_for_run(run.id)
+    scores = await repository.list_scores_for_run(run.id)
+    return _build_run_detail_response(
+        run=run,
+        snapshots=snapshots,
+        turns=turns,
+        annotations=annotations,
+        scores=scores,
     )
 
 

@@ -139,6 +139,7 @@ model User {
   createdThreads      ChatThread[]         @relation("ThreadCreatedBy")
   sentMessages        ChatMessage[]        @relation("MessageSender")
   activityEvents      ActivityLog[]        @relation("ActivityActor")
+  prospectingConfiguration ProspectingConfiguration?
 
   @@unique([authProvider, authProviderUserId], map: "users_auth_provider_auth_provider_user_id_key")
   @@map("users")
@@ -474,4 +475,23 @@ model PromptConfig {
   @@unique([key, version])
   @@index([key, active])
   @@map("prompt_configs")
+}
+
+model ProspectingConfiguration {
+  id                String   @id @default(uuid()) @db.Uuid
+  ownerUserId       String   @unique @map("owner_user_id") @db.Uuid
+  agentState        String   @default("idle") @map("agent_state") @db.VarChar(20)
+  latestRunStatus   String?  @map("latest_run_status") @db.VarChar(30)
+  latestGatewayRunId String? @map("latest_gateway_run_id") @db.VarChar(255)
+  lastRunAt         DateTime? @map("last_run_at")
+  nextRunAt         DateTime? @map("next_run_at")
+  uiSnapshotJson    Json     @default("{}") @map("ui_snapshot_json")
+  latestReviewJson  Json?    @map("latest_review_json")
+  lastResultRecords Json?    @map("last_result_records")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  ownerUser         User     @relation(fields: [ownerUserId], references: [id])
+
+  @@index([latestRunStatus, updatedAt])
+  @@map("prospecting_configurations")
 }

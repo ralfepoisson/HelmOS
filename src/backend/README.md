@@ -61,10 +61,16 @@ src/backend/
 
    The gateway is intended to serve `http://127.0.0.1:8000` in local development.
    The Angular webapp dev server proxies `/api/v1` traffic to this process.
+   In local development the FastAPI runtime still uses
+   `HELMOS_DATABASE_URL` for orchestration persistence tables such as sessions,
+   runs, checkpoints, and audit history.
+   The specialist agent registry is resolved separately and prefers the repo-root
+   Prisma `DATABASE_URL` when it is present, so the FastAPI runtime and Node
+   control plane share agent definitions and prompt configs without forcing both
+   services onto the same run-storage schema.
    When you start the gateway via
    [scripts/start_agent_gateway.sh](/Users/ralfe/Dev/HelmOS/scripts/start_agent_gateway.sh),
-   it also loads the repo-root Prisma `DATABASE_URL` so the FastAPI runtime and
-   Node control plane share the same local agent registry schema.
+   that shared root env is still loaded explicitly.
 
 4. Create agents through the Agent Admin screen or Node control-plane API.
 
@@ -106,4 +112,6 @@ but a healthy local stack should go through the Angular proxy first.
 - Runtime agents are loaded dynamically from `agent_definitions` and active `prompt_configs`; adding a new agent should not require new Python classes.
 - Agent Admin prompt fields are composed into a rich runtime system prompt. The active runtime uses either `config_json.system_prompt` directly or a synthesized prompt built from purpose, scope notes, prompt sections, execution settings, and tool permissions.
 - The product control plane can inspect runtime agent registration through `GET /api/v1/admin/agents`.
+- Prospecting Configuration runs now perform a gateway-registry preflight check before starting a review, so local registry drift is surfaced as a clear operator error instead of silently falling back to deterministic routing.
+- The gateway uses separate runtime and registry database connections in local development: runtime writes stay on `HELMOS_DATABASE_URL`, while registry reads can point at the shared Prisma `DATABASE_URL`.
 - Alembic is declared as a dependency and the model layout is migration-friendly, but migrations are not generated in this first pass.
