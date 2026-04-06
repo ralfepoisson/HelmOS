@@ -634,7 +634,7 @@ function buildColumnsFromPipelinePayload(
 
   const completedSourceKeys = new Set(
     (Array.isArray(sourceProcessing) ? sourceProcessing : [])
-      .filter((record) => normalizeProcessingStatus(record.processingStatus) === 'COMPLETED')
+      .filter((record) => isNoLongerUnprocessed(record.processingStatus))
       .map((record) => normalizeSourceKey(record))
       .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
   );
@@ -669,7 +669,7 @@ function buildColumnsFromPipelinePayload(
         .map((protoIdea) => mapProtoIdeaToCard(protoIdea))
     : [];
   const unprocessedProtoIdeaCards = normalizedProtoIdeaCards.filter(
-    (protoIdea) => normalizeProcessingStatus(protoIdea.processingStatus) !== 'COMPLETED'
+    (protoIdea) => !isNoLongerUnprocessed(protoIdea.processingStatus)
   );
 
   protoIdeaColumn.cards =
@@ -795,6 +795,11 @@ function buildIdeaCandidateMeta(record: IdeaCandidateRecord): string {
 
 function normalizeProcessingStatus(status?: string): string {
   return String(status ?? '').trim().toUpperCase();
+}
+
+function isNoLongerUnprocessed(status?: string): boolean {
+  const normalized = normalizeProcessingStatus(status);
+  return normalized === 'PROCESSING' || normalized === 'COMPLETED';
 }
 
 function normalizeSourceKey(record: { sourceKey?: string; sourceUrl?: string | null; id?: string; sourceTitle?: string | null }): string {
