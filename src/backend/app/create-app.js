@@ -35,7 +35,7 @@ function isAllowedOrigin(origin, allowedOrigins = getAllowedOrigins()) {
   }
 }
 
-function createApp({ prisma, agentGatewayClient }) {
+function createApp({ prisma, agentGatewayClient, ideaFoundryPipelineExecutor }) {
   const app = express();
   const allowedOrigins = getAllowedOrigins();
   const knowledgeBaseConfig = getKnowledgeBaseConfig();
@@ -83,6 +83,7 @@ function createApp({ prisma, agentGatewayClient }) {
       agentGatewayClient: gatewayClient,
       knowledgeBaseRuntime,
       storageService,
+      ideaFoundryPipelineExecutor,
     }),
   );
 

@@ -6,11 +6,18 @@ const { createBusinessIdeasRouter } = require("./business-ideas-router");
 const { createProspectingRouter } = require("./prospecting-router");
 const { createProtoIdeaRouter } = require("./proto-idea-router");
 const { createIdeaRefinementRouter } = require("./idea-refinement-router");
+const { createIdeaFoundryPipelineRouter } = require("./idea-foundry-pipeline-router");
 const { createCrudRouter } = require("./create-crud-router");
 const { prismaEnums, resourceConfigs } = require("./resources");
 const { createKnowledgeBaseToolRouter } = require("./tool-router");
 
-function createApiRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, storageService }) {
+function createApiRouter({
+  prisma,
+  agentGatewayClient,
+  knowledgeBaseRuntime,
+  storageService,
+  ideaFoundryPipelineExecutor,
+}) {
   const router = express.Router();
   const authenticate = createAuthMiddleware({ prisma });
 
@@ -52,6 +59,12 @@ function createApiRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, sto
     authenticate,
     requireAdmin,
     createIdeaRefinementRouter({ prisma, agentGatewayClient }),
+  );
+  router.use(
+    "/idea-foundry/pipeline",
+    authenticate,
+    requireAdmin,
+    createIdeaFoundryPipelineRouter({ prisma, agentGatewayClient, ideaFoundryPipelineExecutor }),
   );
 
   resourceConfigs.forEach((config) => {

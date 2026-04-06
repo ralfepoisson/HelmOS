@@ -1,11 +1,23 @@
 import { TestBed } from '@angular/core/testing';
-import { vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IdeaFoundryApiService } from './idea-foundry-api.service';
 import { IdeaFoundryOverviewComponent } from './idea-foundry-overview.component';
 
 describe('IdeaFoundryOverviewComponent', () => {
   const ideaFoundryApi = {
+    executeProspectingRun: vi.fn(async () => ({
+      snapshot: null,
+      latestReview: null,
+      runtime: {
+        agentState: 'active',
+        latestRunStatus: 'COMPLETED',
+        isRunning: false,
+        lastRun: '2026-04-05T20:35:32.953Z',
+        nextRun: '2026-04-05T21:35:32.953Z',
+        resultRecordCount: 2
+      }
+    })),
     getIdeaFoundryContents: vi.fn(async () => ({
       sources: [
         {
@@ -89,10 +101,64 @@ describe('IdeaFoundryOverviewComponent', () => {
         nextRun: '2026-04-05T21:35:32.953Z',
         resultRecordCount: 2
       }
+    })),
+    runProtoIdeaAgent: vi.fn(async () => ({
+      policy: {
+        id: 'policy-1',
+        profileName: 'default',
+        extractionBreadth: 'standard',
+        inferenceTolerance: 'balanced',
+        noveltyBias: 'balanced',
+        minimumSignalThreshold: 'medium',
+        maxProtoIdeasPerSource: 4
+      },
+      runtime: {
+        latestRunStatus: 'COMPLETED',
+        lastRunAt: '2026-04-05T20:35:32.953Z',
+        latestRunSummary: null
+      },
+      result: {
+        processedCount: 0,
+        completedCount: 0,
+        failedCount: 0,
+        skippedCount: 0,
+        selectedSourceIds: [],
+        policyId: 'policy-1',
+        policyProfileName: 'default'
+      }
+    })),
+    runIdeaRefinementAgent: vi.fn(async () => ({
+      policy: {
+        id: 'policy-1',
+        profileName: 'default',
+        refinementDepth: 'standard',
+        creativityLevel: 'medium',
+        strictness: 'balanced',
+        maxConceptualToolsPerRun: 3,
+        internalQualityThreshold: 'standard'
+      },
+      runtime: {
+        latestRunStatus: 'COMPLETED',
+        lastRunAt: '2026-04-05T20:35:32.953Z',
+        latestRunSummary: null
+      },
+      result: {
+        processedCount: 0,
+        completedCount: 0,
+        failedCount: 0,
+        skippedCount: 0,
+        selectedProtoIdeaIds: [],
+        createdCount: 0,
+        updatedCount: 0,
+        candidateCount: 0,
+        policyId: 'policy-1',
+        policyProfileName: 'default'
+      }
     }))
   };
 
   beforeEach(async () => {
+    vi.clearAllMocks();
     await TestBed.configureTestingModule({
       imports: [IdeaFoundryOverviewComponent],
       providers: [
@@ -115,6 +181,26 @@ describe('IdeaFoundryOverviewComponent', () => {
     );
 
     expect(stageTitles).toEqual(['Sources', 'Proto-Ideas', 'Idea Candidates', 'Curated Opportunities']);
+  });
+
+  it('renders the run pipeline button and pending stage indicators', async () => {
+    const fixture = TestBed.createComponent(IdeaFoundryOverviewComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const runButton = fixture.nativeElement.querySelector('.pipeline-run-button') as HTMLButtonElement;
+    const stageIndicators = Array.from(
+      fixture.nativeElement.querySelectorAll('.pipeline-stage-indicator')
+    ) as HTMLElement[];
+
+    expect(runButton.textContent?.trim()).toBe('Run Pipeline');
+    expect(stageIndicators.map((node) => node.getAttribute('data-stage-state'))).toEqual([
+      'pending',
+      'pending',
+      'pending',
+      'pending'
+    ]);
   });
 
   it('shows empty downstream stages without seeded demo opportunities', async () => {
@@ -269,5 +355,85 @@ describe('IdeaFoundryOverviewComponent', () => {
     expect(text).toContain('Sources');
     expect(text).not.toContain('Freelancer tax workflow complaints');
     expect(text).not.toContain('Managed onboarding ops for AI-heavy B2B SaaS');
+  });
+
+  it('runs the pipeline from the overview and marks each stage as completed', async () => {
+    const fixture = TestBed.createComponent(IdeaFoundryOverviewComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const runButton = fixture.nativeElement.querySelector('.pipeline-run-button') as HTMLButtonElement;
+    runButton.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const stageIndicators = Array.from(
+      fixture.nativeElement.querySelectorAll('.pipeline-stage-indicator')
+    ) as HTMLElement[];
+
+    expect(ideaFoundryApi.executeProspectingRun).toHaveBeenCalledTimes(1);
+    expect(ideaFoundryApi.runProtoIdeaAgent).toHaveBeenCalledTimes(1);
+    expect(ideaFoundryApi.runIdeaRefinementAgent).toHaveBeenCalledTimes(1);
+    expect(stageIndicators.map((node) => node.getAttribute('data-stage-state'))).toEqual([
+      'completed',
+      'completed',
+      'completed',
+      'completed'
+    ]);
+  });
+
+  it('marks the failing stage red and stops the remaining pipeline stages', async () => {
+    ideaFoundryApi.runProtoIdeaAgent.mockResolvedValueOnce({
+      policy: {
+        id: 'policy-1',
+        profileName: 'default',
+        extractionBreadth: 'standard',
+        inferenceTolerance: 'balanced',
+        noveltyBias: 'balanced',
+        minimumSignalThreshold: 'medium',
+        maxProtoIdeasPerSource: 4
+      },
+      runtime: {
+        latestRunStatus: 'FAILED',
+        lastRunAt: '2026-04-05T20:35:32.953Z',
+        latestRunSummary: null
+      },
+      result: {
+        processedCount: 1,
+        completedCount: 0,
+        failedCount: 1,
+        skippedCount: 0,
+        selectedSourceIds: ['source-1'],
+        policyId: 'policy-1',
+        policyProfileName: 'default'
+      }
+    } as any);
+
+    const fixture = TestBed.createComponent(IdeaFoundryOverviewComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const runButton = fixture.nativeElement.querySelector('.pipeline-run-button') as HTMLButtonElement;
+    runButton.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const stageIndicators = Array.from(
+      fixture.nativeElement.querySelectorAll('.pipeline-stage-indicator')
+    ) as HTMLElement[];
+    const warning = fixture.nativeElement.querySelector('.pipeline-warning') as HTMLElement;
+
+    expect(stageIndicators.map((node) => node.getAttribute('data-stage-state'))).toEqual([
+      'completed',
+      'failed',
+      'pending',
+      'pending'
+    ]);
+    expect(ideaFoundryApi.runIdeaRefinementAgent).not.toHaveBeenCalled();
+    expect(warning.textContent).toContain('Proto-Idea Extraction stage failed');
   });
 });

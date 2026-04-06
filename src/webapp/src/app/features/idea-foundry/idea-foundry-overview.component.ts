@@ -1,7 +1,12 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 
-import { IdeaCandidateRecord, IdeaFoundryApiService, ProspectingResultRecord, ProtoIdeaRecord } from './idea-foundry-api.service';
+import {
+  IdeaCandidateRecord,
+  IdeaFoundryApiService,
+  ProspectingResultRecord,
+  ProtoIdeaRecord
+} from './idea-foundry-api.service';
 
 interface IdeaPipelineCard {
   id: string;
@@ -19,6 +24,11 @@ interface IdeaPipelineColumn {
   helper: string;
   cards: IdeaPipelineCard[];
 }
+
+type PipelineStageState = 'pending' | 'running' | 'completed' | 'failed';
+type PipelineStageKey = 'sources' | 'proto-ideas' | 'idea-candidates' | 'curated-opportunities';
+
+const MAX_PIPELINE_STAGE_ITERATIONS = 100;
 
 @Component({
   selector: 'app-idea-foundry-overview',
@@ -38,7 +48,7 @@ interface IdeaPipelineColumn {
       </header>
 
       <section class="pipeline-intro">
-        <div>
+        <div class="pipeline-intro-copy">
           <span class="section-kicker">Overview</span>
           <h3>Pipeline board</h3>
           <p>
@@ -46,7 +56,15 @@ interface IdeaPipelineColumn {
             for deeper strategy work.
           </p>
         </div>
-        <p *ngIf="sourceLoadError" class="pipeline-warning">{{ sourceLoadError }}</p>
+
+        <div class="pipeline-actions">
+          <button type="button" class="pipeline-run-button" [disabled]="isPipelineRunning" (click)="runPipeline()">
+            {{ isPipelineRunning ? 'Running pipeline...' : 'Run Pipeline' }}
+          </button>
+          <p *ngIf="pipelineRunError || sourceLoadError" class="pipeline-warning">
+            {{ pipelineRunError || sourceLoadError }}
+          </p>
+        </div>
       </section>
 
       <section class="pipeline-board" data-testid="idea-foundry-board" aria-label="Idea Foundry pipeline board">
@@ -61,7 +79,20 @@ interface IdeaPipelineColumn {
               <h4>{{ column.title }}</h4>
               <p>{{ column.helper }}</p>
             </div>
-            <span class="pipeline-count">{{ column.cards.length }}</span>
+
+            <div class="pipeline-column-header-meta">
+              <span
+                class="pipeline-stage-indicator"
+                [class.pipeline-stage-pending]="getStageState(column.id) === 'pending'"
+                [class.pipeline-stage-running]="getStageState(column.id) === 'running'"
+                [class.pipeline-stage-completed]="getStageState(column.id) === 'completed'"
+                [class.pipeline-stage-failed]="getStageState(column.id) === 'failed'"
+                [attr.data-stage-state]="getStageState(column.id)"
+                [attr.aria-label]="column.title + ' stage status: ' + getStageState(column.id)"
+                [title]="column.title + ' stage status: ' + getStageState(column.id)"
+              ></span>
+              <span class="pipeline-count">{{ column.cards.length }}</span>
+            </div>
           </header>
 
           <div class="pipeline-card-list">
@@ -164,13 +195,56 @@ interface IdeaPipelineColumn {
       }
 
       .pipeline-intro {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
         padding: 0.1rem 0.1rem 0;
       }
 
+      .pipeline-intro-copy {
+        max-width: 52rem;
+      }
+
+      .pipeline-actions {
+        display: grid;
+        justify-items: end;
+        gap: 0.5rem;
+      }
+
+      .pipeline-run-button {
+        min-width: 10rem;
+        padding: 0.7rem 1rem;
+        border: 1px solid rgba(32, 101, 209, 0.24);
+        border-radius: 999px;
+        background: linear-gradient(135deg, rgba(32, 101, 209, 0.98), rgba(48, 128, 255, 0.98));
+        color: white;
+        font-size: 0.88rem;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        box-shadow: 0 16px 28px rgba(32, 101, 209, 0.2);
+        transition:
+          transform 160ms ease,
+          box-shadow 160ms ease,
+          opacity 160ms ease;
+      }
+
+      .pipeline-run-button:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 18px 30px rgba(32, 101, 209, 0.24);
+      }
+
+      .pipeline-run-button:disabled {
+        cursor: progress;
+        opacity: 0.76;
+      }
+
       .pipeline-warning {
-        margin: 0.6rem 0 0;
+        margin: 0;
         color: #9a3412;
         font-size: 0.84rem;
+        max-width: 18rem;
+        text-align: right;
       }
 
       .pipeline-intro h3 {
@@ -215,6 +289,36 @@ interface IdeaPipelineColumn {
       .pipeline-column-header p {
         margin-top: 0.22rem;
         font-size: 0.84rem;
+      }
+
+      .pipeline-column-header-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+      }
+
+      .pipeline-stage-indicator {
+        width: 0.95rem;
+        height: 0.95rem;
+        border-radius: 999px;
+        border: 2px solid rgba(148, 163, 184, 0.2);
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.8);
+      }
+
+      .pipeline-stage-pending {
+        background: #cbd5e1;
+      }
+
+      .pipeline-stage-running {
+        background: #2563eb;
+      }
+
+      .pipeline-stage-completed {
+        background: #16a34a;
+      }
+
+      .pipeline-stage-failed {
+        background: #dc2626;
       }
 
       .pipeline-count {
@@ -321,6 +425,21 @@ interface IdeaPipelineColumn {
         color: #445167;
       }
 
+      @media (max-width: 991.98px) {
+        .pipeline-intro {
+          flex-direction: column;
+        }
+
+        .pipeline-actions {
+          width: 100%;
+          justify-items: stretch;
+        }
+
+        .pipeline-warning {
+          max-width: none;
+          text-align: left;
+        }
+      }
     `
   ]
 })
@@ -331,16 +450,55 @@ export class IdeaFoundryOverviewComponent implements OnInit {
 
   columns: IdeaPipelineColumn[] = buildEmptyColumns();
   sourceLoadError: string | null = null;
+  pipelineRunError: string | null = null;
+  isPipelineRunning = false;
+  stageStates: Record<PipelineStageKey, PipelineStageState> = buildPendingStageStates();
 
   async ngOnInit(): Promise<void> {
+    await this.loadPipelineContents();
+  }
+
+  async runPipeline(): Promise<void> {
+    if (this.isPipelineRunning) {
+      return;
+    }
+
+    this.isPipelineRunning = true;
+    this.pipelineRunError = null;
+    this.stageStates = buildPendingStageStates();
+    this.changeDetector.detectChanges();
+
     try {
-      const payload = await this.ideaFoundryApi.getIdeaFoundryContents();
-      this.columns = buildColumnsFromPipelinePayload(payload.sources, payload.protoIdeas, payload.ideaCandidates);
-      this.sourceLoadError = null;
+      await this.executePipelineStage('sources', async () => {
+        await this.ideaFoundryApi.executeProspectingRun();
+        await this.loadPipelineContents();
+      });
+
+      await this.executeLoopingPipelineStage('proto-ideas', async () => {
+        const result = await this.ideaFoundryApi.runProtoIdeaAgent({ batchSize: 1 });
+        await this.loadPipelineContents();
+        return {
+          processedCount: result.result.processedCount,
+          failedCount: result.result.failedCount
+        };
+      });
+
+      await this.executeLoopingPipelineStage('idea-candidates', async () => {
+        const result = await this.ideaFoundryApi.runIdeaRefinementAgent({ batchSize: 1 });
+        await this.loadPipelineContents();
+        return {
+          processedCount: result.result.processedCount,
+          failedCount: result.result.failedCount
+        };
+      });
+
+      await this.executePipelineStage('curated-opportunities', async () => {
+        await this.loadPipelineContents();
+      });
     } catch (error) {
-      this.columns = buildEmptyColumns();
-      this.sourceLoadError = error instanceof Error ? error.message : 'Unable to load source records.';
+      this.pipelineRunError = error instanceof Error ? error.message : 'Pipeline execution failed.';
     } finally {
+      this.isPipelineRunning = false;
       this.changeDetector.detectChanges();
     }
   }
@@ -360,6 +518,58 @@ export class IdeaFoundryOverviewComponent implements OnInit {
 
   isCollapsibleCard(columnId: string, card: IdeaPipelineCard): boolean {
     return columnId === 'sources' || columnId === 'proto-ideas';
+  }
+
+  getStageState(columnId: string): PipelineStageState {
+    return this.stageStates[toPipelineStageKey(columnId)] ?? 'pending';
+  }
+
+  private async loadPipelineContents(): Promise<void> {
+    try {
+      const payload = await this.ideaFoundryApi.getIdeaFoundryContents();
+      this.columns = buildColumnsFromPipelinePayload(payload.sources, payload.protoIdeas, payload.ideaCandidates);
+      this.sourceLoadError = null;
+    } catch (error) {
+      this.columns = buildEmptyColumns();
+      this.sourceLoadError = error instanceof Error ? error.message : 'Unable to load source records.';
+      throw error;
+    } finally {
+      this.changeDetector.detectChanges();
+    }
+  }
+
+  private async executePipelineStage(stage: PipelineStageKey, run: () => Promise<void>): Promise<void> {
+    this.stageStates[stage] = 'running';
+    this.changeDetector.detectChanges();
+
+    try {
+      await run();
+      this.stageStates[stage] = 'completed';
+    } catch (error) {
+      this.stageStates[stage] = 'failed';
+      throw error;
+    } finally {
+      this.changeDetector.detectChanges();
+    }
+  }
+
+  private async executeLoopingPipelineStage(
+    stage: PipelineStageKey,
+    run: () => Promise<{ processedCount: number; failedCount: number }>
+  ): Promise<void> {
+    await this.executePipelineStage(stage, async () => {
+      for (let iteration = 1; iteration <= MAX_PIPELINE_STAGE_ITERATIONS; iteration += 1) {
+        const result = await run();
+        if (result.failedCount > 0) {
+          throw new Error(`The ${formatStageLabel(stage)} stage failed and the pipeline was stopped.`);
+        }
+        if (result.processedCount <= 0) {
+          return;
+        }
+      }
+
+      throw new Error(`The ${formatStageLabel(stage)} stage reached the iteration limit and the pipeline was stopped.`);
+    });
   }
 }
 
@@ -581,4 +791,38 @@ function buildEmptyColumns(): IdeaPipelineColumn[] {
       ]
     }
   ];
+}
+
+function buildPendingStageStates(): Record<PipelineStageKey, PipelineStageState> {
+  return {
+    sources: 'pending',
+    'proto-ideas': 'pending',
+    'idea-candidates': 'pending',
+    'curated-opportunities': 'pending'
+  };
+}
+
+function toPipelineStageKey(columnId: string): PipelineStageKey {
+  switch (columnId) {
+    case 'sources':
+    case 'proto-ideas':
+    case 'idea-candidates':
+    case 'curated-opportunities':
+      return columnId;
+    default:
+      return 'sources';
+  }
+}
+
+function formatStageLabel(stage: PipelineStageKey): string {
+  switch (stage) {
+    case 'proto-ideas':
+      return 'Proto-Idea Extraction';
+    case 'idea-candidates':
+      return 'Idea Refinement';
+    case 'curated-opportunities':
+      return 'Curated Opportunities';
+    default:
+      return 'Sources';
+  }
 }

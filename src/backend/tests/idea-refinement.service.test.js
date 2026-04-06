@@ -212,6 +212,152 @@ test("validateIdeaRefinementOutput parses raw JSON strings that match the refine
   assert.equal(validation.data.open_questions.items.length, 1);
 });
 
+test("runIdeaRefinementPass stores a hashed deduplication fingerprint that fits bounded storage", async () => {
+  const protoIdeas = new Map([
+    [
+      "proto-1",
+      {
+        id: "proto-1",
+        ownerUserId: "user-1",
+        sourceId: "proto-source-1",
+        title: "Compliance workflow co-pilot",
+        problemStatement: "Accounting teams are stuck chasing repetitive VAT reminder work.",
+        targetCustomer: "Small accounting firms",
+        opportunityHypothesis: "A workflow layer could help automate reminders.",
+        whyItMatters: "It wastes time and causes missed deadlines.",
+        opportunityType: "Workflow SaaS",
+        assumptions: [],
+        openQuestions: [],
+        refinementStatus: "PENDING",
+        refinementAttempts: 0,
+        source: {
+          id: "proto-source-1",
+          sourceTitle: "VAT reminder pain",
+          sourceUrl: "https://example.com/vat",
+          sourceCapturedAt: new Date("2026-04-06T09:00:00Z"),
+        },
+      },
+    ],
+  ]);
+  const createdCandidates = [];
+
+  const prisma = {
+    ideaRefinementPolicy: {
+      async upsert() {
+        return {
+          id: "policy-1",
+          profileName: "default",
+          refinementDepth: "standard",
+          creativityLevel: "medium",
+          strictness: "balanced",
+          maxConceptualToolsPerRun: 3,
+          internalQualityThreshold: "standard",
+        };
+      },
+      async update({ data }) {
+        return data;
+      },
+    },
+    protoIdea: {
+      async findMany() {
+        return Array.from(protoIdeas.values());
+      },
+      async updateMany({ where, data }) {
+        Object.assign(protoIdeas.get(where.id), data);
+        return { count: 1 };
+      },
+      async findUnique({ where }) {
+        return protoIdeas.get(where.id);
+      },
+      async update({ where, data }) {
+        Object.assign(protoIdeas.get(where.id), data);
+        return protoIdeas.get(where.id);
+      },
+    },
+    conceptualTool: {
+      async findMany() {
+        return [];
+      },
+    },
+    ideaCandidate: {
+      async findFirst() {
+        return null;
+      },
+      async create({ data }) {
+        createdCandidates.push(data);
+        return data;
+      },
+    },
+    agentDefinition: {
+      async findMany() {
+        return [{ key: "idea_refinement", name: "Idea Refinement Agent", active: true, updatedAt: new Date() }];
+      },
+    },
+    logEntry: {
+      async create({ data }) {
+        return data;
+      },
+    },
+    async $transaction(callback) {
+      return callback(this);
+    },
+  };
+
+  const agentGatewayClient = {
+    async getAdminSnapshot() {
+      return { status: "online", agents: [{ key: "idea_refinement" }] };
+    },
+    async startRun() {
+      return { id: "run-1" };
+    },
+    async waitForRunCompletion() {
+      return {
+        id: "run-1",
+        status: "completed",
+        normalized_output: {
+          reply_to_user: { content: "ok" },
+          refinement_overview: {
+            improvement_summary: "Sharper customer and clearer wedge.",
+            key_changes: ["Narrowed the customer", "Clarified the wedge"],
+            applied_reasoning_summary: "Improved clarity and focus.",
+          },
+          problem_statement: {
+            content: "Owner-led accounting firms lose time managing recurring compliance reminders across manual workflows.",
+            status: { label: "Strong", tone: "success", agent_confidence: "high", explanation: "Specific problem." },
+          },
+          target_customer: {
+            content: "Owner-led accounting firms with recurring monthly and quarterly compliance deadlines.",
+            status: { label: "Strong", tone: "success", agent_confidence: "high", explanation: "Specific buyer." },
+          },
+          value_proposition: {
+            content: "A workflow cockpit that automates compliance reminder sequencing and task handoffs.",
+            status: { label: "Strong", tone: "success", agent_confidence: "high", explanation: "Clear value." },
+          },
+          opportunity_concept: {
+            content: "A compliance operations cockpit for small firms that turns recurring deadlines into managed workflows.",
+            status: { label: "Refined", tone: "success", agent_confidence: "medium", explanation: "Actionable concept." },
+          },
+          differentiation: {
+            content: "Focused on recurring compliance operations instead of broad practice management.",
+            status: { label: "Visible", tone: "success", agent_confidence: "medium", explanation: "Visible wedge." },
+          },
+          assumptions: { items: ["Firms will adopt workflow help before full automation."] },
+          open_questions: { items: ["Which deadlines hurt the most?"] },
+          quality_check: { coherence: "Problem, customer, and wedge align.", gaps: [], risks: [] },
+        },
+      };
+    },
+  };
+
+  await runIdeaRefinementPass(prisma, agentGatewayClient, {
+    batchSize: 1,
+    ownerUserId: "user-1",
+  });
+
+  assert.equal(createdCandidates.length, 1);
+  assert.match(createdCandidates[0].deduplicationFingerprint, /^[a-f0-9]{64}$/);
+});
+
 test("runIdeaRefinementPass claims an eligible proto-idea, selects tools, and persists a refined idea candidate", async () => {
   const protoIdeas = new Map([
     [

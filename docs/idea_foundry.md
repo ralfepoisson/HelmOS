@@ -185,6 +185,9 @@ Current implementation note:
 * A lightweight internal quality check now rejects weak or contradictory outputs before persistence instead of silently accepting any syntactically valid JSON
 * The Idea Foundry overview board and the dedicated Idea Refinement screen now render persisted idea candidates, showing linkage back to the proto-idea plus the selected conceptual tools used during refinement
 * A backend runner command, `npm run idea-refinement:run`, executes a controlled refinement pass and can optionally target a specific proto-idea or retry failed refinements through environment flags
+* The backend now includes an Idea Foundry pipeline executor that runs deterministic stage passes in order, repeats a stage while it continues making progress, and stops the pipeline immediately if a stage reports failures
+* The Overview screen now exposes a `Run Pipeline` control that orchestrates prospecting execution, proto-idea extraction, and idea refinement in sequence, refreshing the board after each pass so operators can watch the pipeline move forward
+* Each overview column now renders a stage indicator in the top-right corner: grey before a run, blue while the active stage is executing, green after successful completion, and red if that stage fails and halts the pipeline
 
 ---
 

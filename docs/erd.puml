@@ -200,7 +200,9 @@ source artefacts exist. Prospecting persists normalized source records,
 Proto-Idea Extraction persists claimed source-processing rows plus
 downstream proto-ideas, Idea Refinement persists structured
 idea_candidates plus per-proto-idea refinement lifecycle state, and later stages can now build on real
-traceable pipeline storage instead of placeholders.
+traceable pipeline storage instead of placeholders. The Overview screen now drives a deterministic pipeline executor
+across those persisted stage tables; stage indicator colors are UI-local execution state and are not stored in a
+separate database table.
 end note
 
 package "Idea Foundry Control" {

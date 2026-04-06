@@ -15,6 +15,7 @@
     "db:studio": "prisma studio",
     "proto-ideas:run": "node src/backend/scripts/run-proto-idea-stage.js",
     "idea-refinement:run": "node src/backend/scripts/run-idea-refinement-stage.js",
+    "idea-foundry:pipeline:run": "node src/backend/scripts/run-idea-foundry-pipeline.js",
     "test:backend": "node --test src/backend/tests/**/*.test.js",
     "test:backend:smoke": "./scripts/test_backend_smoke.sh",
     "test:backend:verify": "./scripts/test_backend_smoke.sh"

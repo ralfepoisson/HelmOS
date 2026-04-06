@@ -1,6 +1,11 @@
-CREATE TYPE "ConceptualToolStatus" AS ENUM ('ACTIVE', 'INACTIVE');
+DO $$
+BEGIN
+  CREATE TYPE "ConceptualToolStatus" AS ENUM ('ACTIVE', 'INACTIVE');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TABLE "conceptual_tools" (
+CREATE TABLE IF NOT EXISTS "conceptual_tools" (
   "id" UUID NOT NULL,
   "name" VARCHAR(200) NOT NULL,
   "category" VARCHAR(100) NOT NULL,
@@ -17,13 +22,13 @@ CREATE TABLE "conceptual_tools" (
   CONSTRAINT "conceptual_tools_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "conceptual_tools_name_key"
+CREATE UNIQUE INDEX IF NOT EXISTS "conceptual_tools_name_key"
   ON "conceptual_tools"("name");
 
-CREATE INDEX "conceptual_tools_status_updated_at_idx"
+CREATE INDEX IF NOT EXISTS "conceptual_tools_status_updated_at_idx"
   ON "conceptual_tools"("status", "updated_at");
 
-CREATE INDEX "conceptual_tools_category_name_idx"
+CREATE INDEX IF NOT EXISTS "conceptual_tools_category_name_idx"
   ON "conceptual_tools"("category", "name");
 
 INSERT INTO "conceptual_tools" (

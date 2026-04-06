@@ -3026,6 +3026,75 @@ test("POST /api/idea-foundry/refinement/run executes the idea refinement agent u
   );
 });
 
+test("POST /api/idea-foundry/pipeline/run executes the pipeline executor for the authenticated admin", async () => {
+  const executorCalls = [];
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+  };
+
+  const app = createApp({
+    prisma,
+    agentGatewayClient: {},
+    ideaFoundryPipelineExecutor: {
+      async execute(receivedPrisma, receivedGatewayClient, options) {
+        executorCalls.push({ receivedPrisma, receivedGatewayClient, options });
+        return {
+          status: "COMPLETED",
+          completedStageCount: 2,
+          failedStageCount: 0,
+          stageResults: [
+            {
+              key: "proto-idea",
+              status: "COMPLETED",
+              stopReason: "no_work_remaining",
+              attempts: 2,
+              totals: {
+                processedCount: 3,
+                completedCount: 3,
+                failedCount: 0,
+              },
+            },
+            {
+              key: "idea-refinement",
+              status: "COMPLETED",
+              stopReason: "no_work_remaining",
+              attempts: 2,
+              totals: {
+                processedCount: 3,
+                completedCount: 3,
+                failedCount: 0,
+                candidateCount: 3,
+              },
+            },
+          ],
+        };
+      },
+    },
+  });
+
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/pipeline/run")
+      .send({ retryFailed: true, maxStageIterations: 5 }),
+    { isAdmin: true, email: "ralfepoisson@gmail.com" }
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(executorCalls.length, 1);
+  assert.equal(executorCalls[0].options.ownerUserId, "admin-user-1");
+  assert.equal(executorCalls[0].options.retryFailed, true);
+  assert.equal(executorCalls[0].options.maxStageIterations, 5);
+  assert.equal(response.body.data.status, "COMPLETED");
+  assert.equal(response.body.data.stageResults[1].totals.candidateCount, 3);
+});
+
 test("POST /api/idea-foundry/prospecting/configuration/run executes a full prospecting optimization cycle and persists the refreshed result records", async () => {
   const currentSnapshot = {
     agentState: "active",

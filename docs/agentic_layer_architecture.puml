@@ -8,6 +8,7 @@ package "Agent Experience Layer" {
   [My Business Ideas Page]
   [Idea Foundry Shell]
   [Idea Foundry Overview Board]
+  [Idea Foundry Pipeline API]
   [Prospecting Configuration Screen]
   [Proto-Idea Extraction Screen]
   [Idea Refinement Screen]
@@ -65,6 +66,7 @@ package "Agent Testing Framework" {
 
 package "Deterministic Services" {
   [Prospecting Runtime Scheduler]
+  [Idea Foundry Pipeline Executor]
   [Prospecting Execution Service]
   [Proto-Idea Extraction Service]
   [Proto-Idea Stage Runner]
@@ -127,6 +129,7 @@ package "AWS Production Deployment" {
 [My Business Ideas Page] --> [Node Control Plane API] : list business ideas and select active workspace
 [Angular UI] --> [Idea Foundry Shell]
 [Idea Foundry Shell] --> [Idea Foundry Overview Board] : pipeline navigation and overview stages
+[Idea Foundry Overview Board] --> [Idea Foundry Pipeline API] : trigger end-to-end pipeline execution and reflect stage state
 [Idea Foundry Shell] --> [Prospecting Configuration Screen] : prospecting submenu and operator controls
 [Idea Foundry Shell] --> [Proto-Idea Extraction Screen] : admin policy controls and agent run trigger
 [Idea Foundry Shell] --> [Idea Refinement Screen] : admin policy controls, candidate review, and run trigger
@@ -134,6 +137,7 @@ package "AWS Production Deployment" {
 [Proto-Idea Extraction Screen] --> [Proto-Idea Extraction API] : load policy, save policy, and run Proto-Idea Agent
 [Idea Refinement Screen] --> [Idea Refinement API] : load policy, list candidates, save policy, and run Idea Refinement Agent
 [Idea Foundry Overview Board] --> [Prospecting Configuration API] : read persisted source records or render empty states
+[Idea Foundry Pipeline API] --> [Node Control Plane API] : authenticated admin control-plane request path
 [Prospecting Configuration API] --> [Node Control Plane API] : authenticated control-plane request path
 [Proto-Idea Extraction API] --> [Node Control Plane API] : authenticated admin control-plane request path
 [Idea Refinement API] --> [Node Control Plane API] : authenticated admin control-plane request path
@@ -142,10 +146,14 @@ package "AWS Production Deployment" {
 [Idea Refinement API] --> [Gateway Registry Preflight] : verify requested agent is registered before refinement runs
 [Node Control Plane API] --> [Audit Logs] : persist gateway request traces, raw LLM output, and parsed JSON output for agent-driven workflows
 [Node Control Plane API] --> [Prospecting Runtime Scheduler] : start hourly prospecting runtime loop
+[Node Control Plane API] --> [Idea Foundry Pipeline Executor] : orchestrate ordered stage execution across the pipeline
 [Node Control Plane API] --> [Prospecting Execution Service] : execute latest saved prospecting strategy and close the review-feedback loop
 [Node Control Plane API] --> [Proto-Idea Extraction Service] : load persisted proto-ideas for pipeline reads
 [Node Control Plane API] --> [Idea Refinement Service] : load persisted idea candidates for pipeline reads
 [Prospecting Runtime Scheduler] --> [Prospecting Execution Service] : run hourly prospecting optimization cycles
+[Idea Foundry Pipeline Executor] --> [Prospecting Execution Service] : execute the source stage once per pipeline run
+[Idea Foundry Pipeline Executor] --> [Proto-Idea Extraction Service] : repeat extraction passes until no pending source work remains
+[Idea Foundry Pipeline Executor] --> [Idea Refinement Service] : repeat refinement passes until no pending proto-ideas remain
 [Prospecting Runtime Scheduler] ..> [Prospecting Configuration API] : persisted next run stays aligned to enforced hourly cadence
 [Proto-Idea Stage Runner] --> [Proto-Idea Extraction Service] : run a controlled extraction pass over pending sources
 [Idea Refinement Stage Runner] --> [Idea Refinement Service] : run a controlled refinement pass over eligible proto-ideas

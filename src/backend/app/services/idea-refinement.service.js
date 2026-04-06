@@ -1,6 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { randomUUID } = require("node:crypto");
+const { createHash, randomUUID } = require("node:crypto");
 const { z } = require("zod");
 
 const { createLogEntry } = require("./log-entry.service");
@@ -355,6 +355,14 @@ function isMissingIdeaRefinementColumnError(error, columnNames = []) {
 
   const haystack = String(error?.meta?.column ?? error?.message ?? "");
   return columnNames.some((columnName) => haystack.includes(columnName));
+}
+
+function createIdeaRefinementStorageUnavailableError() {
+  const error = new Error(
+    "Idea Refinement storage is not available yet. Apply the latest Prisma migrations for conceptual tools and idea refinement, then retry.",
+  );
+  error.statusCode = 503;
+  return error;
 }
 
 async function ensureIdeaRefinementPolicy(prisma) {
@@ -728,7 +736,7 @@ function runInternalQualityCheck(refinement, protoIdea, policy) {
 }
 
 function buildCandidateFingerprint(refinement) {
-  return [
+  const normalized = [
     refinement.problem_statement?.content,
     refinement.target_customer?.content,
     refinement.value_proposition?.content,
@@ -737,6 +745,8 @@ function buildCandidateFingerprint(refinement) {
   ]
     .map((entry) => String(entry ?? "").trim().toLowerCase().replace(/\s+/g, " "))
     .join("|");
+
+  return createHash("sha256").update(normalized).digest("hex");
 }
 
 async function listEligibleProtoIdeas(prisma, options = {}) {
@@ -770,8 +780,21 @@ async function listEligibleProtoIdeas(prisma, options = {}) {
       },
     });
   } catch (error) {
-    if (isMissingIdeaRefinementStorageError(error)) {
-      return [];
+    if (
+      isMissingIdeaRefinementStorageError(error) ||
+      isMissingIdeaRefinementColumnError(error, [
+        "refinement_status",
+        "refinement_started_at",
+        "refinement_completed_at",
+        "refinement_failed_at",
+        "refinement_attempts",
+        "latest_refinement_policy_id",
+        "latest_refinement_gateway_run_id",
+        "latest_refinement_error_message",
+        "latest_refinement_error_meta",
+      ])
+    ) {
+      throw createIdeaRefinementStorageUnavailableError();
     }
     throw error;
   }
