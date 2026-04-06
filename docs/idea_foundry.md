@@ -93,10 +93,12 @@ Current implementation note:
 * Prospecting Configuration stores the latest prospecting strategy
 * Prospecting Execution uses that saved strategy to run shared web search queries
 * Normalised source records are persisted for the next Prospecting Agent review cycle
+* The UI now loads prospecting configuration state separately from transactional pipeline contents so configuration reads do not double as source-record reads
 * Running the Prospecting Agent now forms a closed loop: it reviews the latest stored result records, tweaks the strategy, then immediately re-executes the updated strategy so quality can improve over time
 * A backend prospecting runtime now checks for due prospecting configurations every minute and runs the Prospecting Agent plus Prospecting Execution on an enforced hourly schedule
 * The runtime honours a persisted `nextRunAt` slot when one exists, and only falls back to the last completed run time when a next slot is missing
 * The enforced hourly cadence is now written back into the saved UI snapshot as well, so the operator-facing schedule stays aligned with `nextRunAt`
+* Local Prisma-backed control-plane startup must target the `helmos` Postgres schema (`?schema=helmos`) or the runtime and overview reads will fall back to missing-table errors against `public`
 * When a quoted boolean-style search query returns zero results, Prospecting Execution now retries once with a simplified plain-language version before persisting an empty outcome
 * Persisted `RUNNING` states are treated as recoverable on the next due hourly slot so an interrupted process cannot strand a configuration indefinitely
 * Idea Foundry no longer ships runtime demo cards or mock prospecting configuration data; when no persisted records exist, the UI renders explicit empty states instead of plausible-looking placeholders

@@ -122,5 +122,8 @@ test("backend startup script sources repo env files before launching the control
   });
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.marker, /DATABASE_URL=postgresql:\/\/postgres@localhost:5432\/postgres\?schema=helmos/);
+  assert.match(
+    result.marker,
+    /DATABASE_URL=postgresql:\/\/postgres:postgres@localhost:5432\/postgres\?schema=helmos/,
+  );
 });

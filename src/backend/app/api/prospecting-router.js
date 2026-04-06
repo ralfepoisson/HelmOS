@@ -4,6 +4,7 @@ const { z } = require("zod");
 const {
   executeProspectingConfiguration,
   getProspectingConfiguration,
+  getProspectingPipelineContents,
   runProspectingOptimizationCycle,
 } = require("../services/prospecting-configuration.service");
 
@@ -18,6 +19,13 @@ function createProspectingRouter({ prisma, agentGatewayClient }) {
 
   router.get("/configuration", async (req, res) => {
     const payload = await getProspectingConfiguration(prisma, req.auth.currentUser);
+    res.json({
+      data: payload,
+    });
+  });
+
+  router.get("/contents", async (req, res) => {
+    const payload = await getProspectingPipelineContents(prisma, req.auth.currentUser);
     res.json({
       data: payload,
     });

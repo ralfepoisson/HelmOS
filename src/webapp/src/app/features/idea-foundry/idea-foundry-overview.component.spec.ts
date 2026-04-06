@@ -6,10 +6,8 @@ import { IdeaFoundryOverviewComponent } from './idea-foundry-overview.component'
 
 describe('IdeaFoundryOverviewComponent', () => {
   const ideaFoundryApi = {
-    getProspectingConfiguration: vi.fn(async () => ({
-      snapshot: null,
-      latestReview: null,
-      resultRecords: [
+    getIdeaFoundryContents: vi.fn(async () => ({
+      sources: [
         {
           id: 'result-1',
           sourceTitle: 'VAT reminders are killing your accounting firm',
@@ -29,6 +27,9 @@ describe('IdeaFoundryOverviewComponent', () => {
           query: 'rota fell apart again short notice cover'
         }
       ],
+      protoIdeas: [],
+      ideaCandidates: [],
+      curatedOpportunities: [],
       runtime: {
         agentState: 'active',
         latestRunStatus: 'COMPLETED',
@@ -80,11 +81,45 @@ describe('IdeaFoundryOverviewComponent', () => {
     expect(text).not.toContain('Managed onboarding ops for AI-heavy B2B SaaS');
   });
 
+  it('renders live source cards returned by the API', async () => {
+    const fixture = TestBed.createComponent(IdeaFoundryOverviewComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+    const sourceButtons = fixture.nativeElement.querySelectorAll('.pipeline-card-toggle');
+
+    expect(text).toContain('VAT reminders are killing your accounting firm');
+    expect(text).toContain('Manual rota coordination is chaos');
+    expect(sourceButtons.length).toBe(2);
+  });
+
+  it('starts source cards compact and expands on click', async () => {
+    const fixture = TestBed.createComponent(IdeaFoundryOverviewComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const firstSourceCard = fixture.nativeElement.querySelector('.pipeline-card-toggle') as HTMLButtonElement;
+    expect(firstSourceCard.textContent).toContain('VAT reminders are killing your accounting firm');
+    expect(firstSourceCard.textContent).not.toContain('Operators describe recurring invoicing and VAT reminder pain.');
+    expect(firstSourceCard.textContent).not.toContain('Open source');
+
+    firstSourceCard.click();
+    fixture.detectChanges();
+
+    expect(firstSourceCard.textContent).toContain('Operators describe recurring invoicing and VAT reminder pain.');
+    expect(firstSourceCard.textContent).toContain('Query family: Complaint language around invoicing / VAT / reminders');
+    expect(firstSourceCard.textContent).toContain('Open source');
+  });
+
   it('shows empty-state cards instead of seeded demo records when no live sources exist', async () => {
-    ideaFoundryApi.getProspectingConfiguration.mockResolvedValueOnce({
-      snapshot: null,
-      latestReview: null,
-      resultRecords: [],
+    ideaFoundryApi.getIdeaFoundryContents.mockResolvedValueOnce({
+      sources: [],
+      protoIdeas: [],
+      ideaCandidates: [],
+      curatedOpportunities: [],
       runtime: {
         agentState: 'active',
         latestRunStatus: 'idle',

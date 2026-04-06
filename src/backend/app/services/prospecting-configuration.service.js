@@ -136,7 +136,18 @@ async function getProspectingConfiguration(prisma, currentUser) {
   return {
     snapshot: record?.uiSnapshotJson ?? null,
     latestReview: record?.latestReviewJson ?? null,
-    resultRecords: Array.isArray(record?.lastResultRecords) ? record.lastResultRecords : [],
+    runtime: buildRuntimeState(record),
+  };
+}
+
+async function getProspectingPipelineContents(prisma, currentUser) {
+  const record = await loadProspectingConfiguration(prisma, currentUser.id);
+
+  return {
+    sources: Array.isArray(record?.lastResultRecords) ? record.lastResultRecords : [],
+    protoIdeas: [],
+    ideaCandidates: [],
+    curatedOpportunities: [],
     runtime: buildRuntimeState(record),
   };
 }
@@ -1701,6 +1712,7 @@ module.exports = {
   buildProspectingReviewPrompt,
   buildUiSnapshotFromAgentReview,
   getProspectingConfiguration,
+  getProspectingPipelineContents,
   runProspectingOptimizationCycle,
   validateProspectingReviewOutput,
   runProspectingConfigurationReview,

@@ -34,7 +34,14 @@ export interface ProspectingResultRecord {
 export interface ProspectingConfigurationResponse {
   snapshot: ProspectingConfigurationSnapshot | null;
   latestReview: Record<string, unknown> | null;
-  resultRecords: ProspectingResultRecord[];
+  runtime: ProspectingConfigurationRuntimeState;
+}
+
+export interface IdeaFoundryPipelineContentsResponse {
+  sources: ProspectingResultRecord[];
+  protoIdeas: Array<Record<string, unknown>>;
+  ideaCandidates: Array<Record<string, unknown>>;
+  curatedOpportunities: Array<Record<string, unknown>>;
   runtime: ProspectingConfigurationRuntimeState;
 }
 
@@ -50,6 +57,11 @@ export class IdeaFoundryApiService {
   async getProspectingConfiguration(): Promise<ProspectingConfigurationResponse> {
     const response = await this.requestWithDevFallback('/idea-foundry/prospecting/configuration');
     return this.parseApiResponse<ProspectingConfigurationResponse>(response, 'load the prospecting configuration');
+  }
+
+  async getIdeaFoundryContents(): Promise<IdeaFoundryPipelineContentsResponse> {
+    const response = await this.requestWithDevFallback('/idea-foundry/prospecting/contents');
+    return this.parseApiResponse<IdeaFoundryPipelineContentsResponse>(response, 'load the idea foundry contents');
   }
 
   async runProspectingConfigurationReview(

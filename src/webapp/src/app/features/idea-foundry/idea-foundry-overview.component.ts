@@ -1,9 +1,10 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 
 import { IdeaFoundryApiService, ProspectingResultRecord } from './idea-foundry-api.service';
 
 interface IdeaPipelineCard {
+  id: string;
   title: string;
   summary: string;
   signal: string;
@@ -63,16 +64,41 @@ interface IdeaPipelineColumn {
           </header>
 
           <div class="pipeline-card-list">
-            <article *ngFor="let card of column.cards" class="pipeline-card">
-              <span class="pipeline-card-status">{{ card.status }}</span>
-              <h5>
-                <a *ngIf="card.href; else plainTitle" [href]="card.href" target="_blank" rel="noreferrer">
-                  {{ card.title }}
-                </a>
-                <ng-template #plainTitle>{{ card.title }}</ng-template>
-              </h5>
-              <p>{{ card.summary }}</p>
-              <div class="pipeline-card-meta">{{ card.signal }}</div>
+            <article
+              *ngFor="let card of column.cards"
+              class="pipeline-card"
+              [class.pipeline-card-collapsed]="isCollapsibleCard(column.id, card) && !isCardExpanded(card.id)"
+            >
+              <button
+                *ngIf="isCollapsibleCard(column.id, card); else staticCard"
+                type="button"
+                class="pipeline-card-toggle"
+                [attr.aria-expanded]="isCardExpanded(card.id)"
+                (click)="toggleCard(card.id)"
+              >
+                <div class="pipeline-card-toggle-header">
+                  <span class="pipeline-card-status">{{ card.status }}</span>
+                  <span class="pipeline-card-toggle-label">{{ isCardExpanded(card.id) ? 'Hide' : 'Open' }}</span>
+                </div>
+                <h5 class="pipeline-card-title">
+                  <span class="pipeline-card-title-text">{{ card.title }}</span>
+                </h5>
+                <ng-container *ngIf="isCardExpanded(card.id)">
+                  <p>{{ card.summary }}</p>
+                  <div class="pipeline-card-actions" *ngIf="card.href">
+                    <a [href]="card.href" target="_blank" rel="noreferrer" (click)="$event.stopPropagation()">
+                      Open source
+                    </a>
+                  </div>
+                  <div class="pipeline-card-meta">{{ card.signal }}</div>
+                </ng-container>
+              </button>
+              <ng-template #staticCard>
+                <span class="pipeline-card-status">{{ card.status }}</span>
+                <h5 class="pipeline-card-title">{{ card.title }}</h5>
+                <p>{{ card.summary }}</p>
+                <div class="pipeline-card-meta">{{ card.signal }}</div>
+              </ng-template>
             </article>
           </div>
         </article>
@@ -215,6 +241,40 @@ interface IdeaPipelineColumn {
         background: rgba(255, 255, 255, 0.95);
       }
 
+      .pipeline-card-collapsed {
+        padding: 0;
+      }
+
+      .pipeline-card-toggle {
+        width: 100%;
+        display: grid;
+        gap: 0.45rem;
+        padding: 0.8rem 0.9rem;
+        border: 0;
+        border-radius: inherit;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .pipeline-card-toggle:hover {
+        background: rgba(248, 251, 255, 0.88);
+      }
+
+      .pipeline-card-toggle-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
+
+      .pipeline-card-toggle-label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: var(--helmos-muted);
+      }
+
       .pipeline-card-status {
         display: inline-flex;
         align-items: center;
@@ -229,18 +289,33 @@ interface IdeaPipelineColumn {
         text-transform: uppercase;
       }
 
-      .pipeline-card h5 {
+      .pipeline-card h5,
+      .pipeline-card-title {
         margin: 0.6rem 0 0.35rem;
         font-size: 0.98rem;
         font-weight: 700;
       }
 
-      .pipeline-card h5 a {
-        color: inherit;
+      .pipeline-card-title {
+        margin: 0;
+        min-width: 0;
+      }
+
+      .pipeline-card-title-text {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .pipeline-card-actions a {
+        color: var(--helmos-accent);
+        font-size: 0.82rem;
+        font-weight: 700;
         text-decoration: none;
       }
 
-      .pipeline-card h5 a:hover {
+      .pipeline-card-actions a:hover {
         text-decoration: underline;
       }
 
@@ -257,19 +332,40 @@ interface IdeaPipelineColumn {
 })
 export class IdeaFoundryOverviewComponent implements OnInit {
   private readonly ideaFoundryApi = inject(IdeaFoundryApiService);
+  private readonly changeDetector = inject(ChangeDetectorRef);
+  private readonly expandedCardIds = new Set<string>();
 
   columns: IdeaPipelineColumn[] = buildEmptyColumns();
   sourceLoadError: string | null = null;
 
   async ngOnInit(): Promise<void> {
     try {
-      const payload = await this.ideaFoundryApi.getProspectingConfiguration();
-      this.columns = buildColumnsFromResultRecords(payload.resultRecords);
+      const payload = await this.ideaFoundryApi.getIdeaFoundryContents();
+      this.columns = buildColumnsFromResultRecords(payload.sources);
       this.sourceLoadError = null;
     } catch (error) {
       this.columns = buildEmptyColumns();
       this.sourceLoadError = error instanceof Error ? error.message : 'Unable to load source records.';
+    } finally {
+      this.changeDetector.detectChanges();
     }
+  }
+
+  toggleCard(cardId: string): void {
+    if (this.expandedCardIds.has(cardId)) {
+      this.expandedCardIds.delete(cardId);
+      return;
+    }
+
+    this.expandedCardIds.add(cardId);
+  }
+
+  isCardExpanded(cardId: string): boolean {
+    return this.expandedCardIds.has(cardId);
+  }
+
+  isCollapsibleCard(columnId: string, card: IdeaPipelineCard): boolean {
+    return columnId === 'sources' && Boolean(card.href);
   }
 }
 
@@ -293,6 +389,7 @@ function buildColumnsFromResultRecords(resultRecords: ProspectingResultRecord[])
       ? normalizedCards
       : [
           {
+            id: 'sources-empty',
             title: 'No normalized sources captured yet',
             summary: 'Run Prospecting Execution to populate this column with the latest stored source records.',
             signal: 'Awaiting the next prospecting execution cycle',
@@ -305,6 +402,7 @@ function buildColumnsFromResultRecords(resultRecords: ProspectingResultRecord[])
 
 function mapResultRecordToSourceCard(record: ProspectingResultRecord): IdeaPipelineCard {
   return {
+    id: record.id,
     title: record.sourceTitle?.trim() || record.sourceUrl?.trim() || 'Normalized source',
     summary:
       record.snippet?.trim() ||
@@ -339,6 +437,7 @@ function buildEmptyColumns(): IdeaPipelineColumn[] {
       helper: 'Early opportunity fragments extracted from the strongest signals.',
       cards: [
         {
+          id: 'proto-ideas-empty',
           title: 'No proto-ideas yet',
           summary: 'No extracted ideas have been persisted from live source records yet.',
           signal: 'Run prospecting and extraction against real inputs to populate this stage',
@@ -352,6 +451,7 @@ function buildEmptyColumns(): IdeaPipelineColumn[] {
       helper: 'Strengthened opportunities being challenged, expanded, and differentiated.',
       cards: [
         {
+          id: 'idea-candidates-empty',
           title: 'No idea candidates yet',
           summary: 'No refined opportunities have been persisted from real prospecting data yet.',
           signal: 'This stage will fill as extracted ideas are reviewed and strengthened',
@@ -365,6 +465,7 @@ function buildEmptyColumns(): IdeaPipelineColumn[] {
       helper: 'Higher-confidence opportunities that look ready for downstream strategy work.',
       cards: [
         {
+          id: 'curated-opportunities-empty',
           title: 'No curated opportunities yet',
           summary: 'No production-ready opportunities have been promoted from real pipeline work yet.',
           signal: 'Curated opportunities will appear after downstream review and promotion',

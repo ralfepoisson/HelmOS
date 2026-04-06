@@ -15,6 +15,7 @@ function createProspectingRuntime({
 } = {}) {
   let timer = null;
   let draining = false;
+  let schemaReady = true;
   const inFlightConfigurationIds = new Set();
 
   async function tick() {
@@ -50,6 +51,11 @@ function createProspectingRuntime({
       for (const configuration of dueConfigurations) {
         const currentUser = configuration.ownerUser;
         if (!currentUser?.id) {
+          continue;
+        }
+
+        const claimed = await claimProspectingConfigurationRun(prisma, configuration, now());
+        if (!claimed) {
           continue;
         }
 
@@ -125,7 +131,15 @@ function createProspectingRuntime({
         timer.unref();
       }
 
-      await tick();
+      try {
+        await tick();
+      } catch (error) {
+        if (isProspectingConfigurationSchemaMissing(error)) {
+          schemaReady = false;
+          return;
+        }
+        throw error;
+      }
     },
     async stop() {
       if (timer) {
@@ -134,7 +148,18 @@ function createProspectingRuntime({
       }
     },
     async triggerProcessingPass() {
-      await tick();
+      try {
+        await tick();
+      } catch (error) {
+        if (isProspectingConfigurationSchemaMissing(error)) {
+          schemaReady = false;
+          return;
+        }
+        throw error;
+      }
+    },
+    isAvailable() {
+      return schemaReady;
     },
   };
 }
@@ -142,6 +167,37 @@ function createProspectingRuntime({
 function defaultRuntimeErrorReporter(error) {
   const message = error instanceof Error ? error.message : String(error);
   process.stderr.write(`Prospecting runtime tick failed: ${message}\n`);
+}
+
+function isProspectingConfigurationSchemaMissing(error) {
+  return (
+    error?.code === "P2021" &&
+    typeof error?.message === "string" &&
+    error.message.includes("prospecting_configurations")
+  );
+}
+
+async function claimProspectingConfigurationRun(prisma, configuration, claimedAt) {
+  if (
+    !prisma?.prospectingConfiguration ||
+    typeof prisma.prospectingConfiguration.updateMany !== "function" ||
+    !(configuration?.updatedAt instanceof Date)
+  ) {
+    return true;
+  }
+
+  const result = await prisma.prospectingConfiguration.updateMany({
+    where: {
+      id: configuration.id,
+      updatedAt: configuration.updatedAt,
+    },
+    data: {
+      latestRunStatus: "RUNNING",
+      updatedAt: claimedAt instanceof Date ? claimedAt : new Date(claimedAt),
+    },
+  });
+
+  return result?.count === 1;
 }
 
 function isProspectingConfigurationDue(configuration, currentTime) {

@@ -2227,11 +2227,75 @@ test("GET /api/idea-foundry/prospecting/configuration returns the persisted pros
   assert.equal(response.body.data.snapshot.objective.name, "Recurring compliance pain");
   assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
   assert.equal(response.body.data.runtime.resultRecordCount, 2);
-  assert.deepEqual(response.body.data.resultRecords, storedResultRecords);
+  assert.equal(Object.hasOwn(response.body.data, "resultRecords"), false);
   assert.equal(
     response.body.data.latestReview.reply_to_user.content,
     "The current strategy is usable and slightly biased toward recurring compliance pain."
   );
+});
+
+test("GET /api/idea-foundry/prospecting/contents returns the persisted pipeline contents separately from configuration", async () => {
+  const storedResultRecords = [
+    {
+      id: "result-1",
+      sourceTitle: "VAT reminders are killing your accounting firm",
+      sourceUrl: "https://example.com/vat-reminders",
+      snippet: "Operators describe recurring invoicing and VAT reminder pain.",
+      queryFamilyTitle: "Complaint language around invoicing / VAT / reminders",
+      themeLink: "fragmented compliance workflows",
+      capturedAt: "2026-04-05T20:00:00.000Z",
+    },
+    {
+      id: "result-2",
+      sourceTitle: "Manual rota coordination is chaos",
+      sourceUrl: "https://example.com/rota-chaos",
+      snippet: "Practice managers compare manual scheduling breakdowns.",
+      queryFamilyTitle: "Urgent rota / scheduling breakdowns",
+      themeLink: "last-minute scheduling pressure",
+      capturedAt: "2026-04-05T20:05:00.000Z",
+    },
+  ];
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-prospecting-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    prospectingConfiguration: {
+      findUnique: async () => ({
+        id: "prospecting-config-1",
+        ownerUserId: "user-prospecting-1",
+        agentState: "active",
+        latestRunStatus: "COMPLETED",
+        lastRunAt: new Date("2026-04-05T10:15:00Z"),
+        nextRunAt: new Date("2026-04-05T14:15:00Z"),
+        uiSnapshotJson: {
+          strategyMode: "Focused search",
+        },
+        latestReviewJson: {
+          reply_to_user: {
+            content: "The current strategy is usable and slightly biased toward recurring compliance pain.",
+          },
+        },
+        lastResultRecords: storedResultRecords,
+      }),
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient: {} });
+  const response = await withAuth(request(app).get("/api/idea-foundry/prospecting/contents"));
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
+  assert.equal(response.body.data.runtime.resultRecordCount, 2);
+  assert.deepEqual(response.body.data.sources, storedResultRecords);
+  assert.deepEqual(response.body.data.protoIdeas, []);
+  assert.deepEqual(response.body.data.ideaCandidates, []);
+  assert.deepEqual(response.body.data.curatedOpportunities, []);
 });
 
 test("POST /api/idea-foundry/prospecting/configuration/run executes a full prospecting optimization cycle and persists the refreshed result records", async () => {

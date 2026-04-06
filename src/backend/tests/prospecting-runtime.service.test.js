@@ -186,6 +186,73 @@ test("prospecting runtime processes due prospecting configurations when the next
   );
 });
 
+test("prospecting runtime skips a due configuration when another runtime already claimed the same row", async () => {
+  const optimizationCalls = [];
+  let updateManyArgs = null;
+
+  const prisma = {
+    prospectingConfiguration: {
+      async findMany() {
+        return [
+          {
+            id: "prospecting-config-1",
+            ownerUserId: "user-1",
+            updatedAt: new Date("2026-04-05T19:59:00.000Z"),
+            lastRunAt: new Date("2026-04-05T18:00:00.000Z"),
+            nextRunAt: new Date("2026-04-05T19:00:00.000Z"),
+            uiSnapshotJson: {
+              cadence: {
+                runMode: "Scheduled",
+                cadence: "Every hour",
+              },
+            },
+            ownerUser: {
+              id: "user-1",
+              email: "founder@example.com",
+              displayName: "Founder Example",
+              appRole: "USER",
+            },
+          },
+        ];
+      },
+      async updateMany(args) {
+        updateManyArgs = args;
+        return { count: 0 };
+      },
+    },
+    logEntry: {
+      async create() {
+        return null;
+      },
+    },
+  };
+
+  const runtime = createProspectingRuntime({
+    prisma,
+    agentGatewayClient: {},
+    runOptimizationCycle: async (...args) => {
+      optimizationCalls.push(args);
+      return {
+        runtime: {
+          latestRunStatus: "COMPLETED",
+          resultRecordCount: 5,
+        },
+      };
+    },
+    now: () => new Date("2026-04-05T20:00:00.000Z"),
+  });
+
+  await runtime.triggerProcessingPass();
+
+  assert.deepEqual(updateManyArgs.where, {
+    id: "prospecting-config-1",
+    updatedAt: new Date("2026-04-05T19:59:00.000Z"),
+  });
+  assert.equal(updateManyArgs.data.latestRunStatus, "RUNNING");
+  assert.ok(updateManyArgs.data.updatedAt instanceof Date);
+  assert.equal(optimizationCalls.length, 0);
+});
+
 test("prospecting runtime falls back to last run age when the next run slot is missing", async () => {
   const optimizationCalls = [];
 
@@ -408,4 +475,43 @@ test("prospecting runtime reports background tick failures instead of swallowing
   assert.ok(findManyCalls >= 2);
   assert.ok(reportedErrors.length >= 1);
   assert.ok(reportedErrors.every((message) => message === "database offline"));
+});
+
+test("prospecting runtime start does not fail when the prospecting table has not been migrated yet", async () => {
+  let findManyCalls = 0;
+  const reportedErrors = [];
+
+  const prisma = {
+    prospectingConfiguration: {
+      async findMany() {
+        findManyCalls += 1;
+        const error = new Error("The table `public.prospecting_configurations` does not exist in the current database.");
+        error.code = "P2021";
+        throw error;
+      },
+    },
+    logEntry: {
+      async create() {
+        return null;
+      },
+    },
+  };
+
+  const runtime = createProspectingRuntime({
+    prisma,
+    agentGatewayClient: {},
+    config: {
+      pollMs: 10,
+    },
+    onError: (error) => {
+      reportedErrors.push(error instanceof Error ? error.message : String(error));
+    },
+  });
+
+  await runtime.start();
+  await runtime.triggerProcessingPass();
+  await runtime.stop();
+
+  assert.equal(findManyCalls, 2);
+  assert.deepEqual(reportedErrors, []);
 });
