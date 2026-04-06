@@ -2,6 +2,7 @@ const { randomUUID } = require("node:crypto");
 const { z } = require("zod");
 
 const { createLogEntry } = require("./log-entry.service");
+const { getCuratedOpportunityPipelineContents } = require("./idea-evaluation.service");
 const { getIdeaCandidatePipelineContents } = require("./idea-refinement.service");
 const { getProtoIdeaPipelineContents, getProtoIdeaSourcePipelineContents } = require("./proto-idea-extraction.service");
 
@@ -144,24 +145,51 @@ async function getProspectingConfiguration(prisma, currentUser) {
 
 async function getProspectingPipelineContents(prisma, currentUser) {
   const record = await loadProspectingConfiguration(prisma, currentUser.id);
-  const [protoIdeas, protoIdeaSources, ideaCandidates] = await Promise.all([
+  const [protoIdeas, protoIdeaSources, ideaCandidates, curatedOpportunities] = await Promise.all([
     getProtoIdeaPipelineContents(prisma, currentUser.id),
     getProtoIdeaSourcePipelineContents(prisma, currentUser.id),
     getIdeaCandidatePipelineContents(prisma, currentUser.id),
+    getCuratedOpportunityPipelineContents(prisma, currentUser.id),
   ]);
 
   return {
-    sources: mergePipelineSources(Array.isArray(record?.lastResultRecords) ? record.lastResultRecords : [], protoIdeaSources),
+    sources: mergePipelineSources(
+      Array.isArray(record?.lastResultRecords) ? record.lastResultRecords : [],
+      protoIdeaSources,
+      protoIdeas,
+    ),
     sourceProcessing: protoIdeaSources,
     protoIdeas,
     ideaCandidates,
-    curatedOpportunities: [],
+    curatedOpportunities,
     runtime: buildRuntimeState(record),
   };
 }
 
-function mergePipelineSources(latestResultRecords = [], protoIdeaSources = []) {
+function mergePipelineSources(latestResultRecords = [], protoIdeaSources = [], protoIdeas = []) {
   const merged = new Map();
+  const sourceProcessingById = new Map();
+  const processedSourceKeys = new Set();
+
+  for (const persistedSource of Array.isArray(protoIdeaSources) ? protoIdeaSources : []) {
+    if (typeof persistedSource?.id === "string" && persistedSource.id.trim().length > 0) {
+      sourceProcessingById.set(persistedSource.id, persistedSource);
+    }
+
+    const sourceKey = normalizePipelineSourceKey(persistedSource);
+    const status = String(persistedSource?.processingStatus ?? "").trim().toUpperCase();
+    if (sourceKey && (status === "PROCESSING" || status === "COMPLETED")) {
+      processedSourceKeys.add(sourceKey);
+    }
+  }
+
+  for (const protoIdea of Array.isArray(protoIdeas) ? protoIdeas : []) {
+    const persistedSource = sourceProcessingById.get(protoIdea?.sourceId);
+    const sourceKey = normalizePipelineSourceKey(persistedSource);
+    if (sourceKey) {
+      processedSourceKeys.add(sourceKey);
+    }
+  }
 
   for (const record of Array.isArray(latestResultRecords) ? latestResultRecords : []) {
     const sourceKey = normalizePipelineSourceKey(record);
@@ -172,6 +200,7 @@ function mergePipelineSources(latestResultRecords = [], protoIdeaSources = []) {
     merged.set(sourceKey, {
       ...record,
       sourceKey,
+      isProcessedForPipeline: processedSourceKeys.has(sourceKey),
     });
   }
 
@@ -198,11 +227,23 @@ function mergePipelineSources(latestResultRecords = [], protoIdeaSources = []) {
       sourceKey: persistedSource.sourceKey ?? normalizePipelineSourceKey(sourcePayload),
     };
     const sourceKey = normalizePipelineSourceKey(candidate);
-    if (!sourceKey || merged.has(sourceKey)) {
+    if (!sourceKey) {
       continue;
     }
 
-    merged.set(sourceKey, candidate);
+    if (merged.has(sourceKey)) {
+      const existing = merged.get(sourceKey);
+      merged.set(sourceKey, {
+        ...existing,
+        isProcessedForPipeline: processedSourceKeys.has(sourceKey),
+      });
+      continue;
+    }
+
+    merged.set(sourceKey, {
+      ...candidate,
+      isProcessedForPipeline: processedSourceKeys.has(sourceKey),
+    });
   }
 
   return [...merged.values()].sort((left, right) => {

@@ -229,6 +229,26 @@ enum IdeaRefinementProcessingStatus {
   FAILED
 }
 
+enum IdeaEvaluationProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum IdeaEvaluationDecision {
+  PROMOTE
+  REFINE
+  REJECT
+}
+
+enum IdeaCandidateWorkflowState {
+  AWAITING_EVALUATION
+  NEEDS_REFINEMENT
+  REJECTED
+  PROMOTED
+}
+
 enum ConceptualToolStatus {
   ACTIVE
   INACTIVE
@@ -257,6 +277,8 @@ model User {
   sentMessages        ChatMessage[]        @relation("MessageSender")
   activityEvents      ActivityLog[]        @relation("ActivityActor")
   prospectingConfiguration ProspectingConfiguration?
+  prospectingReviews   ProspectingReview[]
+  prospectingResultRecords ProspectingResultRecord[]
   createdKnowledgeBases KnowledgeBase[]    @relation("KnowledgeBaseCreatedBy")
   updatedKnowledgeBases KnowledgeBase[]    @relation("KnowledgeBaseUpdatedBy")
   submittedKnowledgeBaseFiles KnowledgeBaseFile[] @relation("KnowledgeBaseFileSubmittedBy")
@@ -265,6 +287,7 @@ model User {
   protoIdeaSources       ProtoIdeaSource[]
   protoIdeas             ProtoIdea[]
   ideaCandidates         IdeaCandidate[]
+  curatedOpportunities   CuratedOpportunity[]
   supportConversations   SupportConversation[] @relation("SupportConversationUser")
   supportMessages        SupportMessage[]      @relation("SupportMessageSender")
   reportedSupportTickets SupportTicket[]       @relation("SupportTicketReporter")
@@ -951,10 +974,55 @@ model ProspectingConfiguration {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
   ownerUser         User     @relation(fields: [ownerUserId], references: [id])
+  prospectingReviews ProspectingReview[]
+  prospectingResultRecords ProspectingResultRecord[]
   protoIdeaSources  ProtoIdeaSource[]
 
   @@index([latestRunStatus, updatedAt])
   @@map("prospecting_configurations")
+}
+
+model ProspectingReview {
+  id                        String                    @id @default(uuid()) @db.Uuid
+  prospectingConfigurationId String                   @map("prospecting_configuration_id") @db.Uuid
+  ownerUserId               String                    @map("owner_user_id") @db.Uuid
+  gatewayRunId              String?                   @map("gateway_run_id") @db.VarChar(255)
+  reviewJson                Json                      @map("review_json")
+  createdAt                 DateTime                  @default(now()) @map("created_at")
+  prospectingConfiguration  ProspectingConfiguration  @relation(fields: [prospectingConfigurationId], references: [id])
+  ownerUser                 User                      @relation(fields: [ownerUserId], references: [id])
+
+  @@index([prospectingConfigurationId, createdAt])
+  @@index([ownerUserId, createdAt])
+  @@map("prospecting_reviews")
+}
+
+model ProspectingResultRecord {
+  id                        String                    @id @default(uuid()) @db.Uuid
+  prospectingConfigurationId String                   @map("prospecting_configuration_id") @db.Uuid
+  ownerUserId               String                    @map("owner_user_id") @db.Uuid
+  sourceKey                 String                    @map("source_key") @db.VarChar(512)
+  query                     String?                   @db.VarChar(1000)
+  executedQuery             String?                   @map("executed_query") @db.VarChar(1000)
+  queryFamilyId             String?                   @map("query_family_id") @db.VarChar(255)
+  queryFamilyTitle          String?                   @map("query_family_title") @db.VarChar(500)
+  themeLink                 String?                   @map("theme_link") @db.VarChar(500)
+  sourceTitle               String?                   @map("source_title") @db.VarChar(500)
+  sourceUrl                 String?                   @map("source_url")
+  snippet                   String?
+  provider                  String?                   @db.VarChar(100)
+  rank                      Int?
+  capturedAt                DateTime?                 @map("captured_at")
+  sourcePayload             Json                      @map("source_payload")
+  createdAt                 DateTime                  @default(now()) @map("created_at")
+  updatedAt                 DateTime                  @updatedAt @map("updated_at")
+  prospectingConfiguration  ProspectingConfiguration  @relation(fields: [prospectingConfigurationId], references: [id])
+  ownerUser                 User                      @relation(fields: [ownerUserId], references: [id])
+
+  @@unique([ownerUserId, sourceKey])
+  @@index([prospectingConfigurationId, capturedAt])
+  @@index([ownerUserId, capturedAt])
+  @@map("prospecting_result_records")
 }
 
 model ProtoIdeaExtractionPolicy {
@@ -1084,40 +1152,95 @@ model ProtoIdea {
 }
 
 model IdeaCandidate {
-  id                        String               @id @default(uuid()) @db.Uuid
-  ownerUserId               String               @map("owner_user_id") @db.Uuid
-  protoIdeaId               String               @map("proto_idea_id") @db.Uuid
-  policyId                  String?              @map("policy_id") @db.Uuid
-  problemStatement          String               @map("problem_statement")
-  targetCustomer            String               @map("target_customer")
-  valueProposition          String               @map("value_proposition")
-  opportunityConcept        String               @map("opportunity_concept")
-  differentiation           String
-  assumptions               Json                 @default("[]")
-  openQuestions             Json                 @default("[]") @map("open_questions")
-  improvementSummary        String               @map("improvement_summary")
-  keyChanges                Json                 @default("[]") @map("key_changes")
-  appliedReasoningSummary   String               @map("applied_reasoning_summary")
-  appliedConceptualToolIds  Json                 @default("[]") @map("applied_conceptual_tool_ids")
-  qualityCheckCoherence     String               @map("quality_check_coherence")
-  qualityCheckGaps          Json                 @default("[]") @map("quality_check_gaps")
-  qualityCheckRisks         Json                 @default("[]") @map("quality_check_risks")
-  statusLabel               String               @map("status_label") @db.VarChar(100)
-  statusTone                String               @map("status_tone") @db.VarChar(100)
-  agentConfidence           String               @map("agent_confidence") @db.VarChar(100)
-  statusExplanation         String               @map("status_explanation")
-  refinementIteration       Int                  @default(1) @map("refinement_iteration")
-  deduplicationFingerprint  String?              @map("deduplication_fingerprint") @db.VarChar(1000)
-  rawLlmPayload             Json?                @map("raw_llm_payload")
-  createdAt                 DateTime             @default(now()) @map("created_at")
-  updatedAt                 DateTime             @updatedAt @map("updated_at")
-  ownerUser                 User                 @relation(fields: [ownerUserId], references: [id])
-  protoIdea                 ProtoIdea            @relation(fields: [protoIdeaId], references: [id], onDelete: Cascade)
+  id                         String                         @id @default(uuid()) @db.Uuid
+  ownerUserId                String                         @map("owner_user_id") @db.Uuid
+  protoIdeaId                String                         @map("proto_idea_id") @db.Uuid
+  policyId                   String?                        @map("policy_id") @db.Uuid
+  problemStatement           String                         @map("problem_statement")
+  targetCustomer             String                         @map("target_customer")
+  valueProposition           String                         @map("value_proposition")
+  opportunityConcept         String                         @map("opportunity_concept")
+  differentiation            String
+  assumptions                Json                           @default("[]")
+  openQuestions              Json                           @default("[]") @map("open_questions")
+  improvementSummary         String                         @map("improvement_summary")
+  keyChanges                 Json                           @default("[]") @map("key_changes")
+  appliedReasoningSummary    String                         @map("applied_reasoning_summary")
+  appliedConceptualToolIds   Json                           @default("[]") @map("applied_conceptual_tool_ids")
+  qualityCheckCoherence      String                         @map("quality_check_coherence")
+  qualityCheckGaps           Json                           @default("[]") @map("quality_check_gaps")
+  qualityCheckRisks          Json                           @default("[]") @map("quality_check_risks")
+  statusLabel                String                         @map("status_label") @db.VarChar(100)
+  statusTone                 String                         @map("status_tone") @db.VarChar(100)
+  agentConfidence            String                         @map("agent_confidence") @db.VarChar(100)
+  statusExplanation          String                         @map("status_explanation")
+  refinementIteration        Int                            @default(1) @map("refinement_iteration")
+  workflowState              IdeaCandidateWorkflowState     @default(AWAITING_EVALUATION) @map("workflow_state")
+  evaluationStatus           IdeaEvaluationProcessingStatus @default(PENDING) @map("evaluation_status")
+  evaluationStartedAt        DateTime?                      @map("evaluation_started_at")
+  evaluationCompletedAt      DateTime?                      @map("evaluation_completed_at")
+  evaluationFailedAt         DateTime?                      @map("evaluation_failed_at")
+  evaluationAttempts         Int                            @default(0) @map("evaluation_attempts")
+  latestEvaluationGatewayRunId String?                      @map("latest_evaluation_gateway_run_id") @db.VarChar(255)
+  latestEvaluationErrorMessage String?                      @map("latest_evaluation_error_message")
+  latestEvaluationErrorMeta  Json?                          @map("latest_evaluation_error_meta")
+  evaluationDecision         IdeaEvaluationDecision?        @map("evaluation_decision")
+  evaluationDecisionReason   String?                        @map("evaluation_decision_reason")
+  evaluationNextBestAction   String?                        @map("evaluation_next_best_action")
+  evaluationRecommendedActionReason String?                 @map("evaluation_recommended_action_reason")
+  evaluationReadinessLabel   String?                        @map("evaluation_readiness_label") @db.VarChar(100)
+  evaluationBlockingIssue    String?                        @map("evaluation_blocking_issue")
+  evaluationStrongestAspect  String?                        @map("evaluation_strongest_aspect")
+  evaluationBiggestRisk      String?                        @map("evaluation_biggest_risk")
+  evaluationDuplicateRiskLabel String?                      @map("evaluation_duplicate_risk_label") @db.VarChar(100)
+  evaluationDuplicateRiskExplanation String?                @map("evaluation_duplicate_risk_explanation")
+  evaluationPayloadJson      Json?                          @map("evaluation_payload_json")
+  deduplicationFingerprint   String?                        @map("deduplication_fingerprint") @db.VarChar(1000)
+  rawLlmPayload              Json?                          @map("raw_llm_payload")
+  createdAt                  DateTime                       @default(now()) @map("created_at")
+  updatedAt                  DateTime                       @updatedAt @map("updated_at")
+  ownerUser                  User                           @relation(fields: [ownerUserId], references: [id])
+  protoIdea                  ProtoIdea                      @relation(fields: [protoIdeaId], references: [id], onDelete: Cascade)
   policy                    IdeaRefinementPolicy? @relation(fields: [policyId], references: [id])
-  conceptualTools           ConceptualTool[]
+  conceptualTools            ConceptualTool[]
+  curatedOpportunity         CuratedOpportunity?
 
   @@index([ownerUserId, createdAt])
   @@index([protoIdeaId, refinementIteration])
   @@index([policyId, createdAt])
+  @@index([ownerUserId, workflowState, updatedAt])
+  @@index([ownerUserId, evaluationStatus, updatedAt])
   @@map("idea_candidates")
+}
+
+model CuratedOpportunity {
+  id                         String        @id @default(uuid()) @db.Uuid
+  ownerUserId                String        @map("owner_user_id") @db.Uuid
+  ideaCandidateId            String        @unique @map("idea_candidate_id") @db.Uuid
+  title                      String        @db.VarChar(255)
+  summary                    String?
+  problemStatement           String        @map("problem_statement")
+  targetCustomer             String        @map("target_customer")
+  valueProposition           String        @map("value_proposition")
+  productServiceDescription  String        @map("product_service_description")
+  differentiation            String
+  earlyMonetizationIdea      String        @map("early_monetization_idea")
+  readinessLabel             String        @map("readiness_label") @db.VarChar(100)
+  strongestAspect            String        @map("strongest_aspect")
+  biggestRisk                String        @map("biggest_risk")
+  blockingIssue              String?       @map("blocking_issue")
+  duplicateRiskLabel         String        @map("duplicate_risk_label") @db.VarChar(100)
+  duplicateRiskExplanation   String        @map("duplicate_risk_explanation")
+  nextBestAction             String        @map("next_best_action")
+  promotionReason            String        @map("promotion_reason")
+  tagsJson                   Json          @default("{}") @map("tags_json")
+  evaluationPayloadJson      Json          @map("evaluation_payload_json")
+  promotedAt                 DateTime      @map("promoted_at")
+  createdAt                  DateTime      @default(now()) @map("created_at")
+  updatedAt                  DateTime      @updatedAt @map("updated_at")
+  ownerUser                  User          @relation(fields: [ownerUserId], references: [id])
+  ideaCandidate              IdeaCandidate @relation(fields: [ideaCandidateId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId, promotedAt])
+  @@map("curated_opportunities")
 }

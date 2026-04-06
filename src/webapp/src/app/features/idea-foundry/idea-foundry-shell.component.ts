@@ -186,6 +186,11 @@ export class IdeaFoundryShellComponent {
       helper: 'Track how ideas move across the refinement pipeline.'
     },
     {
+      label: 'Search',
+      route: '/idea-foundry/search',
+      helper: 'Search by stage and tags, then open an idea profile with lineage and metadata.'
+    },
+    {
       label: 'Prospecting Configuration',
       route: '/idea-foundry/prospecting-configuration',
       helper: 'Define the source mix, search strategy, and signal gathering rules.'
@@ -201,7 +206,7 @@ export class IdeaFoundryShellComponent {
       helper: 'Strengthen weak ideas through challenge, enrichment, and restructuring.'
     },
     {
-      label: 'Idea Evaluator',
+      label: 'Idea Evaluation',
       route: '/idea-foundry/idea-evaluator',
       helper: 'Apply progression checks before opportunities graduate to Strategy Copilot.'
     }

@@ -40,6 +40,10 @@ describe('IdeaFoundryShellComponent', () => {
         expect.objectContaining({
           text: expect.stringContaining('Prospecting Configuration'),
           href: '/idea-foundry/prospecting-configuration'
+        }),
+        expect.objectContaining({
+          text: expect.stringContaining('Search'),
+          href: '/idea-foundry/search'
         })
       ])
     );

@@ -2231,6 +2231,25 @@ test("GET /api/idea-foundry/prospecting/configuration returns the persisted pros
         },
       ],
     },
+    protoIdea: {
+      findMany: async () => [],
+    },
+    ideaCandidate: {
+      findMany: async () => [],
+    },
+    conceptualTool: {
+      findMany: async () => [],
+    },
+    supportConversation: {
+      findFirst: async () => null,
+    },
+    supportMessage: {
+      findMany: async () => [],
+    },
+    supportTicket: {
+      findMany: async () => [],
+    },
+    supportTicketEvent: {},
   };
 
   const app = createApp({ prisma, agentGatewayClient: {} });
@@ -2345,6 +2364,25 @@ test("GET /api/idea-foundry/prospecting/contents returns the persisted pipeline 
         },
       ],
     },
+    protoIdea: {
+      findMany: async () => [],
+    },
+    ideaCandidate: {
+      findMany: async () => [],
+    },
+    conceptualTool: {
+      findMany: async () => [],
+    },
+    supportConversation: {
+      findFirst: async () => null,
+    },
+    supportMessage: {
+      findMany: async () => [],
+    },
+    supportTicket: {
+      findMany: async () => [],
+    },
+    supportTicketEvent: {},
   };
 
   const app = createApp({ prisma, agentGatewayClient: {} });
@@ -2358,11 +2396,140 @@ test("GET /api/idea-foundry/prospecting/contents returns the persisted pipeline 
     response.body.data.sources.some((entry) => entry.sourceUrl === "https://example.com/historic-source"),
     true
   );
+  assert.equal(
+    response.body.data.sources.find((entry) => entry.sourceUrl === "https://example.com/vat-reminders")?.isProcessedForPipeline,
+    true
+  );
   assert.equal(response.body.data.sourceProcessing.length, 2);
   assert.equal(response.body.data.sourceProcessing[0].upstreamSourceRecordId, "result-1");
   assert.deepEqual(response.body.data.protoIdeas, []);
   assert.deepEqual(response.body.data.ideaCandidates, []);
   assert.deepEqual(response.body.data.curatedOpportunities, []);
+});
+
+test("GET /api/idea-foundry/prospecting/contents tolerates pre-evaluation databases and still returns idea candidates", async () => {
+  let firstIdeaCandidateQuery = true;
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "user-prospecting-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "USER",
+      }),
+    },
+    prospectingConfiguration: {
+      findUnique: async () => ({
+        id: "prospecting-config-1",
+        ownerUserId: "user-prospecting-1",
+        agentState: "active",
+        latestRunStatus: "COMPLETED",
+        lastRunAt: new Date("2026-04-05T10:15:00Z"),
+        nextRunAt: null,
+        uiSnapshotJson: null,
+        latestReviewJson: null,
+        lastResultRecords: [],
+      }),
+    },
+    protoIdeaSource: {
+      findMany: async () => [],
+    },
+    protoIdea: {
+      findMany: async () => [],
+    },
+    ideaCandidate: {
+      async findMany(args) {
+        if (firstIdeaCandidateQuery) {
+          firstIdeaCandidateQuery = false;
+          assert.equal(args.include?.protoIdea?.select?.source?.select?.sourceTitle, true);
+          const error = new Error("The column `idea_candidates.workflow_state` does not exist in the current database.");
+          error.code = "P2022";
+          error.meta = { column: "idea_candidates.workflow_state" };
+          throw error;
+        }
+
+        assert.equal(args.select?.workflowState, undefined);
+        assert.equal(args.select?.evaluationStatus, undefined);
+
+        return [
+          {
+            id: "candidate-1",
+            ownerUserId: "user-prospecting-1",
+            protoIdeaId: "proto-1",
+            policyId: "policy-1",
+            problemStatement: "Teams lose time coordinating recurring compliance reminders.",
+            targetCustomer: "Owner-led accounting firms",
+            valueProposition: "A workflow cockpit for recurring compliance work.",
+            opportunityConcept: "Compliance workflow co-pilot",
+            differentiation: "Focused on recurring deadline orchestration.",
+            assumptions: ["Operators will adopt a focused reminder workflow tool."],
+            openQuestions: ["Which deadlines create the most urgent pain?"],
+            improvementSummary: "Sharpened the ICP and recurring workflow wedge.",
+            keyChanges: ["Narrowed the buyer", "Clarified the value proposition"],
+            appliedReasoningSummary: "Used assumption mapping.",
+            appliedConceptualToolIds: ["8a8e7708-8225-4a37-bbe0-fd0d3040b005"],
+            qualityCheckCoherence: "Problem, buyer, and wedge are aligned.",
+            qualityCheckGaps: [],
+            qualityCheckRisks: [],
+            statusLabel: "Refined",
+            statusTone: "success",
+            agentConfidence: "medium",
+            statusExplanation: "The idea is ready for evaluation.",
+            refinementIteration: 1,
+            createdAt: new Date("2026-04-06T09:00:00Z"),
+            updatedAt: new Date("2026-04-06T10:00:00Z"),
+            protoIdea: {
+              id: "proto-1",
+              title: "Compliance workflow co-pilot",
+              sourceId: "proto-source-1",
+              source: {
+                sourceTitle: "VAT reminder pain",
+              },
+            },
+          },
+        ];
+      },
+    },
+    conceptualTool: {
+      findMany: async () => [
+        {
+          id: "8a8e7708-8225-4a37-bbe0-fd0d3040b005",
+          name: "Assumption Mapping",
+          category: "diagnostic",
+          purpose: "Surface hidden assumptions.",
+          whenToUse: ["the idea relies on multiple unstated beliefs"],
+          whenNotToUse: [],
+          instructions: ["List assumptions"],
+          expectedEffect: "Sharper reasoning",
+          status: "ACTIVE",
+          version: 1,
+        },
+      ],
+    },
+    curatedOpportunity: {
+      findMany: async () => [],
+    },
+    supportConversation: {
+      findFirst: async () => null,
+    },
+    supportMessage: {
+      findMany: async () => [],
+    },
+    supportTicket: {
+      findMany: async () => [],
+    },
+    supportTicketEvent: {},
+  };
+
+  const app = createApp({ prisma, agentGatewayClient: {} });
+  const response = await withAuth(request(app).get("/api/idea-foundry/prospecting/contents"));
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.ideaCandidates.length, 1);
+  assert.equal(response.body.data.ideaCandidates[0].workflowState, "AWAITING_EVALUATION");
+  assert.equal(response.body.data.ideaCandidates[0].evaluationStatus, "PENDING");
+  assert.deepEqual(response.body.data.ideaCandidates[0].selectedConceptualToolNames, ["Assumption Mapping"]);
 });
 
 test("GET /api/idea-foundry/proto-idea/configuration returns the persisted proto-idea extraction policy", async () => {
@@ -3093,8 +3260,8 @@ test("POST /api/idea-foundry/refinement/run executes the idea refinement agent u
   );
 });
 
-test("POST /api/idea-foundry/pipeline/run executes the pipeline executor for the authenticated admin", async () => {
-  const executorCalls = [];
+test("POST /api/idea-foundry/pipeline/run starts an asynchronous pipeline run for the authenticated admin", async () => {
+  const runtimeCalls = [];
   const prisma = {
     user: {
       upsert: async ({ create, update }) => ({
@@ -3104,43 +3271,60 @@ test("POST /api/idea-foundry/pipeline/run executes the pipeline executor for the
         appRole: "ADMIN",
       }),
     },
+    supportConversation: {
+      findFirst: async () => null,
+    },
+    supportMessage: {
+      findMany: async () => [],
+    },
+    supportTicket: {
+      findMany: async () => [],
+    },
+    supportTicketEvent: {},
   };
 
   const app = createApp({
     prisma,
     agentGatewayClient: {},
-    ideaFoundryPipelineExecutor: {
-      async execute(receivedPrisma, receivedGatewayClient, options) {
-        executorCalls.push({ receivedPrisma, receivedGatewayClient, options });
+    ideaFoundryPipelineRuntime: {
+      async start(receivedPrisma, receivedGatewayClient, options) {
+        runtimeCalls.push({ receivedPrisma, receivedGatewayClient, options });
         return {
-          status: "COMPLETED",
-          completedStageCount: 2,
+          started: true,
+          run: {
+            runId: "run-1",
+            status: "RUNNING",
+            startedAt: "2026-04-06T13:00:00.000Z",
+            endedAt: null,
+            stageStates: {
+              sources: "completed",
+              "proto-ideas": "running",
+              "idea-candidates": "pending",
+              "curated-opportunities": "pending",
+            },
+            stageResults: [],
+            completedStageCount: 0,
+            failedStageCount: 0,
+            errorMessage: null,
+          },
+        };
+      },
+      getStatus() {
+        return {
+          runId: "run-1",
+          status: "RUNNING",
+          startedAt: "2026-04-06T13:00:00.000Z",
+          endedAt: null,
+          stageStates: {
+            sources: "completed",
+            "proto-ideas": "running",
+            "idea-candidates": "pending",
+            "curated-opportunities": "pending",
+          },
+          stageResults: [],
+          completedStageCount: 0,
           failedStageCount: 0,
-          stageResults: [
-            {
-              key: "proto-idea",
-              status: "COMPLETED",
-              stopReason: "no_work_remaining",
-              attempts: 2,
-              totals: {
-                processedCount: 3,
-                completedCount: 3,
-                failedCount: 0,
-              },
-            },
-            {
-              key: "idea-refinement",
-              status: "COMPLETED",
-              stopReason: "no_work_remaining",
-              attempts: 2,
-              totals: {
-                processedCount: 3,
-                completedCount: 3,
-                failedCount: 0,
-                candidateCount: 3,
-              },
-            },
-          ],
+          errorMessage: null,
         };
       },
     },
@@ -3149,17 +3333,81 @@ test("POST /api/idea-foundry/pipeline/run executes the pipeline executor for the
   const response = await withAuth(
     request(app)
       .post("/api/idea-foundry/pipeline/run")
-      .send({ retryFailed: true, maxStageIterations: 5 }),
+      .send({ retryFailed: true, maxStageIterations: 5, startStage: "idea-candidates" }),
     { isAdmin: true, email: "ralfepoisson@gmail.com" }
   );
 
+  assert.equal(response.statusCode, 202);
+  assert.equal(runtimeCalls.length, 1);
+  assert.equal(runtimeCalls[0].options.ownerUserId, "admin-user-1");
+  assert.equal(runtimeCalls[0].options.retryFailed, true);
+  assert.equal(runtimeCalls[0].options.maxStageIterations, 5);
+  assert.equal(runtimeCalls[0].options.startStage, "idea-candidates");
+  assert.equal(response.body.data.started, true);
+  assert.equal(response.body.data.run.status, "RUNNING");
+  assert.equal(response.body.data.run.stageStates["proto-ideas"], "running");
+});
+
+test("GET /api/idea-foundry/pipeline/status returns the current backend-owned pipeline status", async () => {
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    supportConversation: {
+      findFirst: async () => null,
+    },
+    supportMessage: {
+      findMany: async () => [],
+    },
+    supportTicket: {
+      findMany: async () => [],
+    },
+    supportTicketEvent: {},
+  };
+
+  const app = createApp({
+    prisma,
+    agentGatewayClient: {},
+    ideaFoundryPipelineRuntime: {
+      async start() {
+        throw new Error("start should not be called");
+      },
+      getStatus(ownerUserId) {
+        return {
+          runId: "run-9",
+          ownerUserId,
+          status: "COMPLETED",
+          startedAt: "2026-04-06T13:00:00.000Z",
+          endedAt: "2026-04-06T13:00:30.000Z",
+          stageStates: {
+            sources: "completed",
+            "proto-ideas": "completed",
+            "idea-candidates": "completed",
+            "curated-opportunities": "completed",
+          },
+          stageResults: [],
+          completedStageCount: 2,
+          failedStageCount: 0,
+          errorMessage: null,
+        };
+      },
+    },
+  });
+
+  const response = await withAuth(request(app).get("/api/idea-foundry/pipeline/status"), {
+    isAdmin: true,
+    email: "ralfepoisson@gmail.com",
+  });
+
   assert.equal(response.statusCode, 200);
-  assert.equal(executorCalls.length, 1);
-  assert.equal(executorCalls[0].options.ownerUserId, "admin-user-1");
-  assert.equal(executorCalls[0].options.retryFailed, true);
-  assert.equal(executorCalls[0].options.maxStageIterations, 5);
+  assert.equal(response.body.data.ownerUserId, "admin-user-1");
   assert.equal(response.body.data.status, "COMPLETED");
-  assert.equal(response.body.data.stageResults[1].totals.candidateCount, 3);
+  assert.equal(response.body.data.stageStates["idea-candidates"], "completed");
 });
 
 test("POST /api/idea-foundry/prospecting/configuration/run executes a full prospecting optimization cycle and persists the refreshed result records", async () => {
@@ -5433,6 +5681,119 @@ test("POST /api/admin/agents creates an agent definition with its first prompt c
   assert.equal(agentDefinitions.length, 1);
   assert.equal(promptConfigs.length, 1);
   assert.deepEqual(agentDefinitions[0].allowedTools, ["retrieval"]);
+});
+
+test("POST /api/admin/agents stores the first prompt config under the canonical persisted agent key", async () => {
+  const agentDefinitions = [];
+  const promptConfigs = [];
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    agentDefinition: {
+      findMany: async () => agentDefinitions,
+      findUnique: async ({ where }) =>
+        agentDefinitions.find((entry) => entry.key === where.key) ?? null,
+      create: async ({ data }) => {
+        const created = {
+          id: "agent-eval-1",
+          createdAt: "2026-04-06T17:48:37.849Z",
+          updatedAt: "2026-04-06T17:48:37.849Z",
+          active: true,
+          ...data,
+        };
+        agentDefinitions.push(created);
+        return created;
+      },
+    },
+    promptConfig: {
+      findMany: async () => promptConfigs.filter((entry) => entry.active),
+      updateMany: async ({ where, data }) => {
+        promptConfigs.forEach((entry) => {
+          if (entry.key === where.key && entry.active === where.active) {
+            entry.active = data.active;
+          }
+        });
+        return { count: 0 };
+      },
+      create: async ({ data }) => {
+        const created = {
+          id: "prompt-eval-1",
+          createdAt: "2026-04-06T17:48:37.872Z",
+          updatedAt: "2026-04-06T17:48:37.872Z",
+          ...data,
+        };
+        promptConfigs.push(created);
+        return created;
+      },
+    },
+    logEntry: {
+      create: async () => ({}),
+    },
+    $transaction: async (callback) => callback(prisma),
+  };
+
+  const agentGatewayClient = {
+    getAdminSnapshot: async () => ({
+      configured: true,
+      status: "online",
+      message: "Agent gateway responded successfully.",
+      baseUrl: "http://localhost:8000/api/v1",
+      service: "helmos-agent-gateway",
+      checkedAt: "2026-04-06T17:49:00.000Z",
+      agents: [
+        {
+          key: "idea-evaluation",
+          name: "Idea Evaluation Agent",
+          version: "1.0.0",
+          purpose: "Evaluate refined idea candidates.",
+          allowed_tools: ["retrieval", "object_storage"],
+        },
+      ],
+    }),
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(
+    request(app)
+      .post("/api/admin/agents")
+      .send({
+        key: "idea-evaluation-agent",
+        name: "Idea Evaluation Agent",
+        version: "1.0.0",
+        description: "Purpose: Evaluate refined idea candidates.",
+        allowedTools: ["retrieval", "object_storage"],
+        defaultModel: "helmos-default",
+        active: true,
+        promptConfig: {
+          key: "idea-evaluation-agent.default",
+          version: "1.0.0",
+          promptTemplate: "Role / Persona:\nEvaluate ideas",
+          configJson: {
+            purpose: "Evaluate refined idea candidates.",
+            promptSections: {
+              rolePersona: "Evaluate ideas",
+              taskInstructions: "Decide whether to promote the idea.",
+              constraints: "Do not invent evidence.",
+              outputFormat: "{\"decision\":\"promote\"}",
+            },
+          },
+        },
+      }),
+    { email: "ralfepoisson@gmail.com" },
+  );
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(response.body.data.key, "idea-evaluation");
+  assert.equal(response.body.data.promptConfig.key, "idea-evaluation.default");
+  assert.equal(promptConfigs.length, 1);
+  assert.equal(promptConfigs[0].key, "idea-evaluation.default");
 });
 
 test("PATCH /api/admin/agents/:id updates agent registry and prompt config", async () => {

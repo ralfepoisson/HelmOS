@@ -41,6 +41,70 @@ const DEFAULT_POLICY_RUNTIME = Object.freeze({
   lastRunAt: null,
   latestRunSummary: null,
 });
+const IDEA_CANDIDATE_EVALUATION_COLUMN_NAMES = Object.freeze([
+  "workflow_state",
+  "evaluation_status",
+  "evaluation_started_at",
+  "evaluation_completed_at",
+  "evaluation_failed_at",
+  "evaluation_attempts",
+  "latest_evaluation_gateway_run_id",
+  "latest_evaluation_error_message",
+  "latest_evaluation_error_meta",
+  "evaluation_decision",
+  "evaluation_decision_reason",
+  "evaluation_next_best_action",
+  "evaluation_recommended_action_reason",
+  "evaluation_readiness_label",
+  "evaluation_blocking_issue",
+  "evaluation_strongest_aspect",
+  "evaluation_biggest_risk",
+  "evaluation_duplicate_risk_label",
+  "evaluation_duplicate_risk_explanation",
+  "evaluation_payload_json",
+]);
+const IDEA_CANDIDATE_PIPELINE_RELATION_INCLUDE = Object.freeze({
+  protoIdea: {
+    select: {
+      id: true,
+      title: true,
+      sourceId: true,
+      source: {
+        select: {
+          sourceTitle: true,
+        },
+      },
+    },
+  },
+});
+const IDEA_CANDIDATE_PIPELINE_FALLBACK_SELECT = Object.freeze({
+  id: true,
+  ownerUserId: true,
+  protoIdeaId: true,
+  policyId: true,
+  problemStatement: true,
+  targetCustomer: true,
+  valueProposition: true,
+  opportunityConcept: true,
+  differentiation: true,
+  assumptions: true,
+  openQuestions: true,
+  improvementSummary: true,
+  keyChanges: true,
+  appliedReasoningSummary: true,
+  appliedConceptualToolIds: true,
+  qualityCheckCoherence: true,
+  qualityCheckGaps: true,
+  qualityCheckRisks: true,
+  statusLabel: true,
+  statusTone: true,
+  agentConfidence: true,
+  statusExplanation: true,
+  refinementIteration: true,
+  createdAt: true,
+  updatedAt: true,
+  protoIdea: IDEA_CANDIDATE_PIPELINE_RELATION_INCLUDE.protoIdea,
+});
 
 const statusSchema = z.object({
   label: z.string(),
@@ -403,6 +467,54 @@ function buildIdeaRefinementRuntime(policy) {
     lastRunAt: formatTimestamp(normalized.lastRunAt),
     latestRunSummary: normalized.latestRunSummary ?? null,
   };
+}
+
+function mapIdeaCandidatePipelineRecord(record, toolMap) {
+  return {
+    ...record,
+    workflowState: record.workflowState ?? "AWAITING_EVALUATION",
+    evaluationStatus: record.evaluationStatus ?? "PENDING",
+    evaluationDecision: record.evaluationDecision ?? null,
+    evaluationDecisionReason: record.evaluationDecisionReason ?? null,
+    evaluationNextBestAction: record.evaluationNextBestAction ?? null,
+    evaluationRecommendedActionReason: record.evaluationRecommendedActionReason ?? null,
+    evaluationReadinessLabel: record.evaluationReadinessLabel ?? null,
+    evaluationBlockingIssue: record.evaluationBlockingIssue ?? null,
+    evaluationStrongestAspect: record.evaluationStrongestAspect ?? null,
+    evaluationBiggestRisk: record.evaluationBiggestRisk ?? null,
+    evaluationDuplicateRiskLabel: record.evaluationDuplicateRiskLabel ?? null,
+    evaluationDuplicateRiskExplanation: record.evaluationDuplicateRiskExplanation ?? null,
+    evaluationPayloadJson: record.evaluationPayloadJson ?? null,
+    evaluationCompletedAt: record.evaluationCompletedAt ?? null,
+    selectedConceptualToolNames: normalizeList(record.appliedConceptualToolIds)
+      .map((toolId) => toolMap.get(toolId) ?? toolId),
+    protoIdeaTitle: record.protoIdea?.title ?? null,
+    sourceTitle: record.protoIdea?.source?.sourceTitle ?? null,
+  };
+}
+
+async function loadIdeaCandidatePipelineRecords(prisma, ownerUserId) {
+  return prisma.ideaCandidate.findMany({
+    where: {
+      ownerUserId,
+    },
+    include: IDEA_CANDIDATE_PIPELINE_RELATION_INCLUDE,
+    orderBy: {
+      updatedAt: "desc",
+    },
+  });
+}
+
+async function loadLegacyIdeaCandidatePipelineRecords(prisma, ownerUserId) {
+  return prisma.ideaCandidate.findMany({
+    where: {
+      ownerUserId,
+    },
+    select: IDEA_CANDIDATE_PIPELINE_FALLBACK_SELECT,
+    orderBy: {
+      updatedAt: "desc",
+    },
+  });
 }
 
 async function getIdeaRefinementConfiguration(prisma) {
@@ -959,6 +1071,26 @@ async function persistIdeaCandidateSuccess({
       validation.data.refinement_overview.improvement_summary ??
       validation.data.reply_to_user.content,
     refinementIteration: shouldUpdateExisting ? latestCandidate.refinementIteration : nextIteration,
+    workflowState: "AWAITING_EVALUATION",
+    evaluationStatus: "PENDING",
+    evaluationStartedAt: null,
+    evaluationCompletedAt: null,
+    evaluationFailedAt: null,
+    evaluationAttempts: 0,
+    latestEvaluationGatewayRunId: null,
+    latestEvaluationErrorMessage: null,
+    latestEvaluationErrorMeta: null,
+    evaluationDecision: null,
+    evaluationDecisionReason: null,
+    evaluationNextBestAction: null,
+    evaluationRecommendedActionReason: null,
+    evaluationReadinessLabel: null,
+    evaluationBlockingIssue: null,
+    evaluationStrongestAspect: null,
+    evaluationBiggestRisk: null,
+    evaluationDuplicateRiskLabel: null,
+    evaluationDuplicateRiskExplanation: null,
+    evaluationPayloadJson: null,
     deduplicationFingerprint: fingerprint,
     rawLlmPayload: validation.rawCandidate ?? null,
   };
@@ -1051,42 +1183,25 @@ async function getIdeaCandidatePipelineContents(prisma, ownerUserId) {
 
   try {
     const [records, tools] = await Promise.all([
-      prisma.ideaCandidate.findMany({
-        where: {
-          ownerUserId,
-        },
-        include: {
-          protoIdea: {
-            select: {
-              id: true,
-              title: true,
-              sourceId: true,
-              source: {
-                select: {
-                  sourceTitle: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: {
-          updatedAt: "desc",
-        },
-      }),
+      loadIdeaCandidatePipelineRecords(prisma, ownerUserId),
       listConceptualTools(prisma, { status: "ACTIVE" }),
     ]);
 
     const toolMap = new Map(tools.map((tool) => [tool.id, tool.name]));
-    return records.map((record) => ({
-      ...record,
-      selectedConceptualToolNames: normalizeList(record.appliedConceptualToolIds)
-        .map((toolId) => toolMap.get(toolId) ?? toolId),
-      protoIdeaTitle: record.protoIdea?.title ?? null,
-      sourceTitle: record.protoIdea?.source?.sourceTitle ?? null,
-    }));
+    return records.map((record) => mapIdeaCandidatePipelineRecord(record, toolMap));
   } catch (error) {
     if (isMissingIdeaRefinementStorageError(error)) {
       return [];
+    }
+    if (isMissingIdeaRefinementColumnError(error, IDEA_CANDIDATE_EVALUATION_COLUMN_NAMES)) {
+      // Older local databases can still contain valid refinement data without the later evaluation columns.
+      const [records, tools] = await Promise.all([
+        loadLegacyIdeaCandidatePipelineRecords(prisma, ownerUserId),
+        listConceptualTools(prisma, { status: "ACTIVE" }),
+      ]);
+
+      const toolMap = new Map(tools.map((tool) => [tool.id, tool.name]));
+      return records.map((record) => mapIdeaCandidatePipelineRecord(record, toolMap));
     }
     throw error;
   }

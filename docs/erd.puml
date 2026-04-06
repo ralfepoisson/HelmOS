@@ -200,9 +200,13 @@ source artefacts exist. Prospecting persists normalized source records,
 Proto-Idea Extraction persists claimed source-processing rows plus
 downstream proto-ideas, Idea Refinement persists structured
 idea_candidates plus per-proto-idea refinement lifecycle state, and later stages can now build on real
-traceable pipeline storage instead of placeholders. The Overview screen now drives a deterministic pipeline executor
-across those persisted stage tables; stage indicator colors are UI-local execution state and are not stored in a
-separate database table.
+traceable pipeline storage instead of placeholders. The Overview screen now starts a backend-owned asynchronous
+pipeline runtime and polls for status updates; stage indicator colors are derived from backend runtime state and are
+not stored in a separate database table. Source visibility on the board now also treats persisted downstream
+proto-ideas as evidence that a source has already been processed, even if the source-stage row has not yet advanced
+to a terminal state. The Search screen and Idea Profile now derive cross-stage search results, filters, lineage,
+and associated metadata directly from these persisted relationships plus stored evaluation tags, so the current
+implementation does not require a separate Idea Foundry search index table.
 end note
 
 package "Idea Foundry Control" {
@@ -353,8 +357,56 @@ package "Idea Foundry Control" {
     agent_confidence : VARCHAR(100)
     status_explanation : TEXT
     refinement_iteration : INTEGER
+    workflow_state : VARCHAR(30)
+    evaluation_status : VARCHAR(20)
+    evaluation_started_at : TIMESTAMP
+    evaluation_completed_at : TIMESTAMP
+    evaluation_failed_at : TIMESTAMP
+    evaluation_attempts : INTEGER
+    latest_evaluation_gateway_run_id : VARCHAR(255)
+    latest_evaluation_error_message : TEXT
+    latest_evaluation_error_meta : JSONB
+    evaluation_decision : VARCHAR(20)
+    evaluation_decision_reason : TEXT
+    evaluation_next_best_action : TEXT
+    evaluation_recommended_action_reason : TEXT
+    evaluation_readiness_label : VARCHAR(100)
+    evaluation_blocking_issue : TEXT
+    evaluation_strongest_aspect : TEXT
+    evaluation_biggest_risk : TEXT
+    evaluation_duplicate_risk_label : VARCHAR(100)
+    evaluation_duplicate_risk_explanation : TEXT
+    evaluation_payload_json : JSONB
     deduplication_fingerprint : VARCHAR(1000)
     raw_llm_payload : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
+  entity "curated_opportunities" as curated_opportunities {
+    *id : UUID <<PK>>
+    --
+    owner_user_id : UUID <<FK>>
+    idea_candidate_id : UUID <<FK,UK>>
+    title : VARCHAR(255)
+    summary : TEXT
+    problem_statement : TEXT
+    target_customer : TEXT
+    value_proposition : TEXT
+    product_service_description : TEXT
+    differentiation : TEXT
+    early_monetization_idea : TEXT
+    readiness_label : VARCHAR(100)
+    strongest_aspect : TEXT
+    biggest_risk : TEXT
+    blocking_issue : TEXT
+    duplicate_risk_label : VARCHAR(100)
+    duplicate_risk_explanation : TEXT
+    next_best_action : TEXT
+    promotion_reason : TEXT
+    tags_json : JSONB
+    evaluation_payload_json : JSONB
+    promoted_at : TIMESTAMP
     created_at : TIMESTAMP
     updated_at : TIMESTAMP
   }
@@ -521,8 +573,20 @@ end note
 note right of idea_candidates
 Each candidate is a refined version of one proto-idea iteration.
 The row preserves the applied policy, selected conceptual tool ids,
-quality-check summary, and a deduplication fingerprint so cosmetically
-different duplicates are not stored as separate candidate versions.
+quality-check summary, evaluation gate output, and a deduplication
+fingerprint so cosmetically different duplicates are not stored as
+separate candidate versions. Idea Evaluation now persists the final
+quality-gate lifecycle directly on the candidate row, including
+operator-visible workflow state, timestamps, retry/error metadata,
+normalized decision fields, and the full validated evaluation payload.
+end note
+
+note right of curated_opportunities
+Each curated opportunity is a promoted snapshot of exactly one idea
+candidate. Promotion preserves the complete evaluation payload plus a
+stable downstream-facing record containing the promoted title, summary,
+readiness, strongest aspect, biggest risk, duplicate-risk view, next
+best action, monetization idea, and structured tags for search/filtering.
 end note
 
 package "Knowledge Base" {
@@ -930,6 +994,8 @@ users ||--o{ idea_candidates : owns
 proto_ideas ||--o{ idea_candidates : refines
 idea_refinement_policies ||--o{ idea_candidates : guides
 conceptual_tools }o--o{ idea_candidates : applied
+users ||--o{ curated_opportunities : owns
+idea_candidates ||--o| curated_opportunities : promotes_to
 users ||--o{ knowledge_bases : created_by
 users ||--o{ knowledge_bases : updated_by
 knowledge_bases ||--o{ knowledge_base_files

@@ -79,14 +79,24 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
 
             <div *ngIf="adminMenuOpen" class="admin-panel helmos-card" role="menu">
               <a
-                routerLink="/admin/support"
+                routerLink="/admin/agents"
                 routerLinkActive="admin-link-active"
                 class="admin-link"
                 role="menuitem"
                 (click)="closeAdminMenu()"
               >
-                <span class="admin-link-title">Support Dashboard</span>
-                <span class="admin-link-copy">Review help conversations, support tickets, investigations, and human approvals.</span>
+                <span class="admin-link-title">Agent Admin</span>
+                <span class="admin-link-copy">Manage specialist registry, prompts, and runtime alignment.</span>
+              </a>
+              <a
+                routerLink="/admin/agent-testing"
+                routerLinkActive="admin-link-active"
+                class="admin-link"
+                role="menuitem"
+                (click)="closeAdminMenu()"
+              >
+                <span class="admin-link-title">Agent Testing</span>
+                <span class="admin-link-copy">Launch evaluations, review transcripts, and compare test runs.</span>
               </a>
               <a
                 routerLink="/admin/conceptual-tools"
@@ -119,26 +129,6 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
                 <span class="admin-link-copy">Run semantic search across uploaded chunks with filters and provenance.</span>
               </a>
               <a
-                routerLink="/admin/agents"
-                routerLinkActive="admin-link-active"
-                class="admin-link"
-                role="menuitem"
-                (click)="closeAdminMenu()"
-              >
-                <span class="admin-link-title">Agent Admin</span>
-                <span class="admin-link-copy">Manage specialist registry, prompts, and runtime alignment.</span>
-              </a>
-              <a
-                routerLink="/admin/agent-testing"
-                routerLinkActive="admin-link-active"
-                class="admin-link"
-                role="menuitem"
-                (click)="closeAdminMenu()"
-              >
-                <span class="admin-link-title">Agent Testing</span>
-                <span class="admin-link-copy">Launch evaluations, review transcripts, and compare test runs.</span>
-              </a>
-              <a
                 routerLink="/admin/logs"
                 routerLinkActive="admin-link-active"
                 class="admin-link"
@@ -147,6 +137,16 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
               >
                 <span class="admin-link-title">Logs</span>
                 <span class="admin-link-copy">Search backend events, errors, and request context.</span>
+              </a>
+              <a
+                routerLink="/admin/support"
+                routerLinkActive="admin-link-active"
+                class="admin-link"
+                role="menuitem"
+                (click)="closeAdminMenu()"
+              >
+                <span class="admin-link-title">Support Dashboard</span>
+                <span class="admin-link-copy">Review help conversations, support tickets, investigations, and human approvals.</span>
               </a>
             </div>
           </div>

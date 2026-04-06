@@ -31,6 +31,21 @@ function normalizeAgentKeySeed(value) {
   return normalized || "agent";
 }
 
+function resolvePromptKey(requestedPromptKey, agentKey) {
+  if (typeof agentKey !== "string" || agentKey.trim().length === 0) {
+    return "agent.default";
+  }
+
+  const canonicalPromptKey = `${agentKey}.default`;
+  const normalizedRequestedKey = typeof requestedPromptKey === "string" ? requestedPromptKey.trim() : "";
+
+  if (getAgentKeyFromPromptKey(normalizedRequestedKey) === agentKey) {
+    return normalizedRequestedKey;
+  }
+
+  return canonicalPromptKey;
+}
+
 async function generateAgentKey(tx, payload) {
   const requestedKey = payload.key?.trim();
   const baseKey = normalizeAgentKeySeed(requestedKey || payload.name);
@@ -203,7 +218,7 @@ async function createAgentAdmin(prisma, payload, agentGatewayClient) {
     createdAgentId = createdAgent.id;
 
     if (payload.promptConfig) {
-      const promptKey = payload.promptConfig.key ?? `${createdAgentKey}.default`;
+      const promptKey = resolvePromptKey(payload.promptConfig.key, createdAgentKey);
 
       await tx.promptConfig.updateMany({
         where: {
@@ -290,7 +305,7 @@ async function updateAgentAdmin(prisma, agentId, payload, agentGatewayClient) {
     }
 
     if (payload.promptConfig) {
-      const promptKey = payload.promptConfig.key ?? `${existingAgent.key}.default`;
+      const promptKey = resolvePromptKey(payload.promptConfig.key, existingAgent.key);
 
       await tx.promptConfig.updateMany({
         where: {

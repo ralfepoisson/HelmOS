@@ -1,9 +1,11 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 
 import {
+  CuratedOpportunityRecord,
   IdeaCandidateRecord,
   IdeaFoundryApiService,
+  IdeaFoundryPipelineStatusResponse,
   ProspectingResultRecord,
   ProtoIdeaSourceRecord,
   ProtoIdeaRecord
@@ -15,7 +17,9 @@ interface IdeaPipelineCard {
   summary: string;
   signal: string;
   status: string;
+  details?: string[];
   processingStatus?: string;
+  isProcessedForPipeline?: boolean;
   timestamp?: string | null;
   href?: string | null;
 }
@@ -32,7 +36,7 @@ interface IdeaPipelineColumn {
 type PipelineStageState = 'pending' | 'running' | 'completed' | 'failed';
 type PipelineStageKey = 'sources' | 'proto-ideas' | 'idea-candidates' | 'curated-opportunities';
 
-const MAX_PIPELINE_STAGE_ITERATIONS = 100;
+const PIPELINE_STATUS_POLL_INTERVAL_MS = 2000;
 
 @Component({
   selector: 'app-idea-foundry-overview',
@@ -66,7 +70,7 @@ const MAX_PIPELINE_STAGE_ITERATIONS = 100;
             <input type="checkbox" [checked]="showProcessedItems" (change)="toggleProcessedVisibility($event)" />
             <span>Show processed</span>
           </label>
-          <button type="button" class="pipeline-run-button" [disabled]="isPipelineRunning" (click)="runPipeline()">
+          <button type="button" class="pipeline-run-button" [disabled]="isPipelineRunning" (click)="runPipeline('sources')">
             {{ isPipelineRunning ? 'Running pipeline...' : 'Run Pipeline' }}
           </button>
           <p *ngIf="pipelineRunError || sourceLoadError" class="pipeline-warning">
@@ -89,6 +93,16 @@ const MAX_PIPELINE_STAGE_ITERATIONS = 100;
             </div>
 
             <div class="pipeline-column-header-meta">
+              <button
+                type="button"
+                class="pipeline-stage-run-button"
+                [disabled]="isPipelineRunning"
+                [attr.aria-label]="'Run pipeline from ' + column.title"
+                [title]="'Run pipeline from ' + column.title"
+                (click)="runPipeline(getPipelineStageKey(column.id))"
+              >
+                <span class="pipeline-stage-run-icon" aria-hidden="true"></span>
+              </button>
               <span
                 class="pipeline-stage-indicator"
                 [class.pipeline-stage-pending]="getStageState(column.id) === 'pending'"
@@ -130,6 +144,9 @@ const MAX_PIPELINE_STAGE_ITERATIONS = 100;
                       Open source
                     </a>
                   </div>
+                  <div class="pipeline-card-details" *ngIf="card.details?.length">
+                    <div *ngFor="let detail of card.details">{{ detail }}</div>
+                  </div>
                   <div class="pipeline-card-meta">{{ card.signal }}</div>
                 </ng-container>
               </button>
@@ -137,6 +154,9 @@ const MAX_PIPELINE_STAGE_ITERATIONS = 100;
                 <span class="pipeline-card-status">{{ card.status }}</span>
                 <h5 class="pipeline-card-title">{{ card.title }}</h5>
                 <p>{{ card.summary }}</p>
+                <div class="pipeline-card-details" *ngIf="card.details?.length">
+                  <div *ngFor="let detail of card.details">{{ detail }}</div>
+                </div>
                 <div class="pipeline-card-meta">{{ card.signal }}</div>
               </ng-template>
             </article>
@@ -257,6 +277,37 @@ const MAX_PIPELINE_STAGE_ITERATIONS = 100;
           transform 160ms ease,
           box-shadow 160ms ease,
           opacity 160ms ease;
+      }
+
+      .pipeline-stage-run-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.7rem;
+        height: 1.7rem;
+        border-radius: 999px;
+        border: 1px solid rgba(32, 101, 209, 0.18);
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+        transition:
+          transform 160ms ease,
+          box-shadow 160ms ease,
+          opacity 160ms ease;
+      }
+
+      .pipeline-stage-run-button:disabled {
+        opacity: 0.48;
+        cursor: not-allowed;
+      }
+
+      .pipeline-stage-run-icon {
+        display: inline-block;
+        width: 0;
+        height: 0;
+        margin-left: 0.1rem;
+        border-top: 0.32rem solid transparent;
+        border-bottom: 0.32rem solid transparent;
+        border-left: 0.5rem solid #2563eb;
       }
 
       .pipeline-run-button:hover:not(:disabled) {
@@ -455,6 +506,14 @@ const MAX_PIPELINE_STAGE_ITERATIONS = 100;
         color: #445167;
       }
 
+      .pipeline-card-details {
+        display: grid;
+        gap: 0.25rem;
+        margin-top: 0.65rem;
+        font-size: 0.8rem;
+        color: #445167;
+      }
+
       @media (max-width: 991.98px) {
         .pipeline-intro {
           flex-direction: column;
@@ -473,10 +532,10 @@ const MAX_PIPELINE_STAGE_ITERATIONS = 100;
     `
   ]
 })
-export class IdeaFoundryOverviewComponent implements OnInit {
+export class IdeaFoundryOverviewComponent implements OnInit, OnDestroy {
   private readonly ideaFoundryApi = inject(IdeaFoundryApiService);
-  private readonly changeDetector = inject(ChangeDetectorRef);
   private readonly expandedCardIds = new Set<string>();
+  private pipelinePollTimer: ReturnType<typeof setTimeout> | null = null;
 
   columns: IdeaPipelineColumn[] = buildEmptyColumns();
   sourceLoadError: string | null = null;
@@ -486,51 +545,29 @@ export class IdeaFoundryOverviewComponent implements OnInit {
   stageStates: Record<PipelineStageKey, PipelineStageState> = buildPendingStageStates();
 
   async ngOnInit(): Promise<void> {
-    await this.loadPipelineContents();
+    await this.refreshOverviewFromBackend();
   }
 
-  async runPipeline(): Promise<void> {
+  ngOnDestroy(): void {
+    this.stopPipelinePolling();
+  }
+
+  async runPipeline(startStage: PipelineStageKey = 'sources'): Promise<void> {
     if (this.isPipelineRunning) {
       return;
     }
 
-    this.isPipelineRunning = true;
     this.pipelineRunError = null;
-    this.stageStates = buildPendingStageStates();
-    this.changeDetector.detectChanges();
 
     try {
-      await this.executePipelineStage('sources', async () => {
-        await this.ideaFoundryApi.executeProspectingRun();
-        await this.loadPipelineContents();
+      const result = await this.ideaFoundryApi.runIdeaFoundryPipeline({
+        startStage
       });
-
-      await this.executeLoopingPipelineStage('proto-ideas', async () => {
-        const result = await this.ideaFoundryApi.runProtoIdeaAgent({ batchSize: 1 });
-        await this.loadPipelineContents();
-        return {
-          processedCount: result.result.processedCount,
-          failedCount: result.result.failedCount
-        };
-      });
-
-      await this.executeLoopingPipelineStage('idea-candidates', async () => {
-        const result = await this.ideaFoundryApi.runIdeaRefinementAgent({ batchSize: 1 });
-        await this.loadPipelineContents();
-        return {
-          processedCount: result.result.processedCount,
-          failedCount: result.result.failedCount
-        };
-      });
-
-      await this.executePipelineStage('curated-opportunities', async () => {
-        await this.loadPipelineContents();
-      });
+      this.applyPipelineStatus(result.run);
+      await this.loadPipelineContents();
+      this.ensurePipelinePolling();
     } catch (error) {
       this.pipelineRunError = error instanceof Error ? error.message : 'Pipeline execution failed.';
-    } finally {
-      this.isPipelineRunning = false;
-      this.changeDetector.detectChanges();
     }
   }
 
@@ -548,7 +585,7 @@ export class IdeaFoundryOverviewComponent implements OnInit {
   }
 
   isCollapsibleCard(columnId: string, card: IdeaPipelineCard): boolean {
-    return columnId === 'sources' || columnId === 'proto-ideas';
+    return columnId === 'sources' || columnId === 'proto-ideas' || columnId === 'idea-candidates';
   }
 
   toggleProcessedVisibility(event: Event): void {
@@ -561,6 +598,14 @@ export class IdeaFoundryOverviewComponent implements OnInit {
     return this.stageStates[toPipelineStageKey(columnId)] ?? 'pending';
   }
 
+  getPipelineStageKey(columnId: string): PipelineStageKey {
+    return toPipelineStageKey(columnId);
+  }
+
+  private async refreshOverviewFromBackend(): Promise<void> {
+    await Promise.all([this.refreshPipelineStatus(), this.loadPipelineContents()]);
+  }
+
   private async loadPipelineContents(): Promise<void> {
     try {
       const payload = await this.ideaFoundryApi.getIdeaFoundryContents();
@@ -569,6 +614,7 @@ export class IdeaFoundryOverviewComponent implements OnInit {
         payload.sourceProcessing,
         payload.protoIdeas,
         payload.ideaCandidates,
+        payload.curatedOpportunities,
         this.showProcessedItems
       );
       this.sourceLoadError = null;
@@ -576,43 +622,62 @@ export class IdeaFoundryOverviewComponent implements OnInit {
       this.columns = buildEmptyColumns();
       this.sourceLoadError = error instanceof Error ? error.message : 'Unable to load source records.';
       throw error;
-    } finally {
-      this.changeDetector.detectChanges();
     }
   }
 
-  private async executePipelineStage(stage: PipelineStageKey, run: () => Promise<void>): Promise<void> {
-    this.stageStates[stage] = 'running';
-    this.changeDetector.detectChanges();
-
+  private async refreshPipelineStatus(): Promise<void> {
     try {
-      await run();
-      this.stageStates[stage] = 'completed';
+      const status = await this.ideaFoundryApi.getIdeaFoundryPipelineStatus();
+      this.applyPipelineStatus(status);
     } catch (error) {
-      this.stageStates[stage] = 'failed';
-      throw error;
-    } finally {
-      this.changeDetector.detectChanges();
+      this.pipelineRunError = error instanceof Error ? error.message : 'Unable to load pipeline status.';
     }
   }
 
-  private async executeLoopingPipelineStage(
-    stage: PipelineStageKey,
-    run: () => Promise<{ processedCount: number; failedCount: number }>
-  ): Promise<void> {
-    await this.executePipelineStage(stage, async () => {
-      for (let iteration = 1; iteration <= MAX_PIPELINE_STAGE_ITERATIONS; iteration += 1) {
-        const result = await run();
-        if (result.failedCount > 0) {
-          throw new Error(`The ${formatStageLabel(stage)} stage failed and the pipeline was stopped.`);
-        }
-        if (result.processedCount <= 0) {
-          return;
-        }
-      }
+  private applyPipelineStatus(status: IdeaFoundryPipelineStatusResponse): void {
+    this.stageStates = {
+      ...buildPendingStageStates(),
+      ...(status?.stageStates ?? {}),
+    };
+    this.isPipelineRunning = status?.status === 'RUNNING';
+    this.pipelineRunError = status?.status === 'FAILED' ? status.errorMessage || 'Pipeline execution failed.' : null;
 
-      throw new Error(`The ${formatStageLabel(stage)} stage reached the iteration limit and the pipeline was stopped.`);
-    });
+    if (this.isPipelineRunning) {
+      this.ensurePipelinePolling();
+      return;
+    }
+
+    this.stopPipelinePolling();
+  }
+
+  private ensurePipelinePolling(): void {
+    if (this.pipelinePollTimer) {
+      return;
+    }
+
+    this.pipelinePollTimer = setTimeout(() => {
+      this.pipelinePollTimer = null;
+      void this.pollPipelineStatusCycle();
+    }, PIPELINE_STATUS_POLL_INTERVAL_MS);
+  }
+
+  private stopPipelinePolling(): void {
+    if (!this.pipelinePollTimer) {
+      return;
+    }
+
+    clearTimeout(this.pipelinePollTimer);
+    this.pipelinePollTimer = null;
+  }
+
+  private async pollPipelineStatusCycle(): Promise<void> {
+    try {
+      await Promise.all([this.refreshPipelineStatus(), this.loadPipelineContents()]);
+    } finally {
+      if (this.isPipelineRunning) {
+        this.ensurePipelinePolling();
+      }
+    }
   }
 }
 
@@ -621,14 +686,16 @@ function buildColumnsFromPipelinePayload(
   sourceProcessing: ProtoIdeaSourceRecord[],
   protoIdeas: ProtoIdeaRecord[],
   ideaCandidates: IdeaCandidateRecord[],
+  curatedOpportunities: CuratedOpportunityRecord[],
   showProcessedItems: boolean
 ): IdeaPipelineColumn[] {
   const columns = buildEmptyColumns();
   const sourceColumn = columns.find((column) => column.id === 'sources');
   const protoIdeaColumn = columns.find((column) => column.id === 'proto-ideas');
   const candidateColumn = columns.find((column) => column.id === 'idea-candidates');
+  const curatedOpportunitiesColumn = columns.find((column) => column.id === 'curated-opportunities');
 
-  if (!sourceColumn || !protoIdeaColumn || !candidateColumn) {
+  if (!sourceColumn || !protoIdeaColumn || !candidateColumn || !curatedOpportunitiesColumn) {
     return columns;
   }
 
@@ -638,6 +705,18 @@ function buildColumnsFromPipelinePayload(
       .map((record) => normalizeSourceKey(record))
       .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
   );
+  const sourceProcessingById = new Map(
+    (Array.isArray(sourceProcessing) ? sourceProcessing : [])
+      .filter((record) => typeof record?.id === 'string' && record.id.trim().length > 0)
+      .map((record) => [record.id, record] as const)
+  );
+  const sourceKeysWithPersistedProtoIdeas = new Set(
+    (Array.isArray(protoIdeas) ? protoIdeas : [])
+      .map((protoIdea) => sourceProcessingById.get(protoIdea.sourceId))
+      .map((record) => (record ? normalizeSourceKey(record) : ''))
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+  );
+  const noLongerUnprocessedSourceKeys = new Set([...completedSourceKeys, ...sourceKeysWithPersistedProtoIdeas]);
 
   const normalizedCards = Array.isArray(resultRecords)
     ? resultRecords
@@ -645,7 +724,8 @@ function buildColumnsFromPipelinePayload(
         .map((record) => mapResultRecordToSourceCard(record))
     : [];
   const unprocessedSourceCards = normalizedCards.filter(
-    (record) => !completedSourceKeys.has(normalizeSourceKey(record))
+    (record) =>
+      record.isProcessedForPipeline === true ? false : !noLongerUnprocessedSourceKeys.has(normalizeSourceKey(record))
   );
 
   sourceColumn.cards =
@@ -654,9 +734,9 @@ function buildColumnsFromPipelinePayload(
       : [
           {
             id: 'sources-empty',
-            title: 'No normalized sources captured yet',
-            summary: 'Run Prospecting Execution to populate this column with the latest stored source records.',
-            signal: 'Awaiting the next prospecting execution cycle',
+            title: 'No unprocessed sources',
+            summary: 'All currently known sources have already been claimed or processed by downstream pipeline stages.',
+            signal: 'New source records will appear here after the next prospecting execution cycle',
             status: 'Waiting'
           }
         ];
@@ -692,10 +772,13 @@ function buildColumnsFromPipelinePayload(
         .filter((candidate) => typeof candidate?.id === 'string' && candidate.id.trim().length > 0)
         .map((candidate) => mapIdeaCandidateToCard(candidate))
     : [];
+  const visibleIdeaCandidateCards = showProcessedItems
+    ? normalizedIdeaCandidateCards
+    : normalizedIdeaCandidateCards.filter((candidate) => candidate.processingStatus !== 'PROMOTED');
 
   candidateColumn.cards =
-    normalizedIdeaCandidateCards.length > 0
-      ? normalizedIdeaCandidateCards
+    visibleIdeaCandidateCards.length > 0
+      ? visibleIdeaCandidateCards
       : [
           {
             id: 'idea-candidates-empty',
@@ -705,15 +788,29 @@ function buildColumnsFromPipelinePayload(
             status: 'Waiting'
           }
         ];
-  candidateColumn.unprocessedCount = normalizedIdeaCandidateCards.length;
+  candidateColumn.unprocessedCount = normalizedIdeaCandidateCards.filter((candidate) => candidate.processingStatus !== 'PROMOTED').length;
   candidateColumn.totalCount = normalizedIdeaCandidateCards.length;
 
-  const curatedOpportunitiesColumn = columns.find((column) => column.id === 'curated-opportunities');
-  if (curatedOpportunitiesColumn) {
-    const curatedCardCount = curatedOpportunitiesColumn.cards.filter((card) => !card.id.endsWith('-empty')).length;
-    curatedOpportunitiesColumn.unprocessedCount = curatedCardCount;
-    curatedOpportunitiesColumn.totalCount = curatedCardCount;
-  }
+  const normalizedCuratedOpportunityCards = Array.isArray(curatedOpportunities)
+    ? curatedOpportunities
+        .filter((opportunity) => typeof opportunity?.id === 'string' && opportunity.id.trim().length > 0)
+        .map((opportunity) => mapCuratedOpportunityToCard(opportunity))
+    : [];
+
+  curatedOpportunitiesColumn.cards =
+    normalizedCuratedOpportunityCards.length > 0
+      ? normalizedCuratedOpportunityCards
+      : [
+          {
+            id: 'curated-opportunities-empty',
+            title: 'No curated opportunities yet',
+            summary: 'No production-ready opportunities have been promoted from real pipeline work yet.',
+            signal: 'Curated opportunities will appear after downstream review and promotion',
+            status: 'Waiting'
+          }
+        ];
+  curatedOpportunitiesColumn.unprocessedCount = normalizedCuratedOpportunityCards.length;
+  curatedOpportunitiesColumn.totalCount = normalizedCuratedOpportunityCards.length;
 
   return columns;
 }
@@ -728,7 +825,8 @@ function mapResultRecordToSourceCard(record: ProspectingResultRecord): IdeaPipel
     signal: buildSourceMeta(record),
     status: 'Normalized',
     timestamp: formatCapturedAt(record.capturedAt),
-    href: record.sourceUrl?.trim() || null
+    href: record.sourceUrl?.trim() || null,
+    isProcessedForPipeline: record.isProcessedForPipeline === true
   };
 }
 
@@ -748,17 +846,40 @@ function mapProtoIdeaToCard(record: ProtoIdeaRecord): IdeaPipelineCard {
 }
 
 function mapIdeaCandidateToCard(record: IdeaCandidateRecord): IdeaPipelineCard {
+  const status = workflowStateLabel(record);
+  const summary =
+    record.workflowState === 'NEEDS_REFINEMENT'
+      ? record.evaluationBlockingIssue?.trim() || record.opportunityConcept?.trim() || record.improvementSummary?.trim()
+      : record.workflowState === 'REJECTED'
+        ? record.evaluationBiggestRisk?.trim() ||
+          record.evaluationBlockingIssue?.trim() ||
+          record.opportunityConcept?.trim() ||
+          record.improvementSummary?.trim()
+        : record.opportunityConcept?.trim() ||
+          record.improvementSummary?.trim() ||
+          record.valueProposition?.trim() ||
+          'A refined idea candidate has been persisted from a proto-idea.';
   return {
     id: record.id,
     title: record.protoIdeaTitle?.trim() || record.opportunityConcept?.trim() || 'Idea candidate',
-    summary:
-      record.opportunityConcept?.trim() ||
-      record.improvementSummary?.trim() ||
-      record.valueProposition?.trim() ||
-      'A refined idea candidate has been persisted from a proto-idea.',
+    summary,
     signal: buildIdeaCandidateMeta(record),
-    status: record.statusLabel?.trim() || 'Refined',
-    timestamp: formatCapturedAt(record.updatedAt || record.createdAt)
+    status,
+    details: buildIdeaCandidateDetails(record),
+    processingStatus: record.workflowState,
+    timestamp: formatCapturedAt(record.createdAt || record.updatedAt)
+  };
+}
+
+function mapCuratedOpportunityToCard(record: CuratedOpportunityRecord): IdeaPipelineCard {
+  return {
+    id: record.id,
+    title: record.title?.trim() || 'Curated opportunity',
+    summary: record.summary?.trim() || record.valueProposition?.trim() || 'A promoted opportunity is ready for downstream strategy work.',
+    signal: buildCuratedOpportunityMeta(record),
+    status: 'Promoted',
+    details: buildCuratedOpportunityDetails(record),
+    timestamp: formatCapturedAt(record.promotedAt || record.updatedAt || record.createdAt)
   };
 }
 
@@ -785,12 +906,55 @@ function buildProtoIdeaMeta(record: ProtoIdeaRecord): string {
 function buildIdeaCandidateMeta(record: IdeaCandidateRecord): string {
   const parts = [
     record.targetCustomer ? `Customer: ${record.targetCustomer}` : null,
+    record.evaluationReadinessLabel ? `Readiness: ${record.evaluationReadinessLabel}` : null,
+    record.evaluationDuplicateRiskLabel ? `Duplicate risk: ${record.evaluationDuplicateRiskLabel}` : null,
     record.agentConfidence ? `Confidence: ${record.agentConfidence}` : null,
     typeof record.refinementIteration === 'number' ? `Iteration: ${record.refinementIteration}` : null,
     record.selectedConceptualToolNames?.length ? `Tools: ${record.selectedConceptualToolNames.join(', ')}` : null
   ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
 
   return parts.join(' · ');
+}
+
+function buildIdeaCandidateDetails(record: IdeaCandidateRecord): string[] {
+  return [
+    record.evaluationStrongestAspect ? `Strongest aspect: ${record.evaluationStrongestAspect}` : null,
+    record.evaluationBiggestRisk ? `Biggest risk: ${record.evaluationBiggestRisk}` : null,
+    record.evaluationBlockingIssue ? `Blocking issue: ${record.evaluationBlockingIssue}` : null,
+    record.evaluationNextBestAction ? `Next best action: ${record.evaluationNextBestAction}` : null
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+}
+
+function buildCuratedOpportunityMeta(record: CuratedOpportunityRecord): string {
+  const parts = [
+    record.targetCustomer ? `Customer: ${record.targetCustomer}` : null,
+    record.readinessLabel ? `Readiness: ${record.readinessLabel}` : null,
+    record.duplicateRiskLabel ? `Duplicate risk: ${record.duplicateRiskLabel}` : null
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  return parts.join(' · ');
+}
+
+function buildCuratedOpportunityDetails(record: CuratedOpportunityRecord): string[] {
+  return [
+    record.strongestAspect ? `Strongest aspect: ${record.strongestAspect}` : null,
+    record.biggestRisk ? `Biggest risk: ${record.biggestRisk}` : null,
+    record.promotionReason ? `Promotion reason: ${record.promotionReason}` : null,
+    record.nextBestAction ? `Next best action: ${record.nextBestAction}` : null
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+}
+
+function workflowStateLabel(record: IdeaCandidateRecord): string {
+  switch (record.workflowState) {
+    case 'PROMOTED':
+      return 'Promoted';
+    case 'NEEDS_REFINEMENT':
+      return 'Needs refinement';
+    case 'REJECTED':
+      return 'Rejected';
+    default:
+      return 'Awaiting evaluation';
+  }
 }
 
 function normalizeProcessingStatus(status?: string): string {
@@ -920,18 +1084,5 @@ function toPipelineStageKey(columnId: string): PipelineStageKey {
       return columnId;
     default:
       return 'sources';
-  }
-}
-
-function formatStageLabel(stage: PipelineStageKey): string {
-  switch (stage) {
-    case 'proto-ideas':
-      return 'Proto-Idea Extraction';
-    case 'idea-candidates':
-      return 'Idea Refinement';
-    case 'curated-opportunities':
-      return 'Curated Opportunities';
-    default:
-      return 'Sources';
   }
 }

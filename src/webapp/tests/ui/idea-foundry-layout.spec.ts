@@ -11,10 +11,11 @@ test.describe('HelmOS Idea Foundry', () => {
 
     for (const label of [
       'Overview',
+      'Search',
       'Prospecting Configuration',
       'Proto-Idea Extraction',
       'Idea Refinement',
-      'Idea Evaluator'
+      'Idea Evaluation'
     ]) {
       await expect(page.getByRole('link', { name: new RegExp(label) }).first()).toBeVisible();
     }
@@ -30,5 +31,11 @@ test.describe('HelmOS Idea Foundry', () => {
 
     await expect(page.getByText('No proto-ideas yet', { exact: true })).toBeVisible();
     await expect(page.getByText('No curated opportunities yet', { exact: true })).toBeVisible();
+
+    await page.getByRole('link', { name: /^Search/ }).first().click();
+
+    await expect(page).toHaveURL(/#\/idea-foundry\/search$/);
+    await expect(page.getByRole('button', { name: 'Search' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Filters' })).toBeVisible();
   });
 });

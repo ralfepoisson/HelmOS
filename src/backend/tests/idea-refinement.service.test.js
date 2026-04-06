@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const {
   buildIdeaRefinementPrompt,
+  getIdeaCandidatePipelineContents,
   getIdeaRefinementConfiguration,
   runIdeaRefinementPass,
   saveIdeaRefinementConfiguration,
@@ -210,6 +211,95 @@ test("validateIdeaRefinementOutput parses raw JSON strings that match the refine
 
   assert.equal(validation.success, true);
   assert.equal(validation.data.open_questions.items.length, 1);
+});
+
+test("getIdeaCandidatePipelineContents falls back to legacy-safe selects when evaluation columns are unavailable", async () => {
+  let firstCall = true;
+  const prisma = {
+    ideaCandidate: {
+      async findMany(args) {
+        if (firstCall) {
+          firstCall = false;
+          assert.equal(args.include?.protoIdea?.select?.source?.select?.sourceTitle, true);
+          const error = new Error('The column `idea_candidates.workflow_state` does not exist in the current database.');
+          error.code = "P2022";
+          error.meta = { column: "idea_candidates.workflow_state" };
+          throw error;
+        }
+
+        assert.equal(args.select?.workflowState, undefined);
+        assert.equal(args.select?.evaluationStatus, undefined);
+        assert.equal(args.select?.protoIdea?.select?.source?.select?.sourceTitle, true);
+
+        return [
+          {
+            id: "candidate-1",
+            ownerUserId: "user-1",
+            protoIdeaId: "proto-1",
+            policyId: "policy-1",
+            problemStatement: "Teams lose time coordinating recurring compliance reminders.",
+            targetCustomer: "Owner-led accounting firms",
+            valueProposition: "A workflow cockpit for recurring compliance work.",
+            opportunityConcept: "Compliance workflow co-pilot",
+            differentiation: "Focused on recurring deadline orchestration.",
+            assumptions: ["Operators will adopt a focused reminder workflow tool."],
+            openQuestions: ["Which deadlines create the most urgent pain?"],
+            improvementSummary: "Sharpened the ICP and recurring workflow wedge.",
+            keyChanges: ["Narrowed the buyer", "Clarified the value proposition"],
+            appliedReasoningSummary: "Used assumption mapping and analogy transfer.",
+            appliedConceptualToolIds: ["8a8e7708-8225-4a37-bbe0-fd0d3040b005"],
+            qualityCheckCoherence: "Problem, buyer, and wedge are aligned.",
+            qualityCheckGaps: [],
+            qualityCheckRisks: ["Still needs validation on willingness to switch."],
+            statusLabel: "Refined",
+            statusTone: "success",
+            agentConfidence: "medium",
+            statusExplanation: "The concept is more actionable than the source proto-idea.",
+            refinementIteration: 2,
+            createdAt: new Date("2026-04-06T09:00:00Z"),
+            updatedAt: new Date("2026-04-06T10:00:00Z"),
+            protoIdea: {
+              id: "proto-1",
+              title: "Compliance workflow co-pilot",
+              sourceId: "source-1",
+              source: {
+                sourceTitle: "VAT reminder pain",
+              },
+            },
+          },
+        ];
+      },
+    },
+    conceptualTool: {
+      async findMany() {
+        return [
+          {
+            id: "8a8e7708-8225-4a37-bbe0-fd0d3040b005",
+            name: "Assumption Mapping",
+            category: "diagnostic",
+            purpose: "Surface hidden assumptions.",
+            whenToUse: ["the idea relies on multiple unstated beliefs"],
+            whenNotToUse: [],
+            instructions: ["List the hidden assumptions"],
+            expectedEffect: "Sharper reasoning",
+            status: "ACTIVE",
+            version: 1,
+          },
+        ];
+      },
+    },
+  };
+
+  const records = await getIdeaCandidatePipelineContents(prisma, "user-1");
+
+  assert.equal(records.length, 1);
+  assert.equal(records[0].workflowState, "AWAITING_EVALUATION");
+  assert.equal(records[0].evaluationStatus, "PENDING");
+  assert.equal(records[0].evaluationDecision, null);
+  assert.equal(records[0].evaluationBlockingIssue, null);
+  assert.equal(records[0].protoIdeaTitle, "Compliance workflow co-pilot");
+  assert.equal(records[0].sourceTitle, "VAT reminder pain");
+  assert.deepEqual(records[0].selectedConceptualToolNames, ["Assumption Mapping"]);
 });
 
 test("runIdeaRefinementPass stores a hashed deduplication fingerprint that fits bounded storage", async () => {

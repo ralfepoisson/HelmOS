@@ -4,6 +4,7 @@ const { createApiRouter } = require("./api/router");
 const { errorHandler } = require("./api/error-handler");
 const { buildRequestLogger } = require("./api/request-log-middleware");
 const { createAgentGatewayClient } = require("./services/agent-gateway-client");
+const { createIdeaFoundryPipelineRuntime } = require("./services/idea-foundry-pipeline.service");
 const { getKnowledgeBaseConfig } = require("./services/knowledge-base.config");
 const { createKnowledgeBaseProcessingRuntime } = require("./services/knowledge-base-processing.service");
 const { createFileStorageService } = require("./services/knowledge-base-storage.service");
@@ -36,7 +37,7 @@ function isAllowedOrigin(origin, allowedOrigins = getAllowedOrigins()) {
   }
 }
 
-function createApp({ prisma, agentGatewayClient, ideaFoundryPipelineExecutor }) {
+function createApp({ prisma, agentGatewayClient, ideaFoundryPipelineExecutor, ideaFoundryPipelineRuntime }) {
   const app = express();
   const allowedOrigins = getAllowedOrigins();
   const knowledgeBaseConfig = getKnowledgeBaseConfig();
@@ -56,6 +57,11 @@ function createApp({ prisma, agentGatewayClient, ideaFoundryPipelineExecutor }) 
     prisma,
     agentGatewayClient: gatewayClient,
   });
+  const pipelineRuntime =
+    ideaFoundryPipelineRuntime ??
+    createIdeaFoundryPipelineRuntime({
+      executor: ideaFoundryPipelineExecutor,
+    });
 
   ensureSupportScaffolding(prisma).catch((error) => {
     process.stderr.write(`Support scaffolding bootstrap failed: ${error.message}\n`);
@@ -89,6 +95,7 @@ function createApp({ prisma, agentGatewayClient, ideaFoundryPipelineExecutor }) 
       knowledgeBaseRuntime,
       storageService,
       ideaFoundryPipelineExecutor,
+      ideaFoundryPipelineRuntime: pipelineRuntime,
     }),
   );
 
@@ -103,6 +110,7 @@ function createApp({ prisma, agentGatewayClient, ideaFoundryPipelineExecutor }) 
   app.locals.knowledgeBaseRuntime = knowledgeBaseRuntime;
   app.locals.prospectingRuntime = prospectingRuntime;
   app.locals.storageService = storageService;
+  app.locals.ideaFoundryPipelineRuntime = pipelineRuntime;
 
   return app;
 }

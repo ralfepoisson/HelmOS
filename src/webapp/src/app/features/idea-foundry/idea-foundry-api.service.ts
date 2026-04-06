@@ -30,6 +30,7 @@ export interface ProspectingResultRecord {
   provider?: string;
   rank?: number;
   capturedAt?: string;
+  isProcessedForPipeline?: boolean;
 }
 
 export interface ProspectingConfigurationResponse {
@@ -43,15 +44,57 @@ export interface IdeaFoundryPipelineContentsResponse {
   sourceProcessing: ProtoIdeaSourceRecord[];
   protoIdeas: ProtoIdeaRecord[];
   ideaCandidates: IdeaCandidateRecord[];
-  curatedOpportunities: Array<Record<string, unknown>>;
+  curatedOpportunities: CuratedOpportunityRecord[];
   runtime: ProspectingConfigurationRuntimeState;
 }
+
+export interface IdeaFoundryPipelineStageStates {
+  sources: 'pending' | 'running' | 'completed' | 'failed';
+  'proto-ideas': 'pending' | 'running' | 'completed' | 'failed';
+  'idea-candidates': 'pending' | 'running' | 'completed' | 'failed';
+  'curated-opportunities': 'pending' | 'running' | 'completed' | 'failed';
+}
+
+export interface IdeaFoundryPipelineStageResult {
+  key: string;
+  status: string;
+  stopReason?: string | null;
+  attempts?: number;
+  lastResult?: Record<string, unknown> | null;
+  totals?: Record<string, unknown> | null;
+}
+
+export interface IdeaFoundryPipelineStatusResponse {
+  runId: string | null;
+  ownerUserId?: string | null;
+  status: 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'HALTED';
+  startedAt: string | null;
+  endedAt: string | null;
+  stageStates: IdeaFoundryPipelineStageStates;
+  stageResults: IdeaFoundryPipelineStageResult[];
+  completedStageCount: number;
+  failedStageCount: number;
+  errorMessage: string | null;
+}
+
+export interface IdeaFoundryPipelineRunResponse {
+  started: boolean;
+  run: IdeaFoundryPipelineStatusResponse;
+}
+
+export type IdeaFoundryPipelineStageKey =
+  | 'sources'
+  | 'proto-ideas'
+  | 'idea-candidates'
+  | 'curated-opportunities';
 
 export interface ProtoIdeaSourceRecord {
   id: string;
   upstreamSourceRecordId: string;
   sourceKey: string;
   processingStatus: string;
+  sourceTitle?: string | null;
+  sourceUrl?: string | null;
   processingCompletedAt?: string | null;
   processingFailedAt?: string | null;
   updatedAt?: string | null;
@@ -157,8 +200,47 @@ export interface IdeaCandidateRecord {
   agentConfidence: string;
   statusExplanation: string;
   refinementIteration: number;
+  workflowState?: 'AWAITING_EVALUATION' | 'NEEDS_REFINEMENT' | 'REJECTED' | 'PROMOTED';
+  evaluationStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  evaluationDecision?: 'PROMOTE' | 'REFINE' | 'REJECT' | null;
+  evaluationDecisionReason?: string | null;
+  evaluationNextBestAction?: string | null;
+  evaluationRecommendedActionReason?: string | null;
+  evaluationReadinessLabel?: string | null;
+  evaluationBlockingIssue?: string | null;
+  evaluationStrongestAspect?: string | null;
+  evaluationBiggestRisk?: string | null;
+  evaluationDuplicateRiskLabel?: string | null;
+  evaluationDuplicateRiskExplanation?: string | null;
+  evaluationPayloadJson?: Record<string, unknown> | null;
+  evaluationCompletedAt?: string | null;
   protoIdeaTitle?: string | null;
   sourceTitle?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CuratedOpportunityRecord {
+  id: string;
+  ideaCandidateId: string;
+  title: string;
+  summary?: string | null;
+  problemStatement: string;
+  targetCustomer: string;
+  valueProposition: string;
+  productServiceDescription: string;
+  differentiation: string;
+  earlyMonetizationIdea: string;
+  readinessLabel: string;
+  strongestAspect: string;
+  biggestRisk: string;
+  blockingIssue?: string | null;
+  duplicateRiskLabel: string;
+  duplicateRiskExplanation: string;
+  nextBestAction: string;
+  promotionReason: string;
+  tagsJson?: Record<string, unknown> | null;
+  promotedAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -176,6 +258,21 @@ export interface IdeaRefinementRunResponse extends IdeaRefinementConfigurationRe
     policyId: string | null;
     policyProfileName: string;
   };
+}
+
+export interface IdeaEvaluationRunResponse {
+  result: {
+    processedCount: number;
+    completedCount: number;
+    failedCount: number;
+    skippedCount: number;
+    selectedIdeaCandidateIds: string[];
+    promotedCount: number;
+    refinedCount: number;
+    rejectedCount: number;
+    opportunityCount: number;
+  };
+  opportunities: CuratedOpportunityRecord[];
 }
 
 @Injectable({
@@ -207,6 +304,18 @@ export class IdeaFoundryApiService {
   async executeProspectingRun(): Promise<ProspectingConfigurationResponse> {
     const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/prospecting/configuration/execute`, 'POST', {});
     return this.parseApiResponse<ProspectingConfigurationResponse>(response, 'execute the prospecting strategy');
+  }
+
+  async runIdeaFoundryPipeline(
+    payload: { retryFailed?: boolean; maxStageIterations?: number; startStage?: IdeaFoundryPipelineStageKey } = {}
+  ): Promise<IdeaFoundryPipelineRunResponse> {
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/pipeline/run`, 'POST', payload);
+    return this.parseApiResponse<IdeaFoundryPipelineRunResponse>(response, 'run the Idea Foundry pipeline');
+  }
+
+  async getIdeaFoundryPipelineStatus(): Promise<IdeaFoundryPipelineStatusResponse> {
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/pipeline/status`, 'GET');
+    return this.parseApiResponse<IdeaFoundryPipelineStatusResponse>(response, 'load the Idea Foundry pipeline status');
   }
 
   async getProtoIdeaExtractionConfiguration(): Promise<ProtoIdeaExtractionConfigurationResponse> {
@@ -266,6 +375,24 @@ export class IdeaFoundryApiService {
     return this.parseApiResponse<IdeaRefinementRunResponse>(
       response,
       'run the Idea Refinement agent'
+    );
+  }
+
+  async getCuratedOpportunities(): Promise<CuratedOpportunityRecord[]> {
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/evaluation/opportunities`, 'GET');
+    return this.parseApiResponse<CuratedOpportunityRecord[]>(
+      response,
+      'load curated opportunities'
+    );
+  }
+
+  async runIdeaEvaluation(
+    payload: { batchSize?: number; retryFailed?: boolean; ideaCandidateId?: string } = {}
+  ): Promise<IdeaEvaluationRunResponse> {
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/evaluation/run`, 'POST', payload);
+    return this.parseApiResponse<IdeaEvaluationRunResponse>(
+      response,
+      'run the Idea Evaluation agent'
     );
   }
 

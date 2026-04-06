@@ -8,16 +8,20 @@ package "Agent Experience Layer" {
   [My Business Ideas Page]
   [Idea Foundry Shell]
   [Idea Foundry Overview Board]
+  [Idea Foundry Search Screen]
+  [Idea Foundry Profile Screen]
   [Idea Foundry Pipeline API]
   [Prospecting Configuration Screen]
   [Proto-Idea Extraction Screen]
   [Idea Refinement Screen]
+  [Idea Evaluation Screen]
   [Value Proposition Screen]
   [Node Control Plane API]
   [Conceptual Tools API]
   [Prospecting Configuration API]
   [Proto-Idea Extraction API]
   [Idea Refinement API]
+  [Idea Evaluation API]
   [Gateway Registry Preflight]
   [Agent Gateway API (FastAPI)]
   [Conceptual Tools Admin Screen]
@@ -78,6 +82,8 @@ package "Deterministic Services" {
   [Proto-Idea Stage Runner]
   [Idea Refinement Service]
   [Idea Refinement Stage Runner]
+  [Idea Evaluation Service]
+  [Idea Evaluation Stage Runner]
   [Template Renderer]
   [Rules Engine]
   [Output Normaliser]
@@ -140,34 +146,45 @@ package "AWS Production Deployment" {
 [My Business Ideas Page] --> [Node Control Plane API] : list business ideas and select active workspace
 [Angular UI] --> [Idea Foundry Shell]
 [Idea Foundry Shell] --> [Idea Foundry Overview Board] : pipeline navigation and overview stages
-[Idea Foundry Overview Board] --> [Idea Foundry Pipeline API] : trigger end-to-end pipeline execution and reflect stage state
+[Idea Foundry Shell] --> [Idea Foundry Search Screen] : cross-stage search and tag filtering
+[Idea Foundry Overview Board] --> [Idea Foundry Pipeline API] : trigger a backend-owned pipeline run from the selected start stage and poll pipeline status
 [Idea Foundry Shell] --> [Prospecting Configuration Screen] : prospecting submenu and operator controls
 [Idea Foundry Shell] --> [Proto-Idea Extraction Screen] : admin policy controls and agent run trigger
 [Idea Foundry Shell] --> [Idea Refinement Screen] : admin policy controls, candidate review, and run trigger
+[Idea Foundry Shell] --> [Idea Evaluation Screen] : evaluation queue, decision review, and promote/refine/reject actions
+[Idea Foundry Search Screen] --> [Prospecting Configuration API] : load combined persisted pipeline contents for search and filter facets
+[Idea Foundry Search Screen] --> [Idea Foundry Profile Screen] : navigate into a single record with lineage context
+[Idea Foundry Profile Screen] --> [Prospecting Configuration API] : load the selected record plus upstream/downstream lineage
 [Prospecting Configuration Screen] --> [Prospecting Configuration API] : load config, trigger agent optimization cycles, and run prospecting execution
 [Proto-Idea Extraction Screen] --> [Proto-Idea Extraction API] : load policy, save policy, and run Proto-Idea Agent
 [Idea Refinement Screen] --> [Idea Refinement API] : load policy, list candidates, save policy, and run Idea Refinement Agent
+[Idea Evaluation Screen] --> [Idea Evaluation API] : list candidates and curated opportunities, then run single or batch evaluation
 [Idea Foundry Overview Board] --> [Prospecting Configuration API] : read persisted source records or render empty states
 [Idea Foundry Pipeline API] --> [Node Control Plane API] : authenticated admin control-plane request path
 [Prospecting Configuration API] --> [Node Control Plane API] : authenticated control-plane request path
 [Proto-Idea Extraction API] --> [Node Control Plane API] : authenticated admin control-plane request path
 [Idea Refinement API] --> [Node Control Plane API] : authenticated admin control-plane request path
+[Idea Evaluation API] --> [Node Control Plane API] : authenticated admin control-plane request path
 [Prospecting Configuration API] --> [Gateway Registry Preflight] : verify requested agent is registered before review runs
 [Proto-Idea Extraction API] --> [Gateway Registry Preflight] : verify requested agent is registered before extraction runs
 [Idea Refinement API] --> [Gateway Registry Preflight] : verify requested agent is registered before refinement runs
+[Idea Evaluation API] --> [Gateway Registry Preflight] : verify requested agent is registered before evaluation runs
 [Node Control Plane API] --> [Audit Logs] : persist gateway request traces, raw LLM output, and parsed JSON output for agent-driven workflows
 [Node Control Plane API] --> [Prospecting Runtime Scheduler] : start hourly prospecting runtime loop
-[Node Control Plane API] --> [Idea Foundry Pipeline Executor] : orchestrate ordered stage execution across the pipeline
+[Node Control Plane API] --> [Idea Foundry Pipeline Executor] : start and track backend-owned ordered stage execution across the pipeline
 [Node Control Plane API] --> [Prospecting Execution Service] : execute latest saved prospecting strategy and close the review-feedback loop
 [Node Control Plane API] --> [Proto-Idea Extraction Service] : load persisted proto-ideas for pipeline reads
 [Node Control Plane API] --> [Idea Refinement Service] : load persisted idea candidates for pipeline reads
+[Node Control Plane API] --> [Idea Evaluation Service] : load evaluation queues, curated opportunities, and run the final quality gate
 [Prospecting Runtime Scheduler] --> [Prospecting Execution Service] : run hourly prospecting optimization cycles
 [Idea Foundry Pipeline Executor] --> [Prospecting Execution Service] : execute the source stage once per pipeline run
 [Idea Foundry Pipeline Executor] --> [Proto-Idea Extraction Service] : repeat extraction passes until no pending source work remains
 [Idea Foundry Pipeline Executor] --> [Idea Refinement Service] : repeat refinement passes until no pending proto-ideas remain
+[Idea Foundry Pipeline Executor] --> [Idea Evaluation Service] : repeat evaluation passes until no pending candidates remain
 [Prospecting Runtime Scheduler] ..> [Prospecting Configuration API] : persisted next run stays aligned to enforced hourly cadence
 [Proto-Idea Stage Runner] --> [Proto-Idea Extraction Service] : run a controlled extraction pass over pending sources
 [Idea Refinement Stage Runner] --> [Idea Refinement Service] : run a controlled refinement pass over eligible proto-ideas
+[Idea Evaluation Stage Runner] --> [Idea Evaluation Service] : run a controlled evaluation pass over eligible candidates
 [Gateway Registry Preflight] --> [Agent Gateway API (FastAPI)] : fetch runtime registry snapshot
 [Angular UI] --> [Node Control Plane API] : load workspace unlock state and available strategy tools
 [Angular UI] --> [Value Proposition Screen]
@@ -256,6 +273,8 @@ package "AWS Production Deployment" {
 [Idea Refinement Service] --> [Conceptual Tools Registry] : load active conceptual tools and persist selected tool ids per candidate
 [Idea Refinement Service] --> [Agent Gateway API (FastAPI)] : invoke Idea Refinement Agent with policy, tools, and proto-idea context
 [Idea Refinement Service] --> [Shared Registry PostgreSQL] : store refinement policy, proto-idea processing state, and idea candidates
+[Idea Evaluation Service] --> [Agent Gateway API (FastAPI)] : invoke Idea Evaluation Agent with candidate and duplicate-risk context
+[Idea Evaluation Service] --> [Shared Registry PostgreSQL] : store evaluation lifecycle state, normalized decisions, and curated opportunities
 
 [Ideation Agent] --> [Tool Registry]
 [Value Proposition Agent] --> [Tool Registry]

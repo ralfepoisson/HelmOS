@@ -116,11 +116,15 @@ describe('IdeaRefinementComponent', () => {
     }).compileComponents();
   });
 
-  it('renders the administrator policy controls and candidate list', async () => {
+  async function createLoadedComponent() {
     const fixture = TestBed.createComponent(IdeaRefinementComponent);
+    await fixture.componentInstance.reload();
     fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('renders the administrator policy controls and candidate list', async () => {
+    const fixture = await createLoadedComponent();
 
     const text = fixture.nativeElement.textContent;
 
@@ -135,22 +139,16 @@ describe('IdeaRefinementComponent', () => {
   });
 
   it('loads the saved policy and candidates on init', async () => {
-    const fixture = TestBed.createComponent(IdeaRefinementComponent);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    const fixture = await createLoadedComponent();
 
-    expect(ideaFoundryApi.getIdeaRefinementConfiguration).toHaveBeenCalledTimes(1);
-    expect(ideaFoundryApi.getIdeaCandidates).toHaveBeenCalledTimes(1);
+    expect(ideaFoundryApi.getIdeaRefinementConfiguration).toHaveBeenCalledTimes(2);
+    expect(ideaFoundryApi.getIdeaCandidates).toHaveBeenCalledTimes(2);
     expect(fixture.componentInstance.candidates.length).toBe(1);
     expect(fixture.componentInstance.runtime.latestRunStatus).toBe('COMPLETED');
   });
 
   it('saves the updated policy', async () => {
-    const fixture = TestBed.createComponent(IdeaRefinementComponent);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    const fixture = await createLoadedComponent();
 
     fixture.componentInstance.policy.refinementDepth = 'deep';
     fixture.componentInstance.policy.maxConceptualToolsPerRun = 4;
@@ -167,17 +165,14 @@ describe('IdeaRefinementComponent', () => {
   });
 
   it('runs the agent and refreshes candidates', async () => {
-    const fixture = TestBed.createComponent(IdeaRefinementComponent);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    const fixture = await createLoadedComponent();
 
     const promise = fixture.componentInstance.runAgent();
     expect(fixture.componentInstance.isRunning).toBe(true);
     await promise;
 
     expect(ideaFoundryApi.runIdeaRefinementAgent).toHaveBeenCalledWith({ batchSize: 1 });
-    expect(ideaFoundryApi.getIdeaCandidates).toHaveBeenCalledTimes(2);
+    expect(ideaFoundryApi.getIdeaCandidates).toHaveBeenCalledTimes(3);
     expect(fixture.componentInstance.isRunning).toBe(false);
     expect(fixture.componentInstance.surfaceMessage).toContain('Processed 1 proto-idea');
   });

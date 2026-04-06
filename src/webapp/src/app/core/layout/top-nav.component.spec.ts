@@ -110,6 +110,32 @@ describe('TopNavComponent', () => {
     expect(compiled.textContent).toContain('Agent Testing');
   });
 
+  it('lists admin submenu items in alphabetical order', async () => {
+    const fixture = await renderComponent();
+    const compiled = fixture.nativeElement as HTMLElement;
+    const adminTrigger = Array.from(compiled.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Admin')
+    );
+
+    adminTrigger?.dispatchEvent(new MouseEvent('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const menuItems = Array.from(compiled.querySelectorAll('.admin-panel .admin-link-title')).map((node) =>
+      node.textContent?.trim()
+    );
+
+    expect(menuItems).toEqual([
+      'Agent Admin',
+      'Agent Testing',
+      'Conceptual Tools',
+      'Knowledge Bases',
+      'Knowledge Search',
+      'Logs',
+      'Support Dashboard'
+    ]);
+  });
+
   it('shows Idea Foundry in the primary navigation', async () => {
     const fixture = await renderComponent();
     const navLinks = fixture.debugElement

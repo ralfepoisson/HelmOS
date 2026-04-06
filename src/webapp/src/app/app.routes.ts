@@ -20,7 +20,9 @@ import { MyBusinessIdeasPageComponent } from './features/strategy-copilot/my-bus
 import { StrategyCopilotHomeComponent } from './features/strategy-copilot/strategy-copilot-home.component';
 import { IdeaFoundryOverviewComponent } from './features/idea-foundry/idea-foundry-overview.component';
 import { IdeaFoundryShellComponent } from './features/idea-foundry/idea-foundry-shell.component';
-import { IdeaFoundryStagePageComponent } from './features/idea-foundry/idea-foundry-stage-page.component';
+import { IdeaEvaluationComponent } from './features/idea-foundry/idea-evaluation.component';
+import { IdeaFoundryProfileComponent } from './features/idea-foundry/idea-foundry-profile.component';
+import { IdeaFoundrySearchComponent } from './features/idea-foundry/idea-foundry-search.component';
 import { IdeaRefinementComponent } from './features/idea-foundry/idea-refinement.component';
 import { ProspectingConfigurationComponent } from './features/idea-foundry/prospecting-configuration.component';
 import { ProtoIdeaExtractionComponent } from './features/idea-foundry/proto-idea-extraction.component';
@@ -105,14 +107,19 @@ export const routes: Routes = [
       },
       {
         path: 'idea-evaluator',
-        component: IdeaFoundryStagePageComponent,
-        title: 'HelmOS Idea Foundry Idea Evaluator',
-        data: {
-          title: 'Idea Evaluator',
-          summary: 'Apply quality gates that decide whether an opportunity is promoted, recycled for further refinement, or parked as latent.',
-          detail:
-            'This screen is scaffolded and ready for progression criteria, evaluator rubrics, and downstream Strategy Copilot handoff controls.'
-        }
+        component: IdeaEvaluationComponent,
+        canActivate: [adminGuard],
+        title: 'HelmOS Idea Foundry Idea Evaluation',
+      },
+      {
+        path: 'search',
+        component: IdeaFoundrySearchComponent,
+        title: 'HelmOS Idea Foundry Search',
+      },
+      {
+        path: 'idea-profile/:stage/:id',
+        component: IdeaFoundryProfileComponent,
+        title: 'HelmOS Idea Foundry Profile',
       }
     ]
   },

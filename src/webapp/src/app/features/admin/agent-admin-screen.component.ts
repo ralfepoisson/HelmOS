@@ -332,7 +332,6 @@ const RETRY_OPTIONS: Array<{ value: RetryPolicy; label: string; description: str
                 </span>
               </div>
               <strong>{{ agent.name }}</strong>
-              <span class="field-help">{{ summarizeAgent(agent) }}</span>
               <div class="agent-list-item-meta">
                 <span [class.runtime-missing]="!agent.runtime.registered">
                   {{ agent.runtime.registered ? 'Runtime ready' : 'Runtime missing' }}
@@ -1849,10 +1848,6 @@ export class AgentAdminScreenComponent implements OnInit {
     return tools.length > 0 ? tools.join(', ') : 'None';
   }
 
-  summarizeAgent(agent: EditableAgentRecord): string {
-    return agent.description.split('\n')[0]?.trim() || 'No summary captured yet.';
-  }
-
   describeModel(value: string | null | undefined): string {
     const option = this.modelOptions.find((entry) => entry.value === value);
     return option?.description ?? 'Choose the model alias this agent should request by default.';
@@ -1937,11 +1932,10 @@ export class AgentAdminScreenComponent implements OnInit {
 
       const payload = this.buildUpdatePayload(agent);
       const updated = await this.agentAdminService.updateAgent(agent.id, payload);
-      const index = this.agents.findIndex((entry) => entry.id === agent.id);
-      if (index >= 0) {
-        this.agents[index] = this.toEditableRecord(updated);
-        this.selectedAgentId = this.agents[index].id;
-      }
+      this.agents = this.sortAgents(
+        this.agents.map((entry) => (entry.id === agent.id ? this.toEditableRecord(updated) : entry))
+      );
+      this.selectedAgentId = updated.id;
       this.saveStatusLabel = `Saved ${updated.name}`;
     } catch (error) {
       agent.saveError = this.toErrorMessage(error);
@@ -1969,7 +1963,7 @@ export class AgentAdminScreenComponent implements OnInit {
     try {
       const payload = this.buildCreatePayload(this.createDraft, intent);
       const created = await this.agentAdminService.createAgent(payload);
-      this.agents = [this.toEditableRecord(created), ...this.agents];
+      this.agents = this.sortAgents([this.toEditableRecord(created), ...this.agents]);
       this.selectedAgentId = created.id;
       this.closeCreateModal();
       this.saveStatusLabel = intent === 'register' ? `Registered ${created.name}` : `Saved draft ${created.name}`;
@@ -2012,7 +2006,7 @@ export class AgentAdminScreenComponent implements OnInit {
 
   private applySnapshot(snapshot: AgentAdminSnapshot): void {
     this.gateway = snapshot.gateway;
-    this.agents = snapshot.agents.map((agent) => this.toEditableRecord(agent));
+    this.agents = this.sortAgents(snapshot.agents.map((agent) => this.toEditableRecord(agent)));
     this.selectedAgentId =
       this.agents.find((agent) => agent.id === this.selectedAgentId)?.id ?? this.agents[0]?.id ?? null;
     this.selectedAgentLoadError = null;
@@ -2033,9 +2027,11 @@ export class AgentAdminScreenComponent implements OnInit {
 
       const index = this.agents.findIndex((agent) => agent.id === agentId);
       if (index >= 0) {
-        this.agents[index] = this.toEditableRecord(detailedAgent);
+        this.agents = this.sortAgents(
+          this.agents.map((agent) => (agent.id === agentId ? this.toEditableRecord(detailedAgent) : agent))
+        );
       } else {
-        this.agents = [this.toEditableRecord(detailedAgent), ...this.agents];
+        this.agents = this.sortAgents([this.toEditableRecord(detailedAgent), ...this.agents]);
       }
 
       this.selectedAgentLoadError = null;
@@ -2077,6 +2073,19 @@ export class AgentAdminScreenComponent implements OnInit {
       saving: false,
       saveError: null
     };
+  }
+
+  private sortAgents(agents: EditableAgentRecord[]): EditableAgentRecord[] {
+    return [...agents].sort((left, right) => {
+      const leftLabel = left.name.trim() || left.key.trim();
+      const rightLabel = right.name.trim() || right.key.trim();
+
+      return (
+        leftLabel.localeCompare(rightLabel, undefined, { sensitivity: 'base' }) ||
+        left.key.localeCompare(right.key, undefined, { sensitivity: 'base' }) ||
+        left.id.localeCompare(right.id, undefined, { sensitivity: 'base' })
+      );
+    });
   }
 
   private buildCreateDraft(): CreateAgentDraft {

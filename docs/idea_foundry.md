@@ -186,10 +186,16 @@ Current implementation note:
 * The Idea Foundry overview board and the dedicated Idea Refinement screen now render persisted idea candidates, showing linkage back to the proto-idea plus the selected conceptual tools used during refinement
 * A backend runner command, `npm run idea-refinement:run`, executes a controlled refinement pass and can optionally target a specific proto-idea or retry failed refinements through environment flags
 * The backend now includes an Idea Foundry pipeline executor that runs deterministic stage passes in order, repeats a stage while it continues making progress, and stops the pipeline immediately if a stage reports failures
-* The Overview screen now exposes a `Run Pipeline` control that orchestrates prospecting execution, proto-idea extraction, and idea refinement in sequence, refreshing the board after each pass so operators can watch the pipeline move forward
+* The backend now owns Idea Foundry pipeline orchestration through an asynchronous runtime that starts on a single `Run Pipeline` trigger and continues independently of the browser tab
+* The Overview screen now exposes a `Run Pipeline` control that starts the backend pipeline runtime and then polls backend pipeline status plus refreshed board contents until the run finishes
+* Each overview column now also exposes a small stage-level run control beside the status dot so operators can start the pipeline from a specific stage; the browser passes the requested start stage to the backend runtime, which skips earlier stages server-side
 * Each overview column now renders a stage indicator in the top-right corner: grey before a run, blue while the active stage is executing, green after successful completion, and red if that stage fails and halts the pipeline
 * By default the Overview board now hides stage items that have already completed downstream processing; a `Show processed` toggle beside `Run Pipeline` reveals them again for audit/debugging
 * The Overview board now merges persisted source-stage records with the latest prospecting snapshot so the Sources column reflects the full traceable source history instead of only the most recent result set
+* A source is now treated as no longer unprocessed as soon as the source-stage record is `PROCESSING` or `COMPLETED`, or if persisted downstream proto-ideas already exist for that source, which prevents the Sources count from staying inflated when source processing metadata lags behind downstream creation
+* Idea Foundry now also exposes a dedicated `Search` screen with a Google-style query field, a discrete filters control, and card-based results across proto-ideas, idea candidates, and curated opportunities
+* Search stage filters come directly from the persisted record type, while tag filters are derived from evaluation classification data already stored on idea candidates and curated opportunities
+* Clicking any search card now opens an `Idea Profile` that reconstructs lineage from the persisted source, proto-idea, idea candidate, and curated opportunity relationships and surfaces whatever metadata is currently available for that stage
 
 ---
 
@@ -204,10 +210,23 @@ Current implementation note:
 
 #### Outcomes:
 
-1. **Pass** → move to Strategy Copilot
-2. **Refine** → return to refinement loop
-3. **Reject (Latent)** → store for recombination
-4. **Reject (Dead)** → discard
+1. **Promote** → move from `idea_candidates` to `curated_opportunities`
+2. **Refine** → keep the candidate in `idea_candidates` and send it back for another refinement pass
+3. **Reject** → preserve the full evaluation record but prevent promotion
+
+Current implementation note:
+
+* The static Idea Evaluation Agent identity is loaded from `docs/agents/idea_evaluation_agent.md`
+* Runtime prompt assembly combines that identity with one persisted idea candidate plus duplicate-check context
+* The evaluation service treats the stage as a strict typed gate: model output must be valid JSON and must satisfy the expected evaluation schema before any workflow state is changed
+* Invalid JSON or schema-mismatched output is retried once; repeated parsing/validation failures leave the candidate unpromoted and mark evaluation status as `FAILED`
+* Returned decision values are normalized from both `evaluation_overview.decision.label` and `evaluation_summary.recommended_action`, tolerating minor formatting differences while rejecting contradictory outputs
+* Candidate workflow now tracks `AWAITING_EVALUATION`, `NEEDS_REFINEMENT`, `REJECTED`, and `PROMOTED`
+* Evaluation persistence now records timestamps, processing status, normalized decision, decision reason, readiness label, strongest aspect, biggest risk, blocking issue, duplicate-risk assessment, next best action, and the full evaluation payload
+* Promotion creates a durable `curated_opportunities` record linked one-to-one with the source idea candidate so downstream strategy work receives a stable promoted snapshot
+* The Overview board and the dedicated Idea Evaluation screen now surface decision labels, readiness, strongest aspect, biggest risk, blocking issue, duplicate risk, and next-best-action guidance
+* The pipeline executor now runs Idea Evaluation as the real final stage instead of using a placeholder curated-stage completion flag
+* A backend runner command, `npm run idea-evaluation:run`, executes a controlled evaluation pass and can target a single candidate or a pending batch
 
 ---
 

@@ -24,22 +24,42 @@ describe('AgentAdminScreenComponent', () => {
         checkedAt: '2026-03-22T08:10:00.000Z',
         agents: [
           {
-            key: 'ideation',
-            name: 'Ideation Agent',
-            version: '1.0.0',
-            purpose: 'Transforms founder input into structured idea briefs.',
-            allowedTools: ['retrieval']
-          },
-          {
             key: 'prospecting',
             name: 'Prospecting Agent',
             version: '1.0.0',
             purpose: 'Helps the user systematically discover and refine high-potential opportunity signals.',
             allowedTools: ['web_search']
+          },
+          {
+            key: 'ideation',
+            name: 'Ideation Agent',
+            version: '1.0.0',
+            purpose: 'Transforms founder input into structured idea briefs.',
+            allowedTools: ['retrieval']
           }
         ]
       },
       agents: [
+        {
+          id: 'agent-2',
+          key: 'prospecting',
+          name: 'Prospecting Agent',
+          version: '1.0.0',
+          description: 'Purpose: Helps the user systematically discover and refine high-potential opportunity signals.',
+          allowedTools: ['web_search'],
+          defaultModel: 'helmos-default',
+          active: true,
+          createdAt: '2026-04-05T14:06:10.874Z',
+          updatedAt: '2026-04-05T14:06:10.874Z',
+          promptConfig: null,
+          runtime: {
+            registered: true,
+            name: 'Prospecting Agent',
+            version: '1.0.0',
+            purpose: 'Helps the user systematically discover and refine high-potential opportunity signals.',
+            allowedTools: ['web_search']
+          }
+        },
         {
           id: 'agent-1',
           key: 'ideation',
@@ -81,26 +101,6 @@ describe('AgentAdminScreenComponent', () => {
             version: '1.0.0',
             purpose: 'Transforms founder input into structured idea briefs.',
             allowedTools: ['retrieval']
-          }
-        },
-        {
-          id: 'agent-2',
-          key: 'prospecting',
-          name: 'Prospecting Agent',
-          version: '1.0.0',
-          description: 'Purpose: Helps the user systematically discover and refine high-potential opportunity signals.',
-          allowedTools: ['web_search'],
-          defaultModel: 'helmos-default',
-          active: true,
-          createdAt: '2026-04-05T14:06:10.874Z',
-          updatedAt: '2026-04-05T14:06:10.874Z',
-          promptConfig: null,
-          runtime: {
-            registered: true,
-            name: 'Prospecting Agent',
-            version: '1.0.0',
-            purpose: 'Helps the user systematically discover and refine high-potential opportunity signals.',
-            allowedTools: ['web_search']
           }
         }
       ]
@@ -287,6 +287,25 @@ describe('AgentAdminScreenComponent', () => {
 
     expect(updateAgent).toHaveBeenCalledTimes(1);
     expect(updateAgent.mock.calls[0]?.[1]).toHaveProperty('promptConfig.configJson.temperature', 0.5);
+  });
+
+  it('lists registry agents alphabetically and omits the descriptive copy in the first panel', async () => {
+    const fixture = TestBed.createComponent(AgentAdminScreenComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    const registryPanel = host.querySelector('.agent-list-panel') as HTMLElement | null;
+    expect(registryPanel).toBeTruthy();
+
+    const agentNames = Array.from(registryPanel!.querySelectorAll('.agent-list-item strong')).map((node) =>
+      node.textContent?.trim()
+    );
+    expect(agentNames).toEqual(['Ideation Agent', 'Prospecting Agent']);
+    expect(registryPanel!.querySelector('.field-help')).toBeNull();
+    expect(registryPanel!.textContent).not.toContain('Transforms founder input into structured idea briefs.');
+    expect(registryPanel!.textContent).not.toContain('Helps the user systematically discover and refine');
   });
 
   it('fetches full agent details when a different agent is selected', async () => {
