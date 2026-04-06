@@ -201,7 +201,7 @@ describe('IdeaFoundryOverviewComponent', () => {
     const counts = Array.from(fixture.nativeElement.querySelectorAll('.pipeline-count')).map((node) =>
       (node as HTMLElement).textContent?.trim()
     );
-    expect(counts).toEqual(['1/2', '0/1', '1/1', '0/0']);
+    expect(counts).toEqual(['1/2', '0/1', '1/1', '0']);
   });
 
   it('hides already processed items by default', async () => {
@@ -402,7 +402,7 @@ describe('IdeaFoundryOverviewComponent', () => {
     expect(text).toContain('Promoted');
     expect(text).toContain('The buyer and workflow pain are tightly aligned.');
     expect(text).not.toContain('No curated opportunities yet');
-    expect(counts).toEqual(['0/0', '0/0', '0/1', '1/1']);
+    expect(counts).toEqual(['0/0', '0/0', '0/1', '1']);
   });
 
   it('starts proto-idea cards compact and expands on click', async () => {
@@ -515,7 +515,151 @@ describe('IdeaFoundryOverviewComponent', () => {
 
     expect(text).toContain('VAT reminders are killing your accounting firm');
     expect(text).toContain('Compliance workflow co-pilot for small accounting firms');
-    expect(counts).toEqual(['1/2', '0/1', '1/1', '0/0']);
+    expect(counts).toEqual(['1/2', '0/1', '1/1', '0']);
+  });
+
+  it('treats only awaiting-evaluation candidates as unprocessed and hides refine or reject outcomes by default', async () => {
+    ideaFoundryApi.getIdeaFoundryContents.mockResolvedValueOnce({
+      ...baseContents,
+      sources: [],
+      sourceProcessing: [],
+      protoIdeas: [],
+      ideaCandidates: [
+        {
+          ...baseContents.ideaCandidates[0],
+          id: 'candidate-awaiting-1',
+          protoIdeaTitle: 'Awaiting evaluation candidate',
+          workflowState: 'AWAITING_EVALUATION',
+          evaluationStatus: 'PENDING'
+        },
+        {
+          ...baseContents.ideaCandidates[0],
+          id: 'candidate-refine-1',
+          protoIdeaTitle: 'Needs refinement candidate',
+          workflowState: 'NEEDS_REFINEMENT',
+          evaluationStatus: 'COMPLETED',
+          evaluationDecision: 'REFINE',
+          evaluationBlockingIssue: 'Needs stronger differentiation.'
+        },
+        {
+          ...baseContents.ideaCandidates[0],
+          id: 'candidate-reject-1',
+          protoIdeaTitle: 'Rejected candidate',
+          workflowState: 'REJECTED',
+          evaluationStatus: 'COMPLETED',
+          evaluationDecision: 'REJECT',
+          evaluationBiggestRisk: 'Too generic to justify promotion.'
+        }
+      ],
+      curatedOpportunities: []
+    });
+
+    const fixture = await createOverviewComponent((componentFixture) => {
+      expect(componentFixture.componentInstance.columns[2]?.totalCount).toBe(3);
+      expect(componentFixture.componentInstance.columns[2]?.unprocessedCount).toBe(1);
+    });
+
+    const text = fixture.nativeElement.textContent;
+    const counts = Array.from(fixture.nativeElement.querySelectorAll('.pipeline-count')).map((node) =>
+      (node as HTMLElement).textContent?.trim()
+    );
+
+    expect(text).toContain('Awaiting evaluation candidate');
+    expect(text).not.toContain('Needs refinement candidate');
+    expect(text).not.toContain('Rejected candidate');
+    expect(counts).toEqual(['0/0', '0/0', '1/3', '0']);
+  });
+
+  it('shows refined and rejected candidates only when processed items are enabled while keeping the awaiting count', async () => {
+    ideaFoundryApi.getIdeaFoundryContents.mockResolvedValueOnce({
+      ...baseContents,
+      sources: [],
+      sourceProcessing: [],
+      protoIdeas: [],
+      ideaCandidates: [
+        {
+          ...baseContents.ideaCandidates[0],
+          id: 'candidate-awaiting-1',
+          protoIdeaTitle: 'Awaiting evaluation candidate',
+          workflowState: 'AWAITING_EVALUATION',
+          evaluationStatus: 'PENDING'
+        },
+        {
+          ...baseContents.ideaCandidates[0],
+          id: 'candidate-refine-1',
+          protoIdeaTitle: 'Needs refinement candidate',
+          workflowState: 'NEEDS_REFINEMENT',
+          evaluationStatus: 'COMPLETED',
+          evaluationDecision: 'REFINE',
+          evaluationBlockingIssue: 'Needs stronger differentiation.'
+        },
+        {
+          ...baseContents.ideaCandidates[0],
+          id: 'candidate-reject-1',
+          protoIdeaTitle: 'Rejected candidate',
+          workflowState: 'REJECTED',
+          evaluationStatus: 'COMPLETED',
+          evaluationDecision: 'REJECT',
+          evaluationBiggestRisk: 'Too generic to justify promotion.'
+        }
+      ],
+      curatedOpportunities: []
+    });
+
+    const fixture = await createOverviewComponent(
+      (componentFixture) => {
+        expect(componentFixture.componentInstance.columns[2]?.totalCount).toBe(3);
+        expect(componentFixture.componentInstance.columns[2]?.unprocessedCount).toBe(1);
+      },
+      { showProcessedItems: true }
+    );
+
+    const text = fixture.nativeElement.textContent;
+    const counts = Array.from(fixture.nativeElement.querySelectorAll('.pipeline-count')).map((node) =>
+      (node as HTMLElement).textContent?.trim()
+    );
+
+    expect(text).toContain('Awaiting evaluation candidate');
+    expect(text).toContain('Needs refinement candidate');
+    expect(text).toContain('Rejected candidate');
+    expect(text).toContain('Needs refinement');
+    expect(text).toContain('Rejected');
+    expect(counts).toEqual(['0/0', '0/0', '1/3', '0']);
+  });
+
+  it('shows an awaiting-evaluation empty state when every idea candidate has already been processed', async () => {
+    ideaFoundryApi.getIdeaFoundryContents.mockResolvedValueOnce({
+      ...baseContents,
+      sources: [],
+      sourceProcessing: [],
+      protoIdeas: [],
+      ideaCandidates: [
+        {
+          ...baseContents.ideaCandidates[0],
+          id: 'candidate-refine-1',
+          protoIdeaTitle: 'Needs refinement candidate',
+          workflowState: 'NEEDS_REFINEMENT',
+          evaluationStatus: 'COMPLETED',
+          evaluationDecision: 'REFINE'
+        }
+      ],
+      curatedOpportunities: []
+    });
+
+    const fixture = await createOverviewComponent((componentFixture) => {
+      expect(componentFixture.componentInstance.columns[2]?.totalCount).toBe(1);
+      expect(componentFixture.componentInstance.columns[2]?.unprocessedCount).toBe(0);
+    });
+
+    const text = fixture.nativeElement.textContent;
+    const counts = Array.from(fixture.nativeElement.querySelectorAll('.pipeline-count')).map((node) =>
+      (node as HTMLElement).textContent?.trim()
+    );
+
+    expect(text).toContain('No idea candidates awaiting evaluation');
+    expect(text).toContain('All current candidates have already been evaluated.');
+    expect(text).not.toContain('Needs refinement candidate');
+    expect(counts).toEqual(['0/0', '0/0', '0/1', '0']);
   });
 
   it('starts the backend-owned pipeline from the overview and marks the active backend stage as running', async () => {

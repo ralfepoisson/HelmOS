@@ -32,7 +32,7 @@ interface BusinessTypeChoice {
         <section class="new-idea-form">
           <div class="form-copy">
             <p class="eyebrow">New Idea</p>
-            <h1 class="question">What is the working title of the idea?</h1>
+            <h1 class="question">What business would you like to build today?</h1>
           </div>
 
           <div class="input-wrap">

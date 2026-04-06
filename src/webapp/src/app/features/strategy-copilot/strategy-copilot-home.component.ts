@@ -17,6 +17,7 @@ import { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 
 import { BusinessIdeasApiService } from '../../core/services/business-ideas-api.service';
 import { StrategyTool, WorkspaceOption, WorkspaceShellService } from '../../core/services/workspace-shell.service';
+import { ChatMessage } from '../ideation/ideation.models';
 import { AgentChatService } from '../ideation/services/agent-chat.service';
 import { StrategyCopilotShellComponent } from './strategy-copilot-shell.component';
 
@@ -35,9 +36,9 @@ import { StrategyCopilotShellComponent } from './strategy-copilot-shell.componen
       [laterTools]="laterTools"
       [guidanceTitle]="guidanceTitle"
       [guidanceCopy]="guidanceCopy"
-      [panelTitle]="chat.panelTitle"
-      [panelSubtitle]="chat.panelSubtitle"
-      [placeholder]="chat.placeholder"
+      [panelTitle]="panelTitle"
+      [panelSubtitle]="panelSubtitle"
+      [placeholder]="placeholder"
       [messages]="messages"
       (workspaceChange)="handleWorkspaceSelection($event)"
     >
@@ -271,7 +272,10 @@ export class StrategyCopilotHomeComponent {
   primaryTools: StrategyTool[];
   laterTools: StrategyTool[];
   allTools: StrategyTool[];
-  readonly messages;
+  panelTitle: string;
+  panelSubtitle: string;
+  placeholder: string;
+  messages: ChatMessage[];
   workspaces: WorkspaceOption[] = [];
   selectedWorkspaceId = '';
   workspaceOptionsReady = false;
@@ -288,6 +292,9 @@ export class StrategyCopilotHomeComponent {
     this.primaryTools = initialTools.filter((tool) => tool.group === 'core');
     this.laterTools = initialTools.filter((tool) => tool.group === 'later');
     this.allTools = initialTools;
+    this.panelTitle = this.chat.panelTitle;
+    this.panelSubtitle = this.chat.panelSubtitle;
+    this.placeholder = this.chat.placeholder;
     this.messages = this.chat.getMessages();
 
     void this.refreshWorkspaceOptions();
@@ -374,11 +381,19 @@ export class StrategyCopilotHomeComponent {
       this.primaryTools = tools.filter((tool) => tool.group === 'core');
       this.laterTools = tools.filter((tool) => tool.group === 'later');
       this.allTools = tools;
+      this.panelTitle = strategyCopilot.chat.panelTitle;
+      this.panelSubtitle = strategyCopilot.chat.panelSubtitle;
+      this.placeholder = strategyCopilot.chat.placeholder;
+      this.messages = strategyCopilot.chat.messages;
     } catch {
       const fallbackTools = this.shell.getStrategyTools();
       this.primaryTools = fallbackTools.filter((tool) => tool.group === 'core');
       this.laterTools = fallbackTools.filter((tool) => tool.group === 'later');
       this.allTools = fallbackTools;
+      this.panelTitle = this.chat.panelTitle;
+      this.panelSubtitle = this.chat.panelSubtitle;
+      this.placeholder = this.chat.placeholder;
+      this.messages = this.chat.getMessages();
     }
   }
 }

@@ -113,7 +113,7 @@ const PIPELINE_STATUS_POLL_INTERVAL_MS = 2000;
                 [attr.aria-label]="column.title + ' stage status: ' + getStageState(column.id)"
                 [title]="column.title + ' stage status: ' + getStageState(column.id)"
               ></span>
-              <span class="pipeline-count">{{ column.unprocessedCount }}/{{ column.totalCount }}</span>
+              <span class="pipeline-count">{{ getColumnCountLabel(column) }}</span>
             </div>
           </header>
 
@@ -585,6 +585,10 @@ export class IdeaFoundryOverviewComponent implements OnInit, OnDestroy {
   }
 
   isCollapsibleCard(columnId: string, card: IdeaPipelineCard): boolean {
+    if (card.id.endsWith('-empty')) {
+      return false;
+    }
+
     return columnId === 'sources' || columnId === 'proto-ideas' || columnId === 'idea-candidates';
   }
 
@@ -600,6 +604,14 @@ export class IdeaFoundryOverviewComponent implements OnInit, OnDestroy {
 
   getPipelineStageKey(columnId: string): PipelineStageKey {
     return toPipelineStageKey(columnId);
+  }
+
+  getColumnCountLabel(column: IdeaPipelineColumn): string {
+    if (column.id === 'curated-opportunities') {
+      return String(column.totalCount);
+    }
+
+    return `${column.unprocessedCount}/${column.totalCount}`;
   }
 
   private async refreshOverviewFromBackend(): Promise<void> {
@@ -772,9 +784,12 @@ function buildColumnsFromPipelinePayload(
         .filter((candidate) => typeof candidate?.id === 'string' && candidate.id.trim().length > 0)
         .map((candidate) => mapIdeaCandidateToCard(candidate))
     : [];
+  const awaitingEvaluationIdeaCandidateCards = normalizedIdeaCandidateCards.filter((candidate) =>
+    isIdeaCandidateAwaitingEvaluation(candidate.processingStatus)
+  );
   const visibleIdeaCandidateCards = showProcessedItems
     ? normalizedIdeaCandidateCards
-    : normalizedIdeaCandidateCards.filter((candidate) => candidate.processingStatus !== 'PROMOTED');
+    : awaitingEvaluationIdeaCandidateCards;
 
   candidateColumn.cards =
     visibleIdeaCandidateCards.length > 0
@@ -782,13 +797,17 @@ function buildColumnsFromPipelinePayload(
       : [
           {
             id: 'idea-candidates-empty',
-            title: 'No idea candidates yet',
-            summary: 'No refined opportunities have been persisted from real prospecting data yet.',
-            signal: 'This stage will fill as extracted ideas are reviewed and strengthened',
+            title: showProcessedItems ? 'No idea candidates yet' : 'No idea candidates awaiting evaluation',
+            summary: showProcessedItems
+              ? 'No refined opportunities have been persisted from real prospecting data yet.'
+              : 'All current candidates have already been evaluated.',
+            signal: showProcessedItems
+              ? 'This stage will fill as extracted ideas are reviewed and strengthened'
+              : 'Turn on Show processed to review candidates sent back for refinement, rejected, or promoted',
             status: 'Waiting'
           }
         ];
-  candidateColumn.unprocessedCount = normalizedIdeaCandidateCards.filter((candidate) => candidate.processingStatus !== 'PROMOTED').length;
+  candidateColumn.unprocessedCount = awaitingEvaluationIdeaCandidateCards.length;
   candidateColumn.totalCount = normalizedIdeaCandidateCards.length;
 
   const normalizedCuratedOpportunityCards = Array.isArray(curatedOpportunities)
@@ -955,6 +974,11 @@ function workflowStateLabel(record: IdeaCandidateRecord): string {
     default:
       return 'Awaiting evaluation';
   }
+}
+
+function isIdeaCandidateAwaitingEvaluation(workflowState?: string): boolean {
+  const normalized = String(workflowState ?? 'AWAITING_EVALUATION').trim().toUpperCase();
+  return normalized === 'AWAITING_EVALUATION';
 }
 
 function normalizeProcessingStatus(status?: string): string {
