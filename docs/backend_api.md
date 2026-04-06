@@ -66,6 +66,15 @@ Infrastructure endpoints:
 - `GET /api/admin/agents`
 - `POST /api/admin/agents`
 - `PATCH /api/admin/agents/:id`
+- `GET /api/support/conversations/current`
+- `POST /api/support/conversations/current/messages`
+- `GET /api/admin/support/conversations`
+- `GET /api/admin/support/conversations/:id`
+- `GET /api/admin/support/tickets`
+- `GET /api/admin/support/tickets/:id`
+- `PATCH /api/admin/support/tickets/:id`
+- `POST /api/admin/support/tickets/:id/investigate`
+- `POST /api/admin/support/tickets/:id/review`
 - `GET /api/idea-foundry/prospecting/configuration`
 - `GET /api/idea-foundry/prospecting/contents`
 - `POST /api/idea-foundry/prospecting/configuration/run`
@@ -133,7 +142,7 @@ single control-plane API.
 - `defaultModel` must use a supported model alias such as
   `helmos-default`, `helmos-research`, or `helmos-supervisor`
 - `allowedTools` must use supported tool names such as `retrieval`,
-  `web_search`, `object_storage`, or `communications`
+  `web_search`, `object_storage`, `log_analysis`, or `communications`
 
 `PATCH /api/admin/agents/:id` updates:
 
@@ -159,6 +168,45 @@ currently understands keys such as:
 The Node backend talks to the agent gateway over HTTP using:
 
 - `GET <AGENT_GATEWAY_BASE_URL>/admin/agents`
+
+## Support APIs
+
+The support capability introduces two routed surfaces:
+
+- authenticated end-user support under `/api/support`
+- admin review and investigation controls under `/api/admin/support`
+
+`GET /api/support/conversations/current` returns the current open conversation for the
+authenticated browser session when one exists.
+
+`POST /api/support/conversations/current/messages`:
+
+- stores the user message in `support_messages`
+- attaches bounded client context
+- routes the request through the Help Desk support service
+- answers from the platform-help KB when possible
+- creates a `support_ticket` when the message is likely a bug or incident report
+
+`POST /api/admin/support/tickets/:id/investigate`:
+
+- runs the Incident Response service
+- performs bounded log analysis
+- stores `support_investigations`
+- stores `support_recommendations`
+- moves the ticket into `WAITING_FOR_HUMAN_REVIEW`
+
+`POST /api/admin/support/tickets/:id/review`:
+
+- approves, rejects, or edits the latest recommendation
+- records a `support_ticket_event`
+- updates both recommendation review state and the ticket lifecycle
+
+Internal support-tooling endpoint:
+
+- `POST /api/tools/log-analysis/analyze`
+
+This endpoint is intended for trusted internal agent/tool access and uses the same
+shared tool API key guard as knowledge-base retrieval.
 
 ## Idea Foundry stage APIs
 

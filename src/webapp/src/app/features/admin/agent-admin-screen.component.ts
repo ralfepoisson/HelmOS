@@ -134,6 +134,14 @@ const TOOL_OPTIONS: ToolOption[] = [
     scopePreview: 'Managed artifact access that can later support prefix-based write scopes.'
   },
   {
+    value: 'log_analysis',
+    label: 'Log Analysis',
+    description: 'Structured investigation of bounded support logs and telemetry.',
+    accessLabel: 'Read only',
+    policyFlags: ['Bounded excerpts', 'Redaction aware'],
+    scopePreview: 'Incident summaries, grouped errors, and request-scoped evidence without direct mutation.'
+  },
+  {
     value: 'communications',
     label: 'Communications',
     description: 'Email and calendar actions behind policy controls.',

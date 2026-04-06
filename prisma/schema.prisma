@@ -143,6 +143,78 @@ enum KnowledgeBaseJobStatus {
   FAILED
 }
 
+enum SupportConversationStatus {
+  OPEN
+  RESOLVED
+  ARCHIVED
+}
+
+enum SupportTicketStatus {
+  NEW
+  TRIAGED
+  INVESTIGATING
+  WAITING_FOR_HUMAN_REVIEW
+  ACTION_APPROVED
+  ACTION_REJECTED
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SupportTicketSeverity {
+  MINOR
+  MODERATE
+  MAJOR
+  CRITICAL
+}
+
+enum SupportTicketCategory {
+  PRODUCT_QUESTION
+  BUG_REPORT
+  INCIDENT
+  DATA_ISSUE
+  ACCESS_ISSUE
+  CONFIGURATION
+  EXTERNAL_DEPENDENCY
+  OTHER
+}
+
+enum SupportTicketSource {
+  INLINE_HELP_WIDGET
+}
+
+enum SupportInvestigationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum SupportRecommendationStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
+enum SupportIssueClassification {
+  USER_ERROR
+  DATA_ISSUE
+  TRANSIENT_INFRA_ISSUE
+  BACKEND_BUG
+  FRONTEND_BUG
+  CONFIGURATION_DEFECT
+  EXTERNAL_DEPENDENCY_FAILURE
+  UNKNOWN
+}
+
 enum ProtoIdeaProcessingStatus {
   PENDING
   PROCESSING
@@ -193,6 +265,13 @@ model User {
   protoIdeaSources       ProtoIdeaSource[]
   protoIdeas             ProtoIdea[]
   ideaCandidates         IdeaCandidate[]
+  supportConversations   SupportConversation[] @relation("SupportConversationUser")
+  supportMessages        SupportMessage[]      @relation("SupportMessageSender")
+  reportedSupportTickets SupportTicket[]       @relation("SupportTicketReporter")
+  assignedSupportTickets SupportTicket[]       @relation("SupportTicketAssignedUser")
+  supportTicketEvents    SupportTicketEvent[]  @relation("SupportTicketEventActor")
+  supportInvestigations  SupportInvestigation[] @relation("SupportInvestigationAgent")
+  supportRecommendations SupportRecommendation[] @relation("SupportRecommendationReviewedBy")
 
   @@unique([authProvider, authProviderUserId], map: "users_auth_provider_auth_provider_user_id_key")
   @@map("users")
@@ -462,6 +541,167 @@ model AgentRunEffect {
   @@index([agentRunId])
   @@index([targetEntityType, targetEntityId])
   @@map("agent_run_effects")
+}
+
+model SupportConversation {
+  id                String                    @id @default(uuid()) @db.Uuid
+  userId            String                    @map("user_id") @db.Uuid
+  tenantId          String?                   @map("tenant_id") @db.VarChar(255)
+  title             String?                   @db.VarChar(255)
+  status            SupportConversationStatus @default(OPEN)
+  source            SupportTicketSource       @default(INLINE_HELP_WIDGET)
+  escalatedAt       DateTime?                 @map("escalated_at")
+  lastMessageAt     DateTime?                 @map("last_message_at")
+  lastRoute         String?                   @map("last_route") @db.VarChar(255)
+  sessionKey        String?                   @map("session_key") @db.VarChar(120)
+  clientContextJson Json?                     @map("client_context_json")
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
+  user              User                      @relation("SupportConversationUser", fields: [userId], references: [id])
+  messages          SupportMessage[]
+  tickets           SupportTicket[]
+
+  @@index([userId, updatedAt])
+  @@index([status, updatedAt])
+  @@index([tenantId, updatedAt])
+  @@unique([userId, sessionKey], map: "support_conversations_user_id_session_key_key")
+  @@map("support_conversations")
+}
+
+model SupportMessage {
+  id                String        @id @default(uuid()) @db.Uuid
+  conversationId    String        @map("conversation_id") @db.Uuid
+  messageIndex      Int           @map("message_index")
+  senderType        ActorType     @map("sender_type")
+  senderUserId      String?       @map("sender_user_id") @db.Uuid
+  messageText       String        @map("message_text")
+  messageFormat     MessageFormat @default(MARKDOWN) @map("message_format")
+  status            MessageStatus @default(SENT)
+  detectedIntent    String?       @map("detected_intent") @db.VarChar(80)
+  metadataJson      Json?         @map("metadata_json")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  conversation      SupportConversation @relation(fields: [conversationId], references: [id])
+  sender            User?         @relation("SupportMessageSender", fields: [senderUserId], references: [id])
+
+  @@unique([conversationId, messageIndex])
+  @@index([conversationId, createdAt])
+  @@index([senderUserId])
+  @@map("support_messages")
+}
+
+model SupportTicket {
+  id                              String                @id @default(uuid()) @db.Uuid
+  ticketKey                       String                @unique @map("ticket_key") @db.VarChar(32)
+  conversationId                  String?               @map("conversation_id") @db.Uuid
+  reporterUserId                  String                @map("reporter_user_id") @db.Uuid
+  tenantId                        String?               @map("tenant_id") @db.VarChar(255)
+  title                           String                @db.VarChar(255)
+  description                     String
+  status                          SupportTicketStatus   @default(NEW)
+  priority                        SupportTicketPriority @default(MEDIUM)
+  severity                        SupportTicketSeverity @default(MODERATE)
+  category                        SupportTicketCategory @default(OTHER)
+  source                          SupportTicketSource   @default(INLINE_HELP_WIDGET)
+  route                           String?               @db.VarChar(255)
+  technicalContextJson            Json?                 @map("technical_context_json")
+  investigationNotes              String?               @map("investigation_notes")
+  proposedFix                     String?               @map("proposed_fix")
+  proposedFixConfidence           String?               @map("proposed_fix_confidence") @db.VarChar(40)
+  proposedFixRationale            String?               @map("proposed_fix_rationale")
+  humanReviewRequired             Boolean               @default(true) @map("human_review_required")
+  humanReviewStatus               String?               @map("human_review_status") @db.VarChar(40)
+  assignedToUserId                String?               @map("assigned_to_user_id") @db.Uuid
+  triagedAt                       DateTime?             @map("triaged_at")
+  resolvedAt                      DateTime?             @map("resolved_at")
+  closedAt                        DateTime?             @map("closed_at")
+  createdAt                       DateTime              @default(now()) @map("created_at")
+  updatedAt                       DateTime              @updatedAt @map("updated_at")
+  conversation                    SupportConversation?  @relation(fields: [conversationId], references: [id])
+  reporter                        User                  @relation("SupportTicketReporter", fields: [reporterUserId], references: [id])
+  assignedTo                      User?                 @relation("SupportTicketAssignedUser", fields: [assignedToUserId], references: [id])
+  events                          SupportTicketEvent[]
+  investigations                  SupportInvestigation[]
+  recommendations                 SupportRecommendation[]
+
+  @@index([reporterUserId, createdAt])
+  @@index([conversationId, createdAt])
+  @@index([status, updatedAt])
+  @@index([priority, severity, updatedAt])
+  @@index([category, updatedAt])
+  @@index([tenantId, updatedAt])
+  @@index([assignedToUserId, updatedAt])
+  @@map("support_tickets")
+}
+
+model SupportTicketEvent {
+  id                String   @id @default(uuid()) @db.Uuid
+  ticketId          String   @map("ticket_id") @db.Uuid
+  eventType         String   @map("event_type") @db.VarChar(80)
+  fromStatus        SupportTicketStatus? @map("from_status")
+  toStatus          SupportTicketStatus? @map("to_status")
+  actorType         ActorType @default(SYSTEM) @map("actor_type")
+  actorUserId       String?  @map("actor_user_id") @db.Uuid
+  comment           String?
+  payloadJson       Json?    @map("payload_json")
+  createdAt         DateTime @default(now()) @map("created_at")
+  ticket            SupportTicket @relation(fields: [ticketId], references: [id])
+  actorUser         User?    @relation("SupportTicketEventActor", fields: [actorUserId], references: [id])
+
+  @@index([ticketId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([eventType, createdAt])
+  @@map("support_ticket_events")
+}
+
+model SupportInvestigation {
+  id                           String                     @id @default(uuid()) @db.Uuid
+  ticketId                     String                     @map("ticket_id") @db.Uuid
+  investigatorAgentKey         String                     @map("investigator_agent_key") @db.VarChar(100)
+  investigatorUserId           String?                    @map("investigator_user_id") @db.Uuid
+  status                       SupportInvestigationStatus @default(PENDING)
+  issueSummary                 String?                    @map("issue_summary")
+  evidenceReviewedJson         Json?                      @map("evidence_reviewed_json")
+  likelyRootCause              String?                    @map("likely_root_cause")
+  confidenceLabel              String?                    @map("confidence_label") @db.VarChar(40)
+  rationale                    String?
+  classification               SupportIssueClassification @default(UNKNOWN)
+  recommendedRemediation       String?                    @map("recommended_remediation")
+  humanReviewRequired          Boolean                    @default(true) @map("human_review_required")
+  startedAt                    DateTime?                  @map("started_at")
+  completedAt                  DateTime?                  @map("completed_at")
+  createdAt                    DateTime                   @default(now()) @map("created_at")
+  updatedAt                    DateTime                   @updatedAt @map("updated_at")
+  ticket                       SupportTicket              @relation(fields: [ticketId], references: [id])
+  investigatorUser             User?                      @relation("SupportInvestigationAgent", fields: [investigatorUserId], references: [id])
+  recommendations              SupportRecommendation[]
+
+  @@index([ticketId, createdAt])
+  @@index([status, updatedAt])
+  @@index([classification, updatedAt])
+  @@map("support_investigations")
+}
+
+model SupportRecommendation {
+  id                 String                      @id @default(uuid()) @db.Uuid
+  ticketId           String                      @map("ticket_id") @db.Uuid
+  investigationId    String?                     @map("investigation_id") @db.Uuid
+  status             SupportRecommendationStatus @default(PENDING_REVIEW)
+  recommendationText String                      @map("recommendation_text")
+  rationale          String?
+  confidenceLabel    String?                     @map("confidence_label") @db.VarChar(40)
+  humanNotes         String?                     @map("human_notes")
+  reviewedByUserId   String?                     @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt         DateTime?                   @map("reviewed_at")
+  createdAt          DateTime                    @default(now()) @map("created_at")
+  updatedAt          DateTime                    @updatedAt @map("updated_at")
+  ticket             SupportTicket               @relation(fields: [ticketId], references: [id])
+  investigation      SupportInvestigation?       @relation(fields: [investigationId], references: [id])
+  reviewedByUser     User?                       @relation("SupportRecommendationReviewedBy", fields: [reviewedByUserId], references: [id])
+
+  @@index([ticketId, createdAt])
+  @@index([status, updatedAt])
+  @@index([reviewedByUserId, reviewedAt])
+  @@map("support_recommendations")
 }
 
 model ActivityLog {

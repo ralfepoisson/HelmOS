@@ -5,6 +5,7 @@ import {
   IdeaCandidateRecord,
   IdeaFoundryApiService,
   ProspectingResultRecord,
+  ProtoIdeaSourceRecord,
   ProtoIdeaRecord
 } from './idea-foundry-api.service';
 
@@ -14,6 +15,7 @@ interface IdeaPipelineCard {
   summary: string;
   signal: string;
   status: string;
+  processingStatus?: string;
   timestamp?: string | null;
   href?: string | null;
 }
@@ -23,6 +25,8 @@ interface IdeaPipelineColumn {
   title: string;
   helper: string;
   cards: IdeaPipelineCard[];
+  unprocessedCount: number;
+  totalCount: number;
 }
 
 type PipelineStageState = 'pending' | 'running' | 'completed' | 'failed';
@@ -58,6 +62,10 @@ const MAX_PIPELINE_STAGE_ITERATIONS = 100;
         </div>
 
         <div class="pipeline-actions">
+          <label class="pipeline-toggle">
+            <input type="checkbox" [checked]="showProcessedItems" (change)="toggleProcessedVisibility($event)" />
+            <span>Show processed</span>
+          </label>
           <button type="button" class="pipeline-run-button" [disabled]="isPipelineRunning" (click)="runPipeline()">
             {{ isPipelineRunning ? 'Running pipeline...' : 'Run Pipeline' }}
           </button>
@@ -91,7 +99,7 @@ const MAX_PIPELINE_STAGE_ITERATIONS = 100;
                 [attr.aria-label]="column.title + ' stage status: ' + getStageState(column.id)"
                 [title]="column.title + ' stage status: ' + getStageState(column.id)"
               ></span>
-              <span class="pipeline-count">{{ column.cards.length }}</span>
+              <span class="pipeline-count">{{ column.unprocessedCount }}/{{ column.totalCount }}</span>
             </div>
           </header>
 
@@ -207,9 +215,31 @@ const MAX_PIPELINE_STAGE_ITERATIONS = 100;
       }
 
       .pipeline-actions {
-        display: grid;
-        justify-items: end;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
         gap: 0.5rem;
+      }
+
+      .pipeline-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.55rem 0.8rem;
+        border-radius: 999px;
+        border: 1px solid rgba(219, 228, 238, 0.95);
+        background: rgba(255, 255, 255, 0.9);
+        color: var(--helmos-text);
+        font-size: 0.82rem;
+        font-weight: 700;
+        line-height: 1;
+      }
+
+      .pipeline-toggle input {
+        width: 1rem;
+        height: 1rem;
+        accent-color: #2563eb;
       }
 
       .pipeline-run-button {
@@ -432,7 +462,7 @@ const MAX_PIPELINE_STAGE_ITERATIONS = 100;
 
         .pipeline-actions {
           width: 100%;
-          justify-items: stretch;
+          justify-content: flex-start;
         }
 
         .pipeline-warning {
@@ -452,6 +482,7 @@ export class IdeaFoundryOverviewComponent implements OnInit {
   sourceLoadError: string | null = null;
   pipelineRunError: string | null = null;
   isPipelineRunning = false;
+  showProcessedItems = false;
   stageStates: Record<PipelineStageKey, PipelineStageState> = buildPendingStageStates();
 
   async ngOnInit(): Promise<void> {
@@ -520,6 +551,12 @@ export class IdeaFoundryOverviewComponent implements OnInit {
     return columnId === 'sources' || columnId === 'proto-ideas';
   }
 
+  toggleProcessedVisibility(event: Event): void {
+    const nextValue = (event.target as HTMLInputElement | null)?.checked ?? false;
+    this.showProcessedItems = nextValue;
+    void this.loadPipelineContents();
+  }
+
   getStageState(columnId: string): PipelineStageState {
     return this.stageStates[toPipelineStageKey(columnId)] ?? 'pending';
   }
@@ -527,7 +564,13 @@ export class IdeaFoundryOverviewComponent implements OnInit {
   private async loadPipelineContents(): Promise<void> {
     try {
       const payload = await this.ideaFoundryApi.getIdeaFoundryContents();
-      this.columns = buildColumnsFromPipelinePayload(payload.sources, payload.protoIdeas, payload.ideaCandidates);
+      this.columns = buildColumnsFromPipelinePayload(
+        payload.sources,
+        payload.sourceProcessing,
+        payload.protoIdeas,
+        payload.ideaCandidates,
+        this.showProcessedItems
+      );
       this.sourceLoadError = null;
     } catch (error) {
       this.columns = buildEmptyColumns();
@@ -575,8 +618,10 @@ export class IdeaFoundryOverviewComponent implements OnInit {
 
 function buildColumnsFromPipelinePayload(
   resultRecords: ProspectingResultRecord[],
+  sourceProcessing: ProtoIdeaSourceRecord[],
   protoIdeas: ProtoIdeaRecord[],
-  ideaCandidates: IdeaCandidateRecord[]
+  ideaCandidates: IdeaCandidateRecord[],
+  showProcessedItems: boolean
 ): IdeaPipelineColumn[] {
   const columns = buildEmptyColumns();
   const sourceColumn = columns.find((column) => column.id === 'sources');
@@ -587,15 +632,25 @@ function buildColumnsFromPipelinePayload(
     return columns;
   }
 
+  const completedSourceKeys = new Set(
+    (Array.isArray(sourceProcessing) ? sourceProcessing : [])
+      .filter((record) => normalizeProcessingStatus(record.processingStatus) === 'COMPLETED')
+      .map((record) => normalizeSourceKey(record))
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+  );
+
   const normalizedCards = Array.isArray(resultRecords)
     ? resultRecords
         .filter((record) => typeof record?.sourceUrl === 'string' && record.sourceUrl.trim().length > 0)
         .map((record) => mapResultRecordToSourceCard(record))
     : [];
+  const unprocessedSourceCards = normalizedCards.filter(
+    (record) => !completedSourceKeys.has(normalizeSourceKey(record))
+  );
 
   sourceColumn.cards =
-    normalizedCards.length > 0
-      ? normalizedCards
+    (showProcessedItems ? normalizedCards : unprocessedSourceCards).length > 0
+      ? (showProcessedItems ? normalizedCards : unprocessedSourceCards)
       : [
           {
             id: 'sources-empty',
@@ -605,16 +660,21 @@ function buildColumnsFromPipelinePayload(
             status: 'Waiting'
           }
         ];
+  sourceColumn.unprocessedCount = unprocessedSourceCards.length;
+  sourceColumn.totalCount = normalizedCards.length;
 
   const normalizedProtoIdeaCards = Array.isArray(protoIdeas)
     ? protoIdeas
         .filter((protoIdea) => typeof protoIdea?.id === 'string' && protoIdea.id.trim().length > 0)
         .map((protoIdea) => mapProtoIdeaToCard(protoIdea))
     : [];
+  const unprocessedProtoIdeaCards = normalizedProtoIdeaCards.filter(
+    (protoIdea) => normalizeProcessingStatus(protoIdea.processingStatus) !== 'COMPLETED'
+  );
 
   protoIdeaColumn.cards =
-    normalizedProtoIdeaCards.length > 0
-      ? normalizedProtoIdeaCards
+    (showProcessedItems ? normalizedProtoIdeaCards : unprocessedProtoIdeaCards).length > 0
+      ? (showProcessedItems ? normalizedProtoIdeaCards : unprocessedProtoIdeaCards)
       : [
           {
             id: 'proto-ideas-empty',
@@ -624,6 +684,8 @@ function buildColumnsFromPipelinePayload(
             status: 'Waiting'
           }
         ];
+  protoIdeaColumn.unprocessedCount = unprocessedProtoIdeaCards.length;
+  protoIdeaColumn.totalCount = normalizedProtoIdeaCards.length;
 
   const normalizedIdeaCandidateCards = Array.isArray(ideaCandidates)
     ? ideaCandidates
@@ -643,6 +705,15 @@ function buildColumnsFromPipelinePayload(
             status: 'Waiting'
           }
         ];
+  candidateColumn.unprocessedCount = normalizedIdeaCandidateCards.length;
+  candidateColumn.totalCount = normalizedIdeaCandidateCards.length;
+
+  const curatedOpportunitiesColumn = columns.find((column) => column.id === 'curated-opportunities');
+  if (curatedOpportunitiesColumn) {
+    const curatedCardCount = curatedOpportunitiesColumn.cards.filter((card) => !card.id.endsWith('-empty')).length;
+    curatedOpportunitiesColumn.unprocessedCount = curatedCardCount;
+    curatedOpportunitiesColumn.totalCount = curatedCardCount;
+  }
 
   return columns;
 }
@@ -671,6 +742,7 @@ function mapProtoIdeaToCard(record: ProtoIdeaRecord): IdeaPipelineCard {
       'A proto-idea has been extracted from a processed source.',
     signal: buildProtoIdeaMeta(record),
     status: record.statusLabel?.trim() || 'Extracted',
+    processingStatus: record.refinementStatus,
     timestamp: formatCapturedAt(record.createdAt)
   };
 }
@@ -721,6 +793,30 @@ function buildIdeaCandidateMeta(record: IdeaCandidateRecord): string {
   return parts.join(' · ');
 }
 
+function normalizeProcessingStatus(status?: string): string {
+  return String(status ?? '').trim().toUpperCase();
+}
+
+function normalizeSourceKey(record: { sourceKey?: string; sourceUrl?: string | null; id?: string; sourceTitle?: string | null }): string {
+  const explicitSourceKey = typeof record?.sourceKey === 'string' ? record.sourceKey.trim().toLowerCase() : '';
+  if (explicitSourceKey) {
+    return explicitSourceKey;
+  }
+
+  const sourceUrl = typeof record?.sourceUrl === 'string' ? record.sourceUrl.trim().toLowerCase() : '';
+  if (sourceUrl) {
+    return sourceUrl;
+  }
+
+  const sourceId = typeof record?.id === 'string' ? record.id.trim() : '';
+  if (sourceId) {
+    return `source-record:${sourceId}`;
+  }
+
+  const sourceTitle = typeof record?.sourceTitle === 'string' ? record.sourceTitle.trim().toLowerCase() : '';
+  return sourceTitle ? `source-title:${sourceTitle}` : '';
+}
+
 function formatCapturedAt(value?: string): string | null {
   if (typeof value !== 'string' || value.trim().length === 0) {
     return null;
@@ -746,12 +842,16 @@ function buildEmptyColumns(): IdeaPipelineColumn[] {
       id: 'sources',
       title: 'Sources',
       helper: 'Raw market signals and observed needs entering the pipeline.',
-      cards: []
+      cards: [],
+      unprocessedCount: 0,
+      totalCount: 0
     },
     {
       id: 'proto-ideas',
       title: 'Proto-Ideas',
       helper: 'Early opportunity fragments extracted from the strongest signals.',
+      unprocessedCount: 0,
+      totalCount: 0,
       cards: [
         {
           id: 'proto-ideas-empty',
@@ -766,6 +866,8 @@ function buildEmptyColumns(): IdeaPipelineColumn[] {
       id: 'idea-candidates',
       title: 'Idea Candidates',
       helper: 'Strengthened opportunities being challenged, expanded, and differentiated.',
+      unprocessedCount: 0,
+      totalCount: 0,
       cards: [
         {
           id: 'idea-candidates-empty',
@@ -780,6 +882,8 @@ function buildEmptyColumns(): IdeaPipelineColumn[] {
       id: 'curated-opportunities',
       title: 'Curated Opportunities',
       helper: 'Higher-confidence opportunities that look ready for downstream strategy work.',
+      unprocessedCount: 0,
+      totalCount: 0,
       cards: [
         {
           id: 'curated-opportunities-empty',

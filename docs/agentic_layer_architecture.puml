@@ -24,6 +24,10 @@ package "Agent Experience Layer" {
   [Agent Admin Screen]
   [Agent Test Admin Screen]
   [Logs Admin Screen]
+  [Global Help Widget]
+  [Support Dashboard Screen]
+  [Support API]
+  [Support Admin API]
 }
 
 package "Identity & Access Layer" {
@@ -48,6 +52,8 @@ package "Specialist Agents" {
   [Architecture Agent]
   [Artifact Agent]
   [Testing Agent]
+  [Help Desk Agent]
+  [Incident Response Agent]
 }
 
 package "Agent Testing Framework" {
@@ -76,6 +82,9 @@ package "Deterministic Services" {
   [Rules Engine]
   [Output Normaliser]
   [Document Export Service]
+  [Support Service]
+  [Incident Investigation Service]
+  [Support Bootstrap Service]
 }
 
 package "Tool Layer" {
@@ -83,6 +92,8 @@ package "Tool Layer" {
   [Web Search Adapter]
   [Retrieval Adapter]
   [Storage Adapter]
+  [Log Analysis Adapter]
+  [Support Log Analysis Service]
   [External Integrations]
 }
 
@@ -178,7 +189,16 @@ package "AWS Production Deployment" {
 [Agent Test Admin Screen] --> [Run Detail Evidence API] : transcript turns, score evidence, and snapshot artifacts
 [Angular UI] --> [Logs Admin Screen]
 [Logs Admin Screen] --> [Node Control Plane API] : search backend logs, filter by scope, timed refresh
+[Angular UI] --> [Global Help Widget]
+[Global Help Widget] --> [Support API] : ask product questions, report bugs, receive ticket ids
+[Angular UI] --> [Support Dashboard Screen]
+[Support Dashboard Screen] --> [Support Admin API] : review conversations, tickets, investigations, and approvals
+[Support API] --> [Node Control Plane API] : authenticated support conversation requests
+[Support Admin API] --> [Node Control Plane API] : authenticated admin support requests
 [Node Control Plane API] --> [RBAC Policy] : verify JWT, derive user context, enforce access
+[Node Control Plane API] --> [Support Service] : help-desk orchestration, escalation, ticket creation
+[Node Control Plane API] --> [Incident Investigation Service] : advisory-only root cause analysis and recommendations
+[Node Control Plane API] --> [Support Bootstrap Service] : ensure KB partition and agent scaffolding exist
 [Node Control Plane API] --> [Shared Registry PostgreSQL] : persist workspace feature unlocks and stage availability
 [Node Control Plane API] --> [Conceptual Tools Registry] : persist structured reasoning artefacts
 [RBAC Policy] --> [Shared Registry PostgreSQL] : upsert local user, tenant link, app role
@@ -198,6 +218,8 @@ package "AWS Production Deployment" {
 [Workflow Graph Engine] --> [Roadmap Agent]
 [Workflow Graph Engine] --> [Architecture Agent]
 [Workflow Graph Engine] --> [Artifact Agent]
+[Workflow Graph Engine] --> [Help Desk Agent]
+[Workflow Graph Engine] --> [Incident Response Agent]
 [Test Harness Service] --> [Scenario Driver]
 [Test Harness Service] --> [Agent Test Execution Service]
 [Test Harness Service] --> [Conversation Progression Service]
@@ -239,15 +261,20 @@ package "AWS Production Deployment" {
 [Value Proposition Agent] --> [Tool Registry]
 [Research Agent] --> [Tool Registry]
 [Roadmap Agent] --> [Tool Registry]
+[Help Desk Agent] --> [Tool Registry]
+[Incident Response Agent] --> [Tool Registry]
 
 [Tool Registry] --> [Web Search Adapter]
 [Tool Registry] --> [Retrieval Adapter]
 [Tool Registry] --> [Storage Adapter]
+[Tool Registry] --> [Log Analysis Adapter]
 [Tool Registry] --> [External Integrations]
+[Log Analysis Adapter] --> [Support Log Analysis Service]
 
 [Agent Gateway API (FastAPI)] --> [Shared Registry PostgreSQL] : read agent definitions and prompt configs
 [State & Checkpoint Manager] --> [Gateway Runtime PostgreSQL]
 [Retrieval Adapter] --> [pgvector]
+[Support Log Analysis Service] --> [Shared Registry PostgreSQL]
 [Workflow Graph Engine] --> [Redis]
 [Storage Adapter] --> [Object Storage]
 

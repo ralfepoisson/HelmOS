@@ -33,7 +33,7 @@ const stringField = (max) => {
 const nullableStringField = (max) => z.union([stringField(max), z.null()]);
 const jsonField = () => z.unknown();
 const supportedModelAliases = ["helmos-default", "helmos-research", "helmos-supervisor"];
-const supportedToolNames = ["retrieval", "web_search", "object_storage", "communications"];
+const supportedToolNames = ["retrieval", "web_search", "object_storage", "log_analysis", "communications"];
 const modelField = () => z.enum(supportedModelAliases);
 const nullableModelField = () => z.union([modelField(), z.null()]);
 const toolArrayField = () => z.array(z.enum(supportedToolNames)).max(25);

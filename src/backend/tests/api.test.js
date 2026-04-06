@@ -2218,6 +2218,19 @@ test("GET /api/idea-foundry/prospecting/configuration returns the persisted pros
         lastResultRecords: storedResultRecords,
       }),
     },
+    protoIdeaSource: {
+      findMany: async () => [
+        {
+          id: "proto-source-1",
+          upstreamSourceRecordId: "result-1",
+          sourceKey: "https://example.com/vat-reminders",
+          processingStatus: "COMPLETED",
+          processingCompletedAt: new Date("2026-04-05T20:30:00Z"),
+          processingFailedAt: null,
+          updatedAt: new Date("2026-04-05T20:30:00Z"),
+        },
+      ],
+    },
   };
 
   const app = createApp({ prisma, agentGatewayClient: {} });
@@ -2284,6 +2297,54 @@ test("GET /api/idea-foundry/prospecting/contents returns the persisted pipeline 
         lastResultRecords: storedResultRecords,
       }),
     },
+    protoIdeaSource: {
+      findMany: async () => [
+        {
+          id: "proto-source-1",
+          upstreamSourceRecordId: "result-1",
+          sourceKey: "https://example.com/vat-reminders",
+          sourceTitle: "VAT reminders are killing your accounting firm",
+          sourceUrl: "https://example.com/vat-reminders",
+          sourceType: "web_search",
+          sourceCapturedAt: new Date("2026-04-05T20:00:00Z"),
+          sourcePayload: {
+            id: "result-1",
+            sourceTitle: "VAT reminders are killing your accounting firm",
+            sourceUrl: "https://example.com/vat-reminders",
+            snippet: "Operators describe recurring invoicing and VAT reminder pain.",
+            queryFamilyTitle: "Complaint language around invoicing / VAT / reminders",
+            themeLink: "fragmented compliance workflows",
+            capturedAt: "2026-04-05T20:00:00.000Z",
+          },
+          processingStatus: "COMPLETED",
+          processingCompletedAt: new Date("2026-04-05T20:30:00Z"),
+          processingFailedAt: null,
+          updatedAt: new Date("2026-04-05T20:30:00Z"),
+        },
+        {
+          id: "proto-source-2",
+          upstreamSourceRecordId: "historic-source-1",
+          sourceKey: "https://example.com/historic-source",
+          sourceTitle: "Historic workflow breakdown thread",
+          sourceUrl: "https://example.com/historic-source",
+          sourceType: "web_search",
+          sourceCapturedAt: new Date("2026-04-01T18:00:00Z"),
+          sourcePayload: {
+            id: "historic-source-1",
+            sourceTitle: "Historic workflow breakdown thread",
+            sourceUrl: "https://example.com/historic-source",
+            snippet: "An older but still traceable source record.",
+            queryFamilyTitle: "Historic archive",
+            themeLink: "manual coordination pain",
+            capturedAt: "2026-04-01T18:00:00.000Z",
+          },
+          processingStatus: "COMPLETED",
+          processingCompletedAt: new Date("2026-04-01T19:00:00Z"),
+          processingFailedAt: null,
+          updatedAt: new Date("2026-04-01T19:00:00Z"),
+        },
+      ],
+    },
   };
 
   const app = createApp({ prisma, agentGatewayClient: {} });
@@ -2292,7 +2353,13 @@ test("GET /api/idea-foundry/prospecting/contents returns the persisted pipeline 
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
   assert.equal(response.body.data.runtime.resultRecordCount, 2);
-  assert.deepEqual(response.body.data.sources, storedResultRecords);
+  assert.equal(response.body.data.sources.length, 3);
+  assert.equal(
+    response.body.data.sources.some((entry) => entry.sourceUrl === "https://example.com/historic-source"),
+    true
+  );
+  assert.equal(response.body.data.sourceProcessing.length, 2);
+  assert.equal(response.body.data.sourceProcessing[0].upstreamSourceRecordId, "result-1");
   assert.deepEqual(response.body.data.protoIdeas, []);
   assert.deepEqual(response.body.data.ideaCandidates, []);
   assert.deepEqual(response.body.data.curatedOpportunities, []);

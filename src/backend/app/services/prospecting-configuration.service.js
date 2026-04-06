@@ -3,7 +3,7 @@ const { z } = require("zod");
 
 const { createLogEntry } = require("./log-entry.service");
 const { getIdeaCandidatePipelineContents } = require("./idea-refinement.service");
-const { getProtoIdeaPipelineContents } = require("./proto-idea-extraction.service");
+const { getProtoIdeaPipelineContents, getProtoIdeaSourcePipelineContents } = require("./proto-idea-extraction.service");
 
 const PROSPECTING_AGENT_KEY_CANDIDATES = ["prospecting", "prospecting_agent", "prospecting-agent"];
 const MAX_PROSPECTING_REPAIR_ATTEMPTS = 3;
@@ -144,18 +144,101 @@ async function getProspectingConfiguration(prisma, currentUser) {
 
 async function getProspectingPipelineContents(prisma, currentUser) {
   const record = await loadProspectingConfiguration(prisma, currentUser.id);
-  const [protoIdeas, ideaCandidates] = await Promise.all([
+  const [protoIdeas, protoIdeaSources, ideaCandidates] = await Promise.all([
     getProtoIdeaPipelineContents(prisma, currentUser.id),
+    getProtoIdeaSourcePipelineContents(prisma, currentUser.id),
     getIdeaCandidatePipelineContents(prisma, currentUser.id),
   ]);
 
   return {
-    sources: Array.isArray(record?.lastResultRecords) ? record.lastResultRecords : [],
+    sources: mergePipelineSources(Array.isArray(record?.lastResultRecords) ? record.lastResultRecords : [], protoIdeaSources),
+    sourceProcessing: protoIdeaSources,
     protoIdeas,
     ideaCandidates,
     curatedOpportunities: [],
     runtime: buildRuntimeState(record),
   };
+}
+
+function mergePipelineSources(latestResultRecords = [], protoIdeaSources = []) {
+  const merged = new Map();
+
+  for (const record of Array.isArray(latestResultRecords) ? latestResultRecords : []) {
+    const sourceKey = normalizePipelineSourceKey(record);
+    if (!sourceKey) {
+      continue;
+    }
+
+    merged.set(sourceKey, {
+      ...record,
+      sourceKey,
+    });
+  }
+
+  for (const persistedSource of Array.isArray(protoIdeaSources) ? protoIdeaSources : []) {
+    const sourcePayload = persistedSource?.sourcePayload && typeof persistedSource.sourcePayload === "object"
+      ? persistedSource.sourcePayload
+      : {};
+    const candidate = {
+      id: persistedSource.upstreamSourceRecordId ?? persistedSource.id,
+      sourceTitle: persistedSource.sourceTitle ?? sourcePayload.sourceTitle ?? "",
+      sourceUrl: persistedSource.sourceUrl ?? sourcePayload.sourceUrl ?? null,
+      snippet: sourcePayload.snippet ?? "",
+      provider: persistedSource.sourceType ?? sourcePayload.provider ?? sourcePayload.sourceType ?? null,
+      capturedAt:
+        persistedSource.sourceCapturedAt instanceof Date
+          ? persistedSource.sourceCapturedAt.toISOString()
+          : persistedSource.sourceCapturedAt ?? sourcePayload.capturedAt ?? null,
+      query: sourcePayload.query ?? null,
+      queryFamilyId: sourcePayload.queryFamilyId ?? null,
+      queryFamilyTitle: sourcePayload.queryFamilyTitle ?? null,
+      themeLink: sourcePayload.themeLink ?? null,
+      rank: sourcePayload.rank ?? null,
+      executedQuery: sourcePayload.executedQuery ?? null,
+      sourceKey: persistedSource.sourceKey ?? normalizePipelineSourceKey(sourcePayload),
+    };
+    const sourceKey = normalizePipelineSourceKey(candidate);
+    if (!sourceKey || merged.has(sourceKey)) {
+      continue;
+    }
+
+    merged.set(sourceKey, candidate);
+  }
+
+  return [...merged.values()].sort((left, right) => {
+    const leftTime = toSortableTimestamp(left?.capturedAt);
+    const rightTime = toSortableTimestamp(right?.capturedAt);
+    if (leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+
+    return String(left?.sourceTitle ?? left?.sourceUrl ?? "").localeCompare(String(right?.sourceTitle ?? right?.sourceUrl ?? ""));
+  });
+}
+
+function normalizePipelineSourceKey(record = {}) {
+  const sourceKey = typeof record?.sourceKey === "string" ? record.sourceKey.trim().toLowerCase() : "";
+  if (sourceKey) {
+    return sourceKey;
+  }
+
+  const sourceUrl = typeof record?.sourceUrl === "string" ? record.sourceUrl.trim().toLowerCase() : "";
+  if (sourceUrl) {
+    return sourceUrl;
+  }
+
+  const sourceId = typeof record?.id === "string" ? record.id.trim() : "";
+  if (sourceId) {
+    return `source-record:${sourceId}`;
+  }
+
+  const sourceTitle = typeof record?.sourceTitle === "string" ? record.sourceTitle.trim().toLowerCase() : "";
+  return sourceTitle ? `source-title:${sourceTitle}` : "";
+}
+
+function toSortableTimestamp(value) {
+  const date = value ? new Date(value) : null;
+  return date instanceof Date && !Number.isNaN(date.getTime()) ? date.getTime() : 0;
 }
 
 async function runProspectingConfigurationReview(prisma, agentGatewayClient, payload, currentUser) {

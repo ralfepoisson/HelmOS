@@ -958,6 +958,42 @@ async function getProtoIdeaPipelineContents(prisma, ownerUserId) {
   }
 }
 
+async function getProtoIdeaSourcePipelineContents(prisma, ownerUserId) {
+  if (!prisma?.protoIdeaSource || typeof prisma.protoIdeaSource.findMany !== "function") {
+    return [];
+  }
+
+  try {
+    return await prisma.protoIdeaSource.findMany({
+      where: {
+        ownerUserId,
+      },
+      select: {
+        id: true,
+        upstreamSourceRecordId: true,
+        sourceKey: true,
+        sourceTitle: true,
+        sourceUrl: true,
+        sourceType: true,
+        sourceCapturedAt: true,
+        sourcePayload: true,
+        processingStatus: true,
+        processingCompletedAt: true,
+        processingFailedAt: true,
+        updatedAt: true,
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+  } catch (error) {
+    if (isMissingProtoIdeaStorageError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
 async function updateProtoIdeaPolicyRuntime(prisma, policyId, data) {
   if (!policyId || !prisma?.protoIdeaExtractionPolicy || typeof prisma.protoIdeaExtractionPolicy.update !== "function") {
     return null;
@@ -1312,6 +1348,7 @@ module.exports = {
   buildProtoIdeaExtractionPrompt,
   getProtoIdeaExtractionConfiguration,
   getProtoIdeaPipelineContents,
+  getProtoIdeaSourcePipelineContents,
   loadProtoIdeaAgentIdentity,
   runProtoIdeaExtractionStage,
   runProtoIdeaExtractionPass,

@@ -15,7 +15,7 @@ skinparam note {
   BorderColor #9ca3af
 }
 
-title HelmOS MVP - Strategy Workspace and Knowledge Base ERD
+title HelmOS MVP - Strategy Workspace, Knowledge Base, and Support ERD
 
 package "Identity & Ownership" {
   entity "users" as users {
@@ -355,6 +355,123 @@ package "Idea Foundry Control" {
     refinement_iteration : INTEGER
     deduplication_fingerprint : VARCHAR(1000)
     raw_llm_payload : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+}
+
+package "Integrated Support" {
+  entity "support_conversations" as support_conversations {
+    *id : UUID <<PK>>
+    --
+    user_id : UUID <<FK>>
+    tenant_id : VARCHAR(255)
+    title : VARCHAR(255)
+    status : VARCHAR(50)
+    source : VARCHAR(50)
+    escalated_at : TIMESTAMP
+    last_message_at : TIMESTAMP
+    last_route : VARCHAR(255)
+    session_key : VARCHAR(120)
+    client_context_json : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
+  entity "support_messages" as support_messages {
+    *id : UUID <<PK>>
+    --
+    conversation_id : UUID <<FK>>
+    message_index : INTEGER
+    sender_type : VARCHAR(20)
+    sender_user_id : UUID <<FK>>
+    message_text : TEXT
+    message_format : VARCHAR(20)
+    status : VARCHAR(20)
+    detected_intent : VARCHAR(80)
+    metadata_json : JSONB
+    created_at : TIMESTAMP
+    --
+    UNIQUE(conversation_id, message_index)
+  }
+
+  entity "support_tickets" as support_tickets {
+    *id : UUID <<PK>>
+    --
+    ticket_key : VARCHAR(32) <<UK>>
+    conversation_id : UUID <<FK>>
+    reporter_user_id : UUID <<FK>>
+    assigned_to_user_id : UUID <<FK>>
+    tenant_id : VARCHAR(255)
+    title : VARCHAR(255)
+    description : TEXT
+    status : VARCHAR(50)
+    priority : VARCHAR(20)
+    severity : VARCHAR(20)
+    category : VARCHAR(50)
+    source : VARCHAR(50)
+    route : VARCHAR(255)
+    technical_context_json : JSONB
+    investigation_notes : TEXT
+    proposed_fix : TEXT
+    proposed_fix_confidence : VARCHAR(40)
+    proposed_fix_rationale : TEXT
+    human_review_required : BOOLEAN
+    human_review_status : VARCHAR(40)
+    triaged_at : TIMESTAMP
+    resolved_at : TIMESTAMP
+    closed_at : TIMESTAMP
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
+  entity "support_ticket_events" as support_ticket_events {
+    *id : UUID <<PK>>
+    --
+    ticket_id : UUID <<FK>>
+    event_type : VARCHAR(80)
+    from_status : VARCHAR(50)
+    to_status : VARCHAR(50)
+    actor_type : VARCHAR(20)
+    actor_user_id : UUID <<FK>>
+    comment : TEXT
+    payload_json : JSONB
+    created_at : TIMESTAMP
+  }
+
+  entity "support_investigations" as support_investigations {
+    *id : UUID <<PK>>
+    --
+    ticket_id : UUID <<FK>>
+    investigator_agent_key : VARCHAR(100)
+    investigator_user_id : UUID <<FK>>
+    status : VARCHAR(30)
+    issue_summary : TEXT
+    evidence_reviewed_json : JSONB
+    likely_root_cause : TEXT
+    confidence_label : VARCHAR(40)
+    rationale : TEXT
+    classification : VARCHAR(50)
+    recommended_remediation : TEXT
+    human_review_required : BOOLEAN
+    started_at : TIMESTAMP
+    completed_at : TIMESTAMP
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
+  entity "support_recommendations" as support_recommendations {
+    *id : UUID <<PK>>
+    --
+    ticket_id : UUID <<FK>>
+    investigation_id : UUID <<FK>>
+    status : VARCHAR(30)
+    recommendation_text : TEXT
+    rationale : TEXT
+    confidence_label : VARCHAR(40)
+    human_notes : TEXT
+    reviewed_by_user_id : UUID <<FK>>
+    reviewed_at : TIMESTAMP
     created_at : TIMESTAMP
     updated_at : TIMESTAMP
   }
@@ -825,6 +942,19 @@ knowledge_base_files ||--o{ knowledge_base_processing_jobs
 knowledge_bases ||--o{ knowledge_base_search_audits
 users ||--o{ knowledge_base_search_audits : actor
 users ||--o{ knowledge_base_tool_audits : actor
+users ||--o{ support_conversations : user
+support_conversations ||--o{ support_messages
+users ||--o{ support_messages : sender
+support_conversations ||--o{ support_tickets
+users ||--o{ support_tickets : reporter
+users ||--o{ support_tickets : assigned_to
+support_tickets ||--o{ support_ticket_events
+users ||--o{ support_ticket_events : actor
+support_tickets ||--o{ support_investigations
+users ||--o{ support_investigations : investigator
+support_tickets ||--o{ support_recommendations
+support_investigations ||--o{ support_recommendations
+users ||--o{ support_recommendations : reviewed_by
 
 note bottom of prompt_configs
 Prompt configs are linked to agents by key convention
@@ -898,6 +1028,13 @@ and review artifacts, while canonical product conversation
 execution remains in agent_runs. The admin run-detail API
 returns related transcript, score, annotation, and snapshot
 records directly for reviewer inspection.
+end note
+
+note bottom of support_tickets
+The support subsystem is intentionally advisory-only.
+Help Desk and Incident Response can summarize evidence,
+classify likely causes, and propose remediation, but
+execution always remains a later human-reviewed step.
 end note
 
 @enduml

@@ -2,6 +2,7 @@ const express = require("express");
 
 const { createAuthMiddleware, createAuthServiceSignInHandler, requireAdmin } = require("./auth");
 const { createAdminRouter } = require("./admin-router");
+const { createAdminSupportRouter } = require("./admin-support-router");
 const { createBusinessIdeasRouter } = require("./business-ideas-router");
 const { createProspectingRouter } = require("./prospecting-router");
 const { createProtoIdeaRouter } = require("./proto-idea-router");
@@ -10,6 +11,7 @@ const { createIdeaFoundryPipelineRouter } = require("./idea-foundry-pipeline-rou
 const { createCrudRouter } = require("./create-crud-router");
 const { prismaEnums, resourceConfigs } = require("./resources");
 const { createKnowledgeBaseToolRouter } = require("./tool-router");
+const { createSupportRouter } = require("./support-router");
 
 function createApiRouter({
   prisma,
@@ -42,7 +44,7 @@ function createApiRouter({
   router.get("/auth/sign-in", createAuthServiceSignInHandler());
 
   if (knowledgeBaseRuntime) {
-    router.use("/tools", createKnowledgeBaseToolRouter({ knowledgeBaseRuntime }));
+    router.use("/tools", createKnowledgeBaseToolRouter({ knowledgeBaseRuntime, prisma }));
   }
 
   router.use(
@@ -51,7 +53,9 @@ function createApiRouter({
     requireAdmin,
     createAdminRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, storageService }),
   );
+  router.use("/admin/support", authenticate, requireAdmin, createAdminSupportRouter({ prisma }));
   router.use("/business-ideas", authenticate, createBusinessIdeasRouter({ prisma, agentGatewayClient }));
+  router.use("/support", authenticate, createSupportRouter({ prisma, knowledgeBaseRuntime }));
   router.use("/idea-foundry/prospecting", authenticate, createProspectingRouter({ prisma, agentGatewayClient }));
   router.use("/idea-foundry/proto-idea", authenticate, requireAdmin, createProtoIdeaRouter({ prisma, agentGatewayClient }));
   router.use(

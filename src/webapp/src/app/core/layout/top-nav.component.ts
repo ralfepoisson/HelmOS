@@ -79,6 +79,16 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
 
             <div *ngIf="adminMenuOpen" class="admin-panel helmos-card" role="menu">
               <a
+                routerLink="/admin/support"
+                routerLinkActive="admin-link-active"
+                class="admin-link"
+                role="menuitem"
+                (click)="closeAdminMenu()"
+              >
+                <span class="admin-link-title">Support Dashboard</span>
+                <span class="admin-link-copy">Review help conversations, support tickets, investigations, and human approvals.</span>
+              </a>
+              <a
                 routerLink="/admin/conceptual-tools"
                 routerLinkActive="admin-link-active"
                 class="admin-link"

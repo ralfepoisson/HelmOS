@@ -12,6 +12,7 @@ import { KnowledgeBaseDetailScreenComponent } from './features/admin/knowledge-b
 import { KnowledgeBaseListScreenComponent } from './features/admin/knowledge-base-list-screen.component';
 import { KnowledgeBaseSearchScreenComponent } from './features/admin/knowledge-base-search-screen.component';
 import { ConceptualToolsScreenComponent } from './features/admin/conceptual-tools-screen.component';
+import { SupportAdminScreenComponent } from './features/admin/support-admin-screen.component';
 import { NewIdeaPageComponent } from './features/ideation/new-idea-page.component';
 import { IdeationScreenComponent } from './features/ideation/ideation-screen.component';
 import { ValuePropositionScreenComponent } from './features/value-proposition/value-proposition-screen.component';
@@ -118,6 +119,12 @@ export const routes: Routes = [
   {
     path: 'ideation',
     redirectTo: 'strategy-copilot/ideation'
+  },
+  {
+    path: 'admin/support',
+    component: SupportAdminScreenComponent,
+    canActivate: [adminGuard],
+    title: 'HelmOS Support Dashboard'
   },
   {
     path: 'admin/conceptual-tools',

@@ -32,7 +32,7 @@ const decimalField = () => z.union([z.number().finite(), z.string().trim().min(1
 const intField = () => z.number().int();
 const dateTimeField = () => z.union([z.string().trim().min(1), z.date()]);
 const supportedModelAliases = ["helmos-default", "helmos-research", "helmos-supervisor"];
-const supportedToolNames = ["retrieval", "web_search", "object_storage", "communications"];
+const supportedToolNames = ["retrieval", "web_search", "object_storage", "log_analysis", "communications"];
 const modelField = () => z.enum(supportedModelAliases);
 const nullableModelField = () => z.union([modelField(), z.null()]);
 const toolArrayField = () => z.array(z.enum(supportedToolNames)).max(25);

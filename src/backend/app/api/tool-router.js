@@ -1,6 +1,8 @@
 const express = require("express");
 const { z } = require("zod");
 
+const { createPrismaSupportLogAnalysisService } = require("../services/support-log-analysis.service");
+
 function createHttpError(statusCode, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -18,9 +20,10 @@ const searchSchema = z
   })
   .strict();
 
-function createKnowledgeBaseToolRouter({ knowledgeBaseRuntime }) {
+function createKnowledgeBaseToolRouter({ knowledgeBaseRuntime, prisma = null }) {
   const router = express.Router();
   const apiKey = process.env.KNOWLEDGE_BASE_TOOL_API_KEY?.trim() || null;
+  const logAnalysisService = prisma ? createPrismaSupportLogAnalysisService({ prisma }) : null;
 
   router.use((req, _res, next) => {
     if (!apiKey) {
@@ -95,6 +98,29 @@ function createKnowledgeBaseToolRouter({ knowledgeBaseRuntime }) {
     });
 
     res.json({ data: chunks });
+  });
+
+  router.post("/log-analysis/analyze", async (req, res) => {
+    if (!logAnalysisService) {
+      throw createHttpError(503, "Log analysis service is unavailable.");
+    }
+
+    const payload = z
+      .object({
+        query: z.string().trim().min(1).optional(),
+        severity: z.enum(["error", "warn", "info"]).optional(),
+        requestId: z.string().trim().min(1).optional(),
+        userId: z.string().trim().min(1).optional(),
+        tenantId: z.string().trim().min(1).optional(),
+        route: z.string().trim().min(1).optional(),
+        timeRange: z.string().trim().min(1).optional(),
+        scope: z.string().trim().min(1).optional(),
+      })
+      .strict()
+      .parse(req.body);
+
+    const result = await logAnalysisService.analyze(payload);
+    res.json({ data: result });
   });
 
   return router;

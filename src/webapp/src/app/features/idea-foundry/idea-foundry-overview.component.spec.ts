@@ -41,6 +41,17 @@ describe('IdeaFoundryOverviewComponent', () => {
           capturedAt: '2026-04-05T20:40:32.953Z'
         }
       ],
+      sourceProcessing: [
+        {
+          id: 'proto-source-1',
+          upstreamSourceRecordId: 'historic-result-1',
+          sourceKey: 'https://example.com/vat-reminders',
+          processingStatus: 'COMPLETED',
+          processingCompletedAt: '2026-04-05T20:45:32.953Z',
+          processingFailedAt: null,
+          updatedAt: '2026-04-05T20:45:32.953Z'
+        }
+      ],
       protoIdeas: [
         {
           id: 'proto-idea-1',
@@ -59,6 +70,7 @@ describe('IdeaFoundryOverviewComponent', () => {
           statusTone: 'positive',
           agentConfidence: 'medium',
           statusExplanation: 'Repeated operational pain appears directly in the source.',
+          refinementStatus: 'COMPLETED',
           createdAt: '2026-04-05T20:45:32.953Z',
           updatedAt: '2026-04-05T20:45:32.953Z'
         }
@@ -181,6 +193,26 @@ describe('IdeaFoundryOverviewComponent', () => {
     );
 
     expect(stageTitles).toEqual(['Sources', 'Proto-Ideas', 'Idea Candidates', 'Curated Opportunities']);
+
+    const counts = Array.from(fixture.nativeElement.querySelectorAll('.pipeline-count')).map((node) =>
+      (node as HTMLElement).textContent?.trim()
+    );
+    expect(counts).toEqual(['1/2', '0/1', '1/1', '0/0']);
+  });
+
+  it('hides already processed items by default', async () => {
+    const fixture = TestBed.createComponent(IdeaFoundryOverviewComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+
+    expect(text).not.toContain('VAT reminders are killing your accounting firm');
+    expect(text).toContain('Manual rota coordination is chaos');
+    expect(text).not.toContain('Compliance workflow co-pilot for small accounting firms');
+    expect(text).toContain('No proto-ideas yet');
+    expect(text).toContain('Compliance workflow cockpit for small accounting firms that automates reminder sequencing and handoffs.');
   });
 
   it('renders the run pipeline button and pending stage indicators', async () => {
@@ -201,6 +233,7 @@ describe('IdeaFoundryOverviewComponent', () => {
       'pending',
       'pending'
     ]);
+    expect(fixture.nativeElement.textContent).toContain('Show processed');
   });
 
   it('shows empty downstream stages without seeded demo opportunities', async () => {
@@ -332,6 +365,7 @@ describe('IdeaFoundryOverviewComponent', () => {
   it('shows empty-state cards instead of seeded demo records when no live sources exist', async () => {
     ideaFoundryApi.getIdeaFoundryContents.mockResolvedValueOnce({
       sources: [],
+      sourceProcessing: [],
       protoIdeas: [],
       ideaCandidates: [],
       curatedOpportunities: [],
@@ -355,6 +389,28 @@ describe('IdeaFoundryOverviewComponent', () => {
     expect(text).toContain('Sources');
     expect(text).not.toContain('Freelancer tax workflow complaints');
     expect(text).not.toContain('Managed onboarding ops for AI-heavy B2B SaaS');
+  });
+
+  it('shows processed items again when the toggle is enabled', async () => {
+    const fixture = TestBed.createComponent(IdeaFoundryOverviewComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const toggle = fixture.nativeElement.querySelector('.pipeline-toggle input') as HTMLInputElement;
+    toggle.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+    const counts = Array.from(fixture.nativeElement.querySelectorAll('.pipeline-count')).map((node) =>
+      (node as HTMLElement).textContent?.trim()
+    );
+
+    expect(text).toContain('VAT reminders are killing your accounting firm');
+    expect(text).toContain('Compliance workflow co-pilot for small accounting firms');
+    expect(counts).toEqual(['1/2', '0/1', '1/1', '0/0']);
   });
 
   it('runs the pipeline from the overview and marks each stage as completed', async () => {

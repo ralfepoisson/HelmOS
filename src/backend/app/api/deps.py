@@ -26,6 +26,7 @@ from app.services.rules_engine import RulesScoringService
 from app.services.template_renderer import TemplateRenderer
 from app.tools.adapters import (
     CommunicationsAdapter,
+    LogAnalysisAdapter,
     RetrievalAdapter,
     StorageAdapter,
     WebSearchAdapter,
@@ -62,6 +63,7 @@ def build_tool_registry() -> ToolRegistry:
             WebSearchAdapter(),
             RetrievalAdapter(),
             StorageAdapter(),
+            LogAnalysisAdapter(),
             CommunicationsAdapter(),
         ]
     )

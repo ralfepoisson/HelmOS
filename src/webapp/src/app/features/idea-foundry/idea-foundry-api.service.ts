@@ -20,6 +20,7 @@ export interface ProspectingConfigurationRuntimeState {
 
 export interface ProspectingResultRecord {
   id: string;
+  sourceKey?: string;
   query?: string;
   queryFamilyTitle?: string;
   themeLink?: string;
@@ -39,10 +40,21 @@ export interface ProspectingConfigurationResponse {
 
 export interface IdeaFoundryPipelineContentsResponse {
   sources: ProspectingResultRecord[];
+  sourceProcessing: ProtoIdeaSourceRecord[];
   protoIdeas: ProtoIdeaRecord[];
   ideaCandidates: IdeaCandidateRecord[];
   curatedOpportunities: Array<Record<string, unknown>>;
   runtime: ProspectingConfigurationRuntimeState;
+}
+
+export interface ProtoIdeaSourceRecord {
+  id: string;
+  upstreamSourceRecordId: string;
+  sourceKey: string;
+  processingStatus: string;
+  processingCompletedAt?: string | null;
+  processingFailedAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface ProtoIdeaRecord {
@@ -62,6 +74,7 @@ export interface ProtoIdeaRecord {
   statusTone: string;
   agentConfidence: string;
   statusExplanation: string;
+  refinementStatus?: string;
   createdAt?: string;
   updatedAt?: string;
 }

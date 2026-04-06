@@ -8,6 +8,7 @@ const { getKnowledgeBaseConfig } = require("./services/knowledge-base.config");
 const { createKnowledgeBaseProcessingRuntime } = require("./services/knowledge-base-processing.service");
 const { createFileStorageService } = require("./services/knowledge-base-storage.service");
 const { createProspectingRuntime } = require("./services/prospecting-runtime.service");
+const { ensureSupportScaffolding } = require("./services/support-bootstrap.service");
 
 function getAllowedOrigins() {
   const configuredOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? "")
@@ -54,6 +55,10 @@ function createApp({ prisma, agentGatewayClient, ideaFoundryPipelineExecutor }) 
   const prospectingRuntime = createProspectingRuntime({
     prisma,
     agentGatewayClient: gatewayClient,
+  });
+
+  ensureSupportScaffolding(prisma).catch((error) => {
+    process.stderr.write(`Support scaffolding bootstrap failed: ${error.message}\n`);
   });
 
   app.disable("x-powered-by");

@@ -223,6 +223,66 @@ class StorageAdapter(ToolAdapter):
         )
 
 
+class LogAnalysisAdapter(ToolAdapter):
+    name = "log_analysis"
+    description = "Bounded support log analysis adapter."
+
+    async def invoke(self, invocation: ToolInvocation) -> ToolResult:
+        base_url = os.getenv("HELMOS_NODE_CONTROL_PLANE_URL", "http://127.0.0.1:3001").rstrip("/")
+        api_key = os.getenv("KNOWLEDGE_BASE_TOOL_API_KEY", "").strip()
+
+        if not api_key:
+            return ToolResult(
+                tool_name=self.name,
+                action=invocation.action,
+                success=False,
+                payload={"note": "KNOWLEDGE_BASE_TOOL_API_KEY is not configured."},
+                message="Log analysis tool is unavailable because the internal tool API key is missing.",
+            )
+
+        if invocation.action != "analyze":
+            return ToolResult(
+                tool_name=self.name,
+                action=invocation.action,
+                success=False,
+                payload={},
+                message="Unsupported log analysis action.",
+            )
+
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                f"{base_url}/api/tools/log-analysis/analyze",
+                headers={"x-helmos-tool-key": api_key},
+                json={
+                    "query": invocation.payload.get("query"),
+                    "severity": invocation.payload.get("severity"),
+                    "requestId": invocation.payload.get("request_id"),
+                    "userId": invocation.payload.get("user_id"),
+                    "tenantId": invocation.payload.get("tenant_id"),
+                    "route": invocation.payload.get("route"),
+                    "timeRange": invocation.payload.get("time_range"),
+                    "scope": invocation.payload.get("scope"),
+                },
+            )
+
+        if response.status_code >= 400:
+            return ToolResult(
+                tool_name=self.name,
+                action=invocation.action,
+                success=False,
+                payload={"status_code": response.status_code, "body": response.text},
+                message="Log analysis request failed.",
+            )
+
+        return ToolResult(
+            tool_name=self.name,
+            action=invocation.action,
+            success=True,
+            payload={"result": response.json().get("data")},
+            message="Log analysis executed.",
+        )
+
+
 class CommunicationsAdapter(ToolAdapter):
     name = "communications"
     description = "Controlled email/calendar adapter."

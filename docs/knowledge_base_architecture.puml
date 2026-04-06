@@ -11,6 +11,7 @@ package "Admin UI" {
   [Knowledge Base List]
   [Knowledge Base Detail]
   [Knowledge Base Search]
+  [Support Dashboard]
 }
 
 package "Node Control Plane" {
@@ -19,6 +20,7 @@ package "Node Control Plane" {
   [Search Service]
   [Tool Service]
   [Processing Runtime]
+  [Support Bootstrap]
 }
 
 package "Extraction Layer" {
@@ -38,13 +40,16 @@ package "Provider Layer" {
 database "PostgreSQL + pgvector" as db
 collections "Local Files / S3 Objects" as objectStore
 node "AI Agents" as agents
+node "Support Services" as support
 
 [Knowledge Base List] --> [Admin API Router]
 [Knowledge Base Detail] --> [Admin API Router]
 [Knowledge Base Search] --> [Admin API Router]
+[Support Dashboard] --> [Admin API Router]
 
 [Admin API Router] --> [Knowledge Base Services]
 [Admin API Router] --> [Search Service]
+[Support Bootstrap] --> [Knowledge Base Services]
 [Knowledge Base Services] --> [Allow-list Validation]
 [Knowledge Base Services] --> [File Storage Service]
 [Knowledge Base Services] --> [Processing Runtime]
@@ -60,6 +65,7 @@ node "AI Agents" as agents
 [Tool Service] --> [Search Service]
 [Tool Service] --> db
 agents --> [Tool Service]
+support --> [Search Service]
 
 [File Storage Service] --> [Local Storage Adapter]
 [File Storage Service] --> [S3 Storage Adapter]
@@ -76,5 +82,11 @@ end note
 note bottom of [Tool Service]
 Enforces configuration-driven knowledge base scope.
 Agents do not receive direct database or object store access.
+end note
+
+note bottom of support
+The Help Desk capability searches only the
+"Platform Help / User Documentation" partition
+unless a broader scope is explicitly requested later.
 end note
 @enduml
