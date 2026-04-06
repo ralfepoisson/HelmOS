@@ -196,9 +196,10 @@ end note
 note right of workspaces
 Idea Foundry is now available as a dedicated UI surface.
 Its pipeline board now renders explicit empty states unless persisted
-source artefacts exist. Only normalized source records are currently
-persisted in the MVP schema; downstream proto-ideas and curated
-opportunities remain intentionally empty until backed by real storage.
+source artefacts exist. Prospecting persists normalized source records,
+Proto-Idea Extraction persists claimed source-processing rows plus
+downstream proto-ideas, and later stages can now build on real
+traceable pipeline storage instead of placeholders.
 end note
 
 package "Idea Foundry Control" {
@@ -217,6 +218,85 @@ package "Idea Foundry Control" {
     created_at : TIMESTAMP
     updated_at : TIMESTAMP
   }
+
+  entity "proto_idea_sources" as proto_idea_sources {
+    *id : UUID <<PK>>
+    --
+    owner_user_id : UUID <<FK>>
+    prospecting_configuration_id : UUID <<FK>>
+    extraction_policy_id : UUID <<FK>>
+    upstream_source_record_id : VARCHAR(255)
+    source_key : VARCHAR(512)
+    source_title : VARCHAR(500)
+    source_url : TEXT
+    source_type : VARCHAR(100)
+    source_captured_at : TIMESTAMP
+    source_payload : JSONB
+    processing_status : VARCHAR(20)
+    processing_started_at : TIMESTAMP
+    processing_completed_at : TIMESTAMP
+    processing_failed_at : TIMESTAMP
+    attempts : INTEGER
+    latest_gateway_run_id : VARCHAR(255)
+    extraction_policy_snapshot : JSONB
+    last_error_message : TEXT
+    last_error_meta : JSONB
+    raw_llm_payload : JSONB
+    parsed_response : JSONB
+    source_summary : TEXT
+    overall_signal_strength_label : VARCHAR(100)
+    overall_signal_strength_tone : VARCHAR(100)
+    overall_signal_agent_confidence : VARCHAR(100)
+    overall_signal_explanation : TEXT
+    extraction_notes : TEXT
+    deduplication_notes : TEXT
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+    --
+    UNIQUE(owner_user_id, source_key)
+  }
+
+  entity "proto_idea_extraction_policies" as proto_idea_extraction_policies {
+    *id : UUID <<PK>>
+    --
+    profile_name : VARCHAR(100)
+    extraction_breadth : VARCHAR(30)
+    inference_tolerance : VARCHAR(30)
+    novelty_bias : VARCHAR(30)
+    minimum_signal_threshold : VARCHAR(30)
+    max_proto_ideas_per_source : INTEGER
+    latest_run_status : VARCHAR(30)
+    last_run_at : TIMESTAMP
+    latest_run_summary_json : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+    --
+    UNIQUE(profile_name)
+  }
+
+  entity "proto_ideas" as proto_ideas {
+    *id : UUID <<PK>>
+    --
+    owner_user_id : UUID <<FK>>
+    source_id : UUID <<FK>>
+    title : VARCHAR(255)
+    problem_statement : TEXT
+    target_customer : TEXT
+    opportunity_hypothesis : TEXT
+    why_it_matters : TEXT
+    opportunity_type : VARCHAR(100)
+    explicit_signals : JSONB
+    inferred_signals : JSONB
+    assumptions : JSONB
+    open_questions : JSONB
+    status_label : VARCHAR(100)
+    status_tone : VARCHAR(100)
+    agent_confidence : VARCHAR(100)
+    status_explanation : TEXT
+    raw_llm_payload : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
 }
 
 note right of prospecting_configurations
@@ -225,6 +305,29 @@ runtime snapshot cadence and next_run_at on the same schedule
 so the scheduler and operator UI do not drift apart.
 Stale RUNNING rows are also recoverable once the due slot elapses,
 preventing interrupted cycles from wedging the hourly loop.
+end note
+
+note right of proto_idea_sources
+Each row is the Proto-Idea stage's claimed view of one upstream
+source artefact. The source payload stays intact for traceability,
+while processing status, attempts, errors, parsed output, and
+deduplication notes make retries and inspection straightforward.
+The applied extraction policy is stored both by foreign key and
+by policy snapshot so each run remains reproducible even if the
+administrator later changes the live policy.
+end note
+
+note right of proto_ideas
+One source can yield zero, one, or many proto-ideas.
+Each stored proto-idea preserves explicit source signals separately
+from inferred signals so downstream refinement can stay grounded.
+end note
+
+note right of proto_idea_extraction_policies
+Stores the administrator-defined policy that shapes Proto-Idea Agent
+behavior at runtime. The policy remains structured and bounded rather
+than acting as a free-form prompt editor, and the latest run metadata
+supports simple operational visibility from the admin UI.
 end note
 
 package "Knowledge Base" {
@@ -597,6 +700,11 @@ users ||--o{ companies : created_by
 companies ||--o{ workspaces
 users ||--o{ workspaces : created_by
 users ||--|| prospecting_configurations : owns
+users ||--o{ proto_idea_sources : owns
+proto_idea_extraction_policies ||--o{ proto_idea_sources : guides
+prospecting_configurations ||--o{ proto_idea_sources : feeds
+proto_idea_sources ||--o{ proto_ideas : yields
+users ||--o{ proto_ideas : owns
 users ||--o{ knowledge_bases : created_by
 users ||--o{ knowledge_bases : updated_by
 knowledge_bases ||--o{ knowledge_base_files

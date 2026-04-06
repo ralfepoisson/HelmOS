@@ -9,6 +9,7 @@ interface IdeaPipelineCard {
   summary: string;
   signal: string;
   status: string;
+  timestamp?: string | null;
   href?: string | null;
 }
 
@@ -76,14 +77,14 @@ interface IdeaPipelineColumn {
                 [attr.aria-expanded]="isCardExpanded(card.id)"
                 (click)="toggleCard(card.id)"
               >
-                <div class="pipeline-card-toggle-header">
-                  <span class="pipeline-card-status">{{ card.status }}</span>
-                  <span class="pipeline-card-toggle-label">{{ isCardExpanded(card.id) ? 'Hide' : 'Open' }}</span>
-                </div>
                 <h5 class="pipeline-card-title">
                   <span class="pipeline-card-title-text">{{ card.title }}</span>
                 </h5>
+                <div *ngIf="card.timestamp" class="pipeline-card-timestamp">
+                  {{ card.timestamp }}
+                </div>
                 <ng-container *ngIf="isCardExpanded(card.id)">
+                  <span class="pipeline-card-status">{{ card.status }}</span>
                   <p>{{ card.summary }}</p>
                   <div class="pipeline-card-actions" *ngIf="card.href">
                     <a [href]="card.href" target="_blank" rel="noreferrer" (click)="$event.stopPropagation()">
@@ -248,8 +249,8 @@ interface IdeaPipelineColumn {
       .pipeline-card-toggle {
         width: 100%;
         display: grid;
-        gap: 0.45rem;
-        padding: 0.8rem 0.9rem;
+        gap: 0.3rem;
+        padding: 0.75rem 0.9rem;
         border: 0;
         border-radius: inherit;
         background: transparent;
@@ -260,19 +261,6 @@ interface IdeaPipelineColumn {
 
       .pipeline-card-toggle:hover {
         background: rgba(248, 251, 255, 0.88);
-      }
-
-      .pipeline-card-toggle-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.75rem;
-      }
-
-      .pipeline-card-toggle-label {
-        font-size: 0.75rem;
-        font-weight: 700;
-        color: var(--helmos-muted);
       }
 
       .pipeline-card-status {
@@ -306,6 +294,12 @@ interface IdeaPipelineColumn {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+
+      .pipeline-card-timestamp {
+        font-size: 0.74rem;
+        line-height: 1.3;
+        color: #7a8699;
       }
 
       .pipeline-card-actions a {
@@ -380,7 +374,6 @@ function buildColumnsFromResultRecords(resultRecords: ProspectingResultRecord[])
   const normalizedCards = Array.isArray(resultRecords)
     ? resultRecords
         .filter((record) => typeof record?.sourceUrl === 'string' && record.sourceUrl.trim().length > 0)
-        .slice(0, 8)
         .map((record) => mapResultRecordToSourceCard(record))
     : [];
 
@@ -409,6 +402,7 @@ function mapResultRecordToSourceCard(record: ProspectingResultRecord): IdeaPipel
       `Captured from ${record.queryFamilyTitle?.trim() || 'the latest prospecting query family'} using the query "${record.query?.trim() || 'n/a'}".`,
     signal: buildSourceMeta(record),
     status: 'Normalized',
+    timestamp: formatCapturedAt(record.capturedAt),
     href: record.sourceUrl?.trim() || null
   };
 }
@@ -421,6 +415,25 @@ function buildSourceMeta(record: ProspectingResultRecord): string {
   ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
 
   return parts.join(' · ');
+}
+
+function formatCapturedAt(value?: string): string | null {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
 }
 
 function buildEmptyColumns(): IdeaPipelineColumn[] {

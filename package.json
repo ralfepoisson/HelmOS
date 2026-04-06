@@ -13,6 +13,7 @@
     "db:status": "prisma migrate status",
     "db:validate": "prisma validate",
     "db:studio": "prisma studio",
+    "proto-ideas:run": "node src/backend/scripts/run-proto-idea-stage.js",
     "test:backend": "node --test src/backend/tests/**/*.test.js",
     "test:backend:smoke": "./scripts/test_backend_smoke.sh",
     "test:backend:verify": "./scripts/test_backend_smoke.sh"

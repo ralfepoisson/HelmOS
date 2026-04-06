@@ -4,6 +4,7 @@ const { createAuthMiddleware, createAuthServiceSignInHandler, requireAdmin } = r
 const { createAdminRouter } = require("./admin-router");
 const { createBusinessIdeasRouter } = require("./business-ideas-router");
 const { createProspectingRouter } = require("./prospecting-router");
+const { createProtoIdeaRouter } = require("./proto-idea-router");
 const { createCrudRouter } = require("./create-crud-router");
 const { prismaEnums, resourceConfigs } = require("./resources");
 const { createKnowledgeBaseToolRouter } = require("./tool-router");
@@ -44,6 +45,7 @@ function createApiRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, sto
   );
   router.use("/business-ideas", authenticate, createBusinessIdeasRouter({ prisma, agentGatewayClient }));
   router.use("/idea-foundry/prospecting", authenticate, createProspectingRouter({ prisma, agentGatewayClient }));
+  router.use("/idea-foundry/proto-idea", authenticate, requireAdmin, createProtoIdeaRouter({ prisma, agentGatewayClient }));
 
   resourceConfigs.forEach((config) => {
     router.use(`/${config.path}`, authenticate, createCrudRouter({ prisma, config }));

@@ -34,6 +34,8 @@ interface TestModeOption {
   description: string;
 }
 
+type DetailModalSection = 'execution-report' | 'transcript-review' | 'score-evidence' | 'snapshot-artifacts';
+
 const TEST_MODE_OPTIONS: TestModeOption[] = [
   {
     value: 'single_agent_benchmark',
@@ -319,7 +321,13 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
                     <li *ngFor="let item of reportMissedOpportunities">{{ stringifyEvidence(item) }}</li>
                   </ul>
                 </div>
-                <pre *ngIf="selectedRun.report_markdown" class="code-block">{{ selectedRun.report_markdown }}</pre>
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm detail-toggle-button"
+                  (click)="openDetailModal('execution-report')"
+                >
+                  View execution report
+                </button>
               </div>
               <ng-template #pendingReportCopy>
                 <p>
@@ -331,20 +339,18 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
 
             <article class="detail-card">
               <h3>Transcript Review</h3>
-              <div *ngIf="selectedRun.turns.length > 0; else pendingTranscriptCopy" class="transcript-list">
-                <div *ngFor="let turn of selectedRun.turns" class="transcript-turn">
-                  <div class="transcript-turn-meta">
-                    <span class="turn-badge">{{ formatActorLabel(turn.actor_type) }}</span>
-                    <span>Turn {{ turn.turn_index }}</span>
-                    <span>{{ turn.created_at | date: 'shortTime' }}</span>
-                  </div>
-                  <p class="transcript-message">{{ turn.message_text }}</p>
-                  <div *ngIf="annotationsForTurn(turn).length > 0" class="annotation-list">
-                    <span *ngFor="let annotation of annotationsForTurn(turn)" class="annotation-pill">
-                      {{ annotation.tag }}
-                    </span>
-                  </div>
-                </div>
+              <div *ngIf="selectedRun.turns.length > 0; else pendingTranscriptCopy" class="detail-stack">
+                <p class="detail-summary">
+                  {{ selectedRun.turns.length }} turns recorded with
+                  {{ selectedRun.annotations.length }} transcript annotations.
+                </p>
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm detail-toggle-button"
+                  (click)="openDetailModal('transcript-review')"
+                >
+                  View transcript review
+                </button>
               </div>
               <ng-template #pendingTranscriptCopy>
                 <p>
@@ -356,17 +362,15 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
 
             <article class="detail-card">
               <h3>Score Evidence</h3>
-              <div *ngIf="selectedRun.scores.length > 0; else pendingScoresCopy" class="score-list">
-                <div *ngFor="let score of selectedRun.scores" class="score-card">
-                  <div class="score-card-top">
-                    <strong>{{ score.dimension_key }}</strong>
-                    <span>{{ score.normalized_score | number: '1.2-2' }}</span>
-                  </div>
-                  <p>
-                    {{ score.layer_key }} layer, raw {{ score.raw_score }}, weight {{ score.weight_percent }}%.
-                    Evidence turns: {{ score.evidence_turn_refs.join(', ') || 'none' }}.
-                  </p>
-                </div>
+              <div *ngIf="selectedRun.scores.length > 0; else pendingScoresCopy" class="detail-stack">
+                <p class="detail-summary">{{ selectedRun.scores.length }} dimension scores captured for this run.</p>
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm detail-toggle-button"
+                  (click)="openDetailModal('score-evidence')"
+                >
+                  View score evidence
+                </button>
               </div>
               <ng-template #pendingScoresCopy>
                 <p>Per-dimension score evidence will appear here when the evaluation completes.</p>
@@ -375,16 +379,17 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
 
             <article class="detail-card">
               <h3>Snapshot Artifacts</h3>
-              <div *ngIf="selectedRun.snapshots.length > 0; else pendingArtifactsCopy" class="artifact-list">
-                <div *ngFor="let snapshot of selectedRun.snapshots" class="artifact-card">
-                  <div class="artifact-card-top">
-                    <strong>{{ snapshot.snapshot_type }}</strong>
-                    <span>{{ snapshot.created_at | date: 'short' }}</span>
-                  </div>
-                  <p>{{ snapshot.source_ref || 'Inline snapshot' }}</p>
-                  <pre *ngIf="snapshot.content_text" class="code-block">{{ snapshot.content_text }}</pre>
-                  <pre *ngIf="hasJsonContent(snapshot)" class="code-block">{{ snapshot.content_json | json }}</pre>
-                </div>
+              <div *ngIf="selectedRun.snapshots.length > 0; else pendingArtifactsCopy" class="detail-stack">
+                <p class="detail-summary">
+                  {{ selectedRun.snapshots.length }} immutable artifacts are attached to this run.
+                </p>
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm detail-toggle-button"
+                  (click)="openDetailModal('snapshot-artifacts')"
+                >
+                  View snapshot artifacts
+                </button>
               </div>
               <ng-template #pendingArtifactsCopy>
                 <p>Immutable snapshots and generated artifacts will appear here after execution.</p>
@@ -432,6 +437,89 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
         </section>
       </section>
     </main>
+
+    <div *ngIf="activeDetailModal" class="modal-backdrop" (click)="closeDetailModal()"></div>
+
+    <section
+      *ngIf="activeDetailModal && selectedRun"
+      class="detail-modal helmos-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="detail-modal-title"
+    >
+      <div class="modal-header">
+        <div>
+          <div class="section-kicker">Run Details</div>
+          <h2 id="detail-modal-title">{{ detailModalTitle }}</h2>
+        </div>
+        <button type="button" class="close-button" aria-label="Close detail modal" (click)="closeDetailModal()">×</button>
+      </div>
+
+      <div class="detail-modal-copy" [ngSwitch]="activeDetailModal">
+        <div *ngSwitchCase="'execution-report'" class="detail-stack">
+          <p *ngIf="reportSummary">{{ reportSummary }}</p>
+          <div *ngIf="reportQualityFailures.length > 0" class="evidence-group">
+            <div class="evidence-label">Quality failures</div>
+            <ul class="evidence-list">
+              <li *ngFor="let failure of reportQualityFailures">{{ stringifyEvidence(failure) }}</li>
+            </ul>
+          </div>
+          <div *ngIf="reportMissedOpportunities.length > 0" class="evidence-group">
+            <div class="evidence-label">Missed opportunities</div>
+            <ul class="evidence-list">
+              <li *ngFor="let item of reportMissedOpportunities">{{ stringifyEvidence(item) }}</li>
+            </ul>
+          </div>
+          <pre *ngIf="selectedRun.report_markdown" class="code-block">{{ selectedRun.report_markdown }}</pre>
+        </div>
+
+        <div *ngSwitchCase="'transcript-review'" class="transcript-list transcript-chat-list">
+          <div
+            *ngFor="let turn of selectedRun.turns"
+            class="transcript-turn"
+            [class.transcript-turn-driver]="turn.actor_type === 'driver'"
+            [class.transcript-turn-target]="turn.actor_type === 'target_agent'"
+          >
+            <div class="transcript-turn-meta">
+              <span class="turn-badge">{{ formatActorLabel(turn.actor_type) }}</span>
+              <span>Turn {{ turn.turn_index }}</span>
+              <span>{{ turn.created_at | date: 'shortTime' }}</span>
+            </div>
+            <p class="transcript-message">{{ turn.message_text }}</p>
+            <div *ngIf="annotationsForTurn(turn).length > 0" class="annotation-list">
+              <span *ngFor="let annotation of annotationsForTurn(turn)" class="annotation-pill">
+                {{ annotation.tag }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div *ngSwitchCase="'score-evidence'" class="score-list">
+          <div *ngFor="let score of selectedRun.scores" class="score-card">
+            <div class="score-card-top">
+              <strong>{{ score.dimension_key }}</strong>
+              <span>{{ score.normalized_score | number: '1.2-2' }}</span>
+            </div>
+            <p>
+              {{ score.layer_key }} layer, raw {{ score.raw_score }}, weight {{ score.weight_percent }}%.
+              Evidence turns: {{ score.evidence_turn_refs.join(', ') || 'none' }}.
+            </p>
+          </div>
+        </div>
+
+        <div *ngSwitchCase="'snapshot-artifacts'" class="artifact-list">
+          <div *ngFor="let snapshot of selectedRun.snapshots" class="artifact-card">
+            <div class="artifact-card-top">
+              <strong>{{ snapshot.snapshot_type }}</strong>
+              <span>{{ snapshot.created_at | date: 'short' }}</span>
+            </div>
+            <p>{{ snapshot.source_ref || 'Inline snapshot' }}</p>
+            <pre *ngIf="snapshot.content_text" class="code-block">{{ snapshot.content_text }}</pre>
+            <pre *ngIf="hasJsonContent(snapshot)" class="code-block">{{ snapshot.content_json | json }}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <div *ngIf="newRunModalOpen" class="modal-backdrop" (click)="closeNewRunModal()"></div>
 
@@ -545,6 +633,7 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
       .testing-hero,
       .side-panel,
       .detail-panel,
+      .detail-modal,
       .run-modal {
         padding: 1.1rem 1.2rem;
       }
@@ -859,6 +948,13 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
         color: var(--helmos-text);
       }
 
+      .detail-toggle-button {
+        width: fit-content;
+        border-radius: 999px;
+        padding-inline: 0.9rem;
+        font-weight: 700;
+      }
+
       .transcript-turn,
       .score-card,
       .artifact-card {
@@ -866,6 +962,28 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
         border: 1px solid rgba(53, 100, 137, 0.12);
         border-radius: 0.9rem;
         background: rgba(255, 255, 255, 0.72);
+      }
+
+      .transcript-chat-list {
+        gap: 1rem;
+      }
+
+      .transcript-turn {
+        width: min(78%, 860px);
+        box-shadow: 0 14px 30px rgba(20, 39, 74, 0.06);
+      }
+
+      .transcript-turn-driver {
+        align-self: flex-start;
+        border-top-left-radius: 0.55rem;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 255, 0.94));
+      }
+
+      .transcript-turn-target {
+        align-self: flex-end;
+        border-top-right-radius: 0.55rem;
+        border-color: rgba(55, 136, 106, 0.18);
+        background: linear-gradient(180deg, rgba(235, 250, 243, 0.98), rgba(223, 245, 235, 0.95));
       }
 
       .transcript-turn-meta,
@@ -889,6 +1007,19 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
       .turn-badge {
         color: #1f5e8f;
         background: rgba(222, 236, 249, 0.95);
+      }
+
+      .transcript-turn-target .turn-badge {
+        color: #176246;
+        background: rgba(212, 241, 226, 0.96);
+      }
+
+      .transcript-turn-target .transcript-turn-meta {
+        justify-content: flex-end;
+      }
+
+      .transcript-turn-target .annotation-list {
+        justify-content: flex-end;
       }
 
       .transcript-message {
@@ -987,16 +1118,30 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
         z-index: 1090;
       }
 
+      .detail-modal,
       .run-modal {
         position: fixed;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        width: min(840px, calc(100vw - 2rem));
         max-height: calc(100vh - 2rem);
         overflow: auto;
         z-index: 1100;
         box-shadow: 0 32px 80px rgba(16, 27, 44, 0.24);
+      }
+
+      .detail-modal {
+        width: min(1040px, calc(100vw - 2rem));
+      }
+
+      .detail-modal-copy {
+        display: grid;
+        gap: 0.95rem;
+        margin-top: 1rem;
+      }
+
+      .run-modal {
+        width: min(840px, calc(100vw - 2rem));
       }
 
       .close-button {
@@ -1085,6 +1230,10 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
           padding: 84px 0.75rem 1.5rem;
         }
 
+        .transcript-turn {
+          width: 100%;
+        }
+
         .modal-actions {
           flex-direction: column-reverse;
         }
@@ -1116,6 +1265,7 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
   protected stopActionInFlight = false;
   protected resumeActionInFlight = false;
   protected deleteActionInFlight = false;
+  protected activeDetailModal: DetailModalSection | null = null;
 
   protected selectedAgentKey: string | null = null;
   protected selectedRunKey: string | null = null;
@@ -1218,6 +1368,21 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
     return this.reportQualityFailures.length > 0 || this.reportMissedOpportunities.length > 0;
   }
 
+  protected get detailModalTitle(): string {
+    switch (this.activeDetailModal) {
+      case 'execution-report':
+        return 'Execution Report';
+      case 'transcript-review':
+        return 'Transcript Review';
+      case 'score-evidence':
+        return 'Score Evidence';
+      case 'snapshot-artifacts':
+        return 'Snapshot Artifacts';
+      default:
+        return 'Run Details';
+    }
+  }
+
   private runRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   async ngOnInit(): Promise<void> {
@@ -1246,6 +1411,10 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keydown.escape')
   protected onEscape(): void {
+    if (this.activeDetailModal) {
+      this.closeDetailModal();
+      return;
+    }
     if (this.newRunModalOpen) {
       this.closeNewRunModal();
     }
@@ -1258,12 +1427,14 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
     this.selectedAgentKey = agentKey;
     this.selectedRunKey = null;
     this.selectedRun = null;
+    this.resetDetailVisibility();
     await this.loadRuns(agentKey);
   }
 
   protected async selectRun(runId: string): Promise<void> {
     this.selectedRunKey = runId;
     this.loadingRunDetail = true;
+    this.resetDetailVisibility();
     this.changeDetector.detectChanges();
     try {
       this.selectedRun = await this.agentTestingService.getRun(runId);
@@ -1387,10 +1558,19 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
       this.runs = this.runs.filter((run) => run.id !== runId);
       this.selectedRun = null;
       this.selectedRunKey = null;
+      this.resetDetailVisibility();
     } finally {
       this.deleteActionInFlight = false;
       this.changeDetector.detectChanges();
     }
+  }
+
+  protected openDetailModal(section: DetailModalSection): void {
+    this.activeDetailModal = section;
+  }
+
+  protected closeDetailModal(): void {
+    this.activeDetailModal = null;
   }
 
   private buildDraftDetailFromSummary(run: AgentTestRunSummary): AgentTestRunDetail {
@@ -1486,6 +1666,10 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
 
   private asArray(value: unknown): unknown[] {
     return Array.isArray(value) ? value : [];
+  }
+
+  private resetDetailVisibility(): void {
+    this.activeDetailModal = null;
   }
 
   private async loadAgents(): Promise<void> {

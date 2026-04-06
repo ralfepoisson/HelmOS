@@ -119,6 +119,20 @@ Current implementation note:
 * Identify implicit needs
 * Structure into a basic idea format
 
+Current implementation note:
+
+* The stage now reads normalized source artefacts from persisted Prospecting Execution result records
+* Source processing state is persisted in `proto_idea_sources` with `PENDING`, `PROCESSING`, `COMPLETED`, and `FAILED` states
+* Each source is claimed deterministically in oldest-unprocessed-first order using a stable per-source key so interrupted runs can resume safely
+* The Proto-Idea Agent identity is loaded from `docs/agents/proto-idea_agent.md` and injected into the extraction prompt for each source
+* An administrator-facing Proto-Idea Extraction page now persists a structured extraction policy covering breadth, inference tolerance, novelty bias, signal threshold, and max proto-ideas per source
+* The saved policy is injected into each Proto-Idea Agent run as structured runtime guidance instead of ad hoc prompt editing
+* Validated outputs are stored as one-to-many `proto_ideas` records linked back to their claimed source row
+* Explicit signals, inferred signals, assumptions, open questions, qualitative confidence, and raw LLM payloads are preserved for downstream refinement
+* Obvious duplicate proto-ideas returned for the same source are merged before persistence, and the source-level deduplication note records what happened
+* Each processed source records the extraction policy id plus a policy snapshot for reproducibility and later continuous-improvement analysis
+* A backend runner command, `npm run proto-ideas:run`, executes a controlled extraction pass and can optionally retry failed sources via environment flags
+
 #### Output Example:
 
 ```

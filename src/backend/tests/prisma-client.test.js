@@ -7,6 +7,9 @@ test("generated Prisma client exposes the agent admin delegates", async () => {
   assert.equal(typeof prisma.agentDefinition?.findMany, "function");
   assert.equal(typeof prisma.promptConfig?.findMany, "function");
   assert.equal(typeof prisma.logEntry?.findMany, "function");
+  assert.equal(typeof prisma.protoIdeaExtractionPolicy?.findMany, "function");
+  assert.equal(typeof prisma.protoIdeaSource?.findMany, "function");
+  assert.equal(typeof prisma.protoIdea?.findMany, "function");
 
   await prisma.$disconnect();
 });

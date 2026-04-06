@@ -2298,6 +2298,327 @@ test("GET /api/idea-foundry/prospecting/contents returns the persisted pipeline 
   assert.deepEqual(response.body.data.curatedOpportunities, []);
 });
 
+test("GET /api/idea-foundry/proto-idea/configuration returns the persisted proto-idea extraction policy", async () => {
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    protoIdeaExtractionPolicy: {
+      upsert: async () => ({
+        id: "policy-1",
+        profileName: "default",
+        extractionBreadth: "standard",
+        inferenceTolerance: "balanced",
+        noveltyBias: "balanced",
+        minimumSignalThreshold: "medium",
+        maxProtoIdeasPerSource: 4,
+        latestRunStatus: "COMPLETED",
+        lastRunAt: new Date("2026-04-06T10:15:00Z"),
+        latestRunSummaryJson: {
+          completedCount: 1,
+          failedCount: 0,
+        },
+      }),
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient: {} });
+  const response = await withAuth(
+    request(app).get("/api/idea-foundry/proto-idea/configuration"),
+    { isAdmin: true, email: "ralfepoisson@gmail.com" }
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.policy.extractionBreadth, "standard");
+  assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
+  assert.equal(response.body.data.runtime.latestRunSummary.completedCount, 1);
+});
+
+test("POST /api/idea-foundry/proto-idea/configuration saves the proto-idea extraction policy", async () => {
+  let storedPolicy = null;
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    protoIdeaExtractionPolicy: {
+      async upsert({ create, update }) {
+        storedPolicy = {
+          id: "policy-1",
+          ...(storedPolicy ?? {}),
+          ...(storedPolicy ? update : create),
+        };
+        return storedPolicy;
+      },
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient: {} });
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/proto-idea/configuration")
+      .send({
+        profileName: "default",
+        extractionBreadth: "expansive",
+        inferenceTolerance: "exploratory",
+        noveltyBias: "pragmatic",
+        minimumSignalThreshold: "low",
+        maxProtoIdeasPerSource: 6,
+      }),
+    { isAdmin: true, email: "ralfepoisson@gmail.com" }
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.policy.extractionBreadth, "expansive");
+  assert.equal(response.body.data.policy.maxProtoIdeasPerSource, 6);
+  assert.equal(storedPolicy.extractionBreadth, "expansive");
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "proto_idea_policy_saved"),
+    true
+  );
+});
+
+test("POST /api/idea-foundry/proto-idea/run executes the proto-idea agent using the saved policy", async () => {
+  let storedPolicy = {
+    id: "policy-1",
+    profileName: "default",
+    extractionBreadth: "expansive",
+    inferenceTolerance: "balanced",
+    noveltyBias: "exploratory",
+    minimumSignalThreshold: "medium",
+    maxProtoIdeasPerSource: 3,
+    latestRunStatus: null,
+    lastRunAt: null,
+    latestRunSummaryJson: null,
+  };
+  const sourceRows = new Map();
+  const createdIdeas = [];
+  let capturedGatewayPayload = null;
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    prospectingConfiguration: {
+      findMany: async () => [
+        {
+          id: "prospecting-config-1",
+          ownerUserId: "owner-user-1",
+          lastRunAt: new Date("2026-04-05T10:15:00Z"),
+          lastResultRecords: [
+            {
+              id: "source-1",
+              sourceTitle: "Dispatch pain",
+              sourceUrl: "https://example.com/source-1",
+              snippet: "Schedulers keep switching tools.",
+              provider: "web_search",
+              capturedAt: "2026-04-05T08:00:00.000Z",
+            },
+          ],
+          ownerUser: {
+            id: "owner-user-1",
+            email: "owner@example.com",
+            displayName: "Owner",
+            appRole: "USER",
+          },
+        },
+      ],
+    },
+    protoIdeaExtractionPolicy: {
+      async upsert() {
+        return storedPolicy;
+      },
+      async update({ data }) {
+        storedPolicy = {
+          ...storedPolicy,
+          ...data,
+        };
+        return storedPolicy;
+      },
+    },
+    protoIdeaSource: {
+      async findUnique({ where }) {
+        return sourceRows.get(`${where.ownerUserId_sourceKey.ownerUserId}:${where.ownerUserId_sourceKey.sourceKey}`) ?? null;
+      },
+      async create({ data }) {
+        const row = {
+          id: "proto-source-1",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...data,
+        };
+        sourceRows.set(`${data.ownerUserId}:${data.sourceKey}`, row);
+        return row;
+      },
+      async updateMany({ where, data }) {
+        const row = Array.from(sourceRows.values()).find((entry) => entry.id === where.id);
+        if (!row) {
+          return { count: 0 };
+        }
+        Object.assign(row, data, { updatedAt: new Date() });
+        return { count: 1 };
+      },
+      async update({ where, data }) {
+        const row = Array.from(sourceRows.values()).find((entry) => entry.id === where.id);
+        Object.assign(row, data, { updatedAt: new Date() });
+        return row;
+      },
+    },
+    protoIdea: {
+      async deleteMany() {
+        return { count: 0 };
+      },
+      async create({ data }) {
+        createdIdeas.push(data);
+        return data;
+      },
+    },
+    agentDefinition: {
+      findMany: async () => [
+        {
+          key: "proto-idea",
+          name: "Proto-Idea Agent",
+          updatedAt: new Date("2026-04-05T20:00:00Z"),
+          active: true,
+        },
+      ],
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+    async $transaction(callback) {
+      return callback(this);
+    },
+  };
+
+  const agentGatewayClient = {
+    async getAdminSnapshot() {
+      return {
+        status: "online",
+        agents: [{ key: "proto-idea" }],
+      };
+    },
+    async startRun(payload) {
+      capturedGatewayPayload = payload;
+      return { id: "proto-run-1" };
+    },
+    async waitForRunCompletion() {
+      return {
+        id: "proto-run-1",
+        status: "completed",
+        normalized_output: {
+          reply_to_user: {
+            content: "Extracted one grounded proto-idea.",
+          },
+          source_analysis: {
+            source_id: "source-1",
+            source_type: "web_search",
+            source_title: "Dispatch pain",
+            summary: "Dispatch coordination is fragmented.",
+            primary_signals: ["Tool switching"],
+            observed_problems_or_needs: ["Teams lack unified dispatch coordination"],
+            inferred_patterns: ["Fragmentation creates missed updates"],
+            overall_signal_strength: {
+              label: "Strong",
+              tone: "success",
+              agent_confidence: "high",
+              explanation: "The source contains repeated workflow friction.",
+            },
+          },
+          proto_idea_overview: {
+            extraction_readiness: {
+              label: "Ready",
+              reason: "The signal is concrete.",
+              next_best_action: "Persist it for refinement.",
+            },
+            extraction_notes: "Grounded in repeated coordination pain.",
+          },
+          proto_ideas: [
+            {
+              proto_idea_id: "idea-1",
+              title: "Dispatch coordination layer",
+              source_grounding: {
+                explicit_signals: ["Schedulers keep switching tools."],
+                inferred_from_source: ["A shared coordination layer could remove update gaps."],
+              },
+              problem_statement: "Dispatch teams lose time coordinating work across disconnected tools.",
+              target_customer: "Dispatch leads and service operations teams",
+              opportunity_hypothesis: "A coordination layer could reduce update lag and duplicate work.",
+              why_it_matters: "Service responsiveness depends on reliable coordination.",
+              opportunity_type: "Operations workflow",
+              assumptions: [],
+              open_questions: [],
+              status: {
+                label: "Promising",
+                tone: "success",
+                agent_confidence: "medium",
+                explanation: "The pain is clear but the wedge still needs refinement.",
+              },
+              ui_hints: {
+                highlight: true,
+                needs_attention: false,
+              },
+            },
+          ],
+          deduplication_notes: {
+            potential_overlap_detected: false,
+            explanation: "",
+          },
+        },
+      };
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/proto-idea/run")
+      .send({ batchSize: 1 }),
+    { isAdmin: true, email: "ralfepoisson@gmail.com" }
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(capturedGatewayPayload.requested_agent, "proto-idea");
+  assert.equal(capturedGatewayPayload.context.extraction_policy.max_proto_ideas_per_source, 3);
+  assert.match(capturedGatewayPayload.input_text, /"novelty_bias": "exploratory"/);
+  assert.equal(response.body.data.policy.id, "policy-1");
+  assert.equal(response.body.data.result.completedCount, 1);
+  assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
+  assert.equal(createdIdeas.length, 1);
+  const storedSource = Array.from(sourceRows.values())[0];
+  assert.equal(storedSource.extractionPolicyId, "policy-1");
+  assert.equal(storedSource.extractionPolicySnapshot.max_proto_ideas_per_source, 3);
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "proto_idea_agent_run_completed"),
+    true
+  );
+});
+
 test("POST /api/idea-foundry/prospecting/configuration/run executes a full prospecting optimization cycle and persists the refreshed result records", async () => {
   const currentSnapshot = {
     agentState: "active",

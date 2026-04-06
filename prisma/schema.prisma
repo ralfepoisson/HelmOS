@@ -143,6 +143,13 @@ enum KnowledgeBaseJobStatus {
   FAILED
 }
 
+enum ProtoIdeaProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique @db.VarChar(320)
@@ -171,6 +178,8 @@ model User {
   submittedKnowledgeBaseFiles KnowledgeBaseFile[] @relation("KnowledgeBaseFileSubmittedBy")
   knowledgeBaseSearchAudits KnowledgeBaseSearchAudit[]
   knowledgeBaseToolAudits KnowledgeBaseToolAudit[]
+  protoIdeaSources       ProtoIdeaSource[]
+  protoIdeas             ProtoIdea[]
 
   @@unique([authProvider, authProviderUserId], map: "users_auth_provider_auth_provider_user_id_key")
   @@map("users")
@@ -669,7 +678,101 @@ model ProspectingConfiguration {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
   ownerUser         User     @relation(fields: [ownerUserId], references: [id])
+  protoIdeaSources  ProtoIdeaSource[]
 
   @@index([latestRunStatus, updatedAt])
   @@map("prospecting_configurations")
+}
+
+model ProtoIdeaExtractionPolicy {
+  id                    String             @id @default(uuid()) @db.Uuid
+  profileName           String             @unique @default("default") @map("profile_name") @db.VarChar(100)
+  extractionBreadth     String             @default("standard") @map("extraction_breadth") @db.VarChar(30)
+  inferenceTolerance    String             @default("balanced") @map("inference_tolerance") @db.VarChar(30)
+  noveltyBias           String             @default("balanced") @map("novelty_bias") @db.VarChar(30)
+  minimumSignalThreshold String            @default("medium") @map("minimum_signal_threshold") @db.VarChar(30)
+  maxProtoIdeasPerSource Int               @default(4) @map("max_proto_ideas_per_source")
+  latestRunStatus       String?            @map("latest_run_status") @db.VarChar(30)
+  lastRunAt             DateTime?          @map("last_run_at")
+  latestRunSummaryJson  Json?              @map("latest_run_summary_json")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+  protoIdeaSources      ProtoIdeaSource[]
+
+  @@index([profileName])
+  @@map("proto_idea_extraction_policies")
+}
+
+model ProtoIdeaSource {
+  id                           String                    @id @default(uuid()) @db.Uuid
+  ownerUserId                  String                    @map("owner_user_id") @db.Uuid
+  prospectingConfigurationId   String?                   @map("prospecting_configuration_id") @db.Uuid
+  extractionPolicyId           String?                   @map("extraction_policy_id") @db.Uuid
+  upstreamSourceRecordId       String                    @map("upstream_source_record_id") @db.VarChar(255)
+  sourceKey                    String                    @map("source_key") @db.VarChar(512)
+  sourceTitle                  String?                   @map("source_title") @db.VarChar(500)
+  sourceUrl                    String?                   @map("source_url")
+  sourceType                   String?                   @map("source_type") @db.VarChar(100)
+  sourceCapturedAt             DateTime?                 @map("source_captured_at")
+  sourcePayload                Json                      @map("source_payload")
+  processingStatus             ProtoIdeaProcessingStatus @default(PENDING) @map("processing_status")
+  processingStartedAt          DateTime?                 @map("processing_started_at")
+  processingCompletedAt        DateTime?                 @map("processing_completed_at")
+  processingFailedAt           DateTime?                 @map("processing_failed_at")
+  attempts                     Int                       @default(0)
+  latestGatewayRunId           String?                   @map("latest_gateway_run_id") @db.VarChar(255)
+  extractionPolicySnapshot     Json?                     @map("extraction_policy_snapshot")
+  lastErrorMessage             String?                   @map("last_error_message")
+  lastErrorMeta                Json?                     @map("last_error_meta")
+  rawLlmPayload                Json?                     @map("raw_llm_payload")
+  parsedResponse               Json?                     @map("parsed_response")
+  sourceSummary                String?                   @map("source_summary")
+  overallSignalStrengthLabel   String?                   @map("overall_signal_strength_label") @db.VarChar(100)
+  overallSignalStrengthTone    String?                   @map("overall_signal_strength_tone") @db.VarChar(100)
+  overallSignalAgentConfidence String?                   @map("overall_signal_agent_confidence") @db.VarChar(100)
+  overallSignalExplanation     String?                   @map("overall_signal_explanation")
+  extractionNotes              String?                   @map("extraction_notes")
+  deduplicationNotes           String?                   @map("deduplication_notes")
+  createdAt                    DateTime                  @default(now()) @map("created_at")
+  updatedAt                    DateTime                  @updatedAt @map("updated_at")
+  ownerUser                    User                      @relation(fields: [ownerUserId], references: [id])
+  prospectingConfiguration     ProspectingConfiguration? @relation(fields: [prospectingConfigurationId], references: [id])
+  extractionPolicy             ProtoIdeaExtractionPolicy? @relation(fields: [extractionPolicyId], references: [id])
+  protoIdeas                   ProtoIdea[]
+
+  @@unique([ownerUserId, sourceKey])
+  @@index([processingStatus, sourceCapturedAt, updatedAt])
+  @@index([ownerUserId, processingStatus, sourceCapturedAt])
+  @@index([prospectingConfigurationId, processingStatus])
+  @@index([extractionPolicyId, processingStatus])
+  @@map("proto_idea_sources")
+}
+
+model ProtoIdea {
+  id                    String          @id @default(uuid()) @db.Uuid
+  ownerUserId           String          @map("owner_user_id") @db.Uuid
+  sourceId              String          @map("source_id") @db.Uuid
+  title                 String          @db.VarChar(255)
+  problemStatement      String          @map("problem_statement")
+  targetCustomer        String          @map("target_customer")
+  opportunityHypothesis String          @map("opportunity_hypothesis")
+  whyItMatters          String          @map("why_it_matters")
+  opportunityType       String          @map("opportunity_type") @db.VarChar(100)
+  explicitSignals       Json            @default("[]") @map("explicit_signals")
+  inferredSignals       Json            @default("[]") @map("inferred_signals")
+  assumptions           Json            @default("[]")
+  openQuestions         Json            @default("[]") @map("open_questions")
+  statusLabel           String          @map("status_label") @db.VarChar(100)
+  statusTone            String          @map("status_tone") @db.VarChar(100)
+  agentConfidence       String          @map("agent_confidence") @db.VarChar(100)
+  statusExplanation     String          @map("status_explanation")
+  rawLlmPayload         Json?           @map("raw_llm_payload")
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+  ownerUser             User            @relation(fields: [ownerUserId], references: [id])
+  source                ProtoIdeaSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId, createdAt])
+  @@index([sourceId, createdAt])
+  @@map("proto_ideas")
 }

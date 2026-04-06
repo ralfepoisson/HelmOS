@@ -289,7 +289,7 @@ describe('AgentTestingScreenComponent', () => {
     }).compileComponents();
   });
 
-  it('renders transcript turns and snapshot artifacts for the selected run', async () => {
+  it('opens run detail sections in modals instead of inline cards', async () => {
     const fixture = TestBed.createComponent(AgentTestingScreenComponent);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -302,12 +302,77 @@ describe('AgentTestingScreenComponent', () => {
 
     const host = fixture.nativeElement as HTMLElement;
     expect(host.textContent).toContain('Transcript Review');
+    expect(host.textContent).toContain('Detected contradiction risk.');
+    expect(host.textContent).toContain('View execution report');
+    expect(host.textContent).toContain('View transcript review');
+    expect(host.textContent).toContain('View score evidence');
+    expect(host.textContent).toContain('View snapshot artifacts');
+    expect(host.textContent).not.toContain('# Agent Test Report');
+    expect(host.textContent).not.toContain('I want to build an AI FinOps copilot.');
+    expect(host.textContent).not.toContain('Who specifically is feeling this pain?');
+    expect(host.textContent).not.toContain('strong_question_signal');
+    expect(host.querySelector('[aria-label="Close detail modal"]')).toBeNull();
+
+    const reportButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('View execution report')
+    );
+    const transcriptButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('View transcript review')
+    );
+    const scoreButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('View score evidence')
+    );
+    const snapshotButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('View snapshot artifacts')
+    );
+
+    expect(reportButton).toBeTruthy();
+    expect(transcriptButton).toBeTruthy();
+    expect(scoreButton).toBeTruthy();
+    expect(snapshotButton).toBeTruthy();
+
+    reportButton?.click();
+    fixture.detectChanges();
+
+    expect(host.textContent).toContain('# Agent Test Report');
+    expect(host.textContent).toContain('Execution Report');
+    expect(host.querySelector('[aria-label="Close detail modal"]')).toBeTruthy();
+
+    const closeButtons = Array.from(host.querySelectorAll('button')).filter((button) =>
+      button.getAttribute('aria-label') === 'Close detail modal'
+    );
+    expect(closeButtons[0]).toBeTruthy();
+    closeButtons[0]?.click();
+    fixture.detectChanges();
+
+    expect(host.textContent).not.toContain('# Agent Test Report');
+
+    transcriptButton?.click();
+    fixture.detectChanges();
+    expect(host.textContent).toContain('Transcript Review');
     expect(host.textContent).toContain('I want to build an AI FinOps copilot.');
     expect(host.textContent).toContain('Who specifically is feeling this pain?');
     expect(host.textContent).toContain('strong_question_signal');
+
+    Array.from(host.querySelectorAll('button'))
+      .find((button) => button.getAttribute('aria-label') === 'Close detail modal')
+      ?.click();
+    fixture.detectChanges();
+
+    scoreButton?.click();
+    fixture.detectChanges();
+    expect(host.textContent).toContain('Score Evidence');
     expect(host.textContent).toContain('problem_clarity');
+
+    Array.from(host.querySelectorAll('button'))
+      .find((button) => button.getAttribute('aria-label') === 'Close detail modal')
+      ?.click();
+    fixture.detectChanges();
+
+    snapshotButton?.click();
+    fixture.detectChanges();
+    expect(host.textContent).toContain('Snapshot Artifacts');
     expect(host.textContent).toContain('AI FinOps copilot');
-    expect(host.textContent).toContain('Detected contradiction risk.');
   });
 
   it('renders every active agent returned by the backend registry, including prospecting', async () => {

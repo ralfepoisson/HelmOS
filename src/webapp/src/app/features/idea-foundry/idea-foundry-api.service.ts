@@ -45,6 +45,39 @@ export interface IdeaFoundryPipelineContentsResponse {
   runtime: ProspectingConfigurationRuntimeState;
 }
 
+export interface ProtoIdeaExtractionPolicy {
+  id: string | null;
+  profileName: string;
+  extractionBreadth: 'conservative' | 'standard' | 'expansive';
+  inferenceTolerance: 'strict_grounding' | 'balanced' | 'exploratory';
+  noveltyBias: 'pragmatic' | 'balanced' | 'exploratory';
+  minimumSignalThreshold: 'low' | 'medium' | 'high';
+  maxProtoIdeasPerSource: number;
+}
+
+export interface ProtoIdeaExtractionRuntimeState {
+  latestRunStatus: string;
+  lastRunAt: string | null;
+  latestRunSummary: Record<string, unknown> | null;
+}
+
+export interface ProtoIdeaExtractionConfigurationResponse {
+  policy: ProtoIdeaExtractionPolicy;
+  runtime: ProtoIdeaExtractionRuntimeState;
+}
+
+export interface ProtoIdeaExtractionRunResponse extends ProtoIdeaExtractionConfigurationResponse {
+  result: {
+    processedCount: number;
+    completedCount: number;
+    failedCount: number;
+    skippedCount: number;
+    selectedSourceIds: string[];
+    policyId: string | null;
+    policyProfileName: string;
+  };
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -82,6 +115,40 @@ export class IdeaFoundryApiService {
       'POST'
     );
     return this.parseApiResponse<ProspectingConfigurationResponse>(response, 'execute the prospecting strategy');
+  }
+
+  async getProtoIdeaExtractionConfiguration(): Promise<ProtoIdeaExtractionConfigurationResponse> {
+    const response = await this.requestWithDevFallback('/idea-foundry/proto-idea/configuration');
+    return this.parseApiResponse<ProtoIdeaExtractionConfigurationResponse>(
+      response,
+      'load the Proto-Idea extraction policy'
+    );
+  }
+
+  async saveProtoIdeaExtractionConfiguration(
+    policy: ProtoIdeaExtractionPolicy
+  ): Promise<ProtoIdeaExtractionConfigurationResponse> {
+    const response = await this.requestWithDevFallback(
+      '/idea-foundry/proto-idea/configuration',
+      policy,
+      'POST'
+    );
+    return this.parseApiResponse<ProtoIdeaExtractionConfigurationResponse>(
+      response,
+      'save the Proto-Idea extraction policy'
+    );
+  }
+
+  async runProtoIdeaAgent(payload: { batchSize?: number; retryFailed?: boolean } = {}): Promise<ProtoIdeaExtractionRunResponse> {
+    const response = await this.requestWithDevFallback(
+      '/idea-foundry/proto-idea/run',
+      payload,
+      'POST'
+    );
+    return this.parseApiResponse<ProtoIdeaExtractionRunResponse>(
+      response,
+      'run the Proto-Idea agent'
+    );
   }
 
   private async requestWithDevFallback(

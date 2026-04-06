@@ -20,6 +20,7 @@ import { IdeaFoundryOverviewComponent } from './features/idea-foundry/idea-found
 import { IdeaFoundryShellComponent } from './features/idea-foundry/idea-foundry-shell.component';
 import { IdeaFoundryStagePageComponent } from './features/idea-foundry/idea-foundry-stage-page.component';
 import { ProspectingConfigurationComponent } from './features/idea-foundry/prospecting-configuration.component';
+import { ProtoIdeaExtractionComponent } from './features/idea-foundry/proto-idea-extraction.component';
 
 export const rootIdeaSelectionRedirectGuard: CanActivateFn = async () => {
   const router = inject(Router);
@@ -89,14 +90,9 @@ export const routes: Routes = [
       },
       {
         path: 'proto-idea-extraction',
-        component: IdeaFoundryStagePageComponent,
+        component: ProtoIdeaExtractionComponent,
+        canActivate: [adminGuard],
         title: 'HelmOS Idea Foundry Proto-Idea Extraction',
-        data: {
-          title: 'Proto-Idea Extraction',
-          summary: 'Convert unstructured source material into normalized proto-ideas with clear problems, signals, and opportunity framing.',
-          detail:
-            'This screen is scaffolded and ready for extraction prompts, normalization templates, and review tooling for weak signal cleanup.'
-        }
       },
       {
         path: 'idea-refinement',

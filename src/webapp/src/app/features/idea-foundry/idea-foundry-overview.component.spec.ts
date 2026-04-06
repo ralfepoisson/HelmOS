@@ -15,7 +15,8 @@ describe('IdeaFoundryOverviewComponent', () => {
           snippet: 'Operators describe recurring invoicing and VAT reminder pain.',
           queryFamilyTitle: 'Complaint language around invoicing / VAT / reminders',
           themeLink: 'fragmented compliance workflows',
-          query: 'hate doing VAT reminders every month'
+          query: 'hate doing VAT reminders every month',
+          capturedAt: '2026-04-05T20:35:32.953Z'
         },
         {
           id: 'result-2',
@@ -24,7 +25,8 @@ describe('IdeaFoundryOverviewComponent', () => {
           snippet: 'Practice managers compare manual scheduling breakdowns.',
           queryFamilyTitle: 'Urgent rota / scheduling breakdowns',
           themeLink: 'last-minute scheduling pressure',
-          query: 'rota fell apart again short notice cover'
+          query: 'rota fell apart again short notice cover',
+          capturedAt: '2026-04-05T20:40:32.953Z'
         }
       ],
       protoIdeas: [],
@@ -103,12 +105,15 @@ describe('IdeaFoundryOverviewComponent', () => {
 
     const firstSourceCard = fixture.nativeElement.querySelector('.pipeline-card-toggle') as HTMLButtonElement;
     expect(firstSourceCard.textContent).toContain('VAT reminders are killing your accounting firm');
+    expect(firstSourceCard.textContent).toContain('2026');
     expect(firstSourceCard.textContent).not.toContain('Operators describe recurring invoicing and VAT reminder pain.');
     expect(firstSourceCard.textContent).not.toContain('Open source');
+    expect(firstSourceCard.textContent).not.toContain('Normalized');
 
     firstSourceCard.click();
     fixture.detectChanges();
 
+    expect(firstSourceCard.textContent).toContain('2026');
     expect(firstSourceCard.textContent).toContain('Operators describe recurring invoicing and VAT reminder pain.');
     expect(firstSourceCard.textContent).toContain('Query family: Complaint language around invoicing / VAT / reminders');
     expect(firstSourceCard.textContent).toContain('Open source');

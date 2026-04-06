@@ -9,9 +9,11 @@ package "Agent Experience Layer" {
   [Idea Foundry Shell]
   [Idea Foundry Overview Board]
   [Prospecting Configuration Screen]
+  [Proto-Idea Extraction Screen]
   [Value Proposition Screen]
   [Node Control Plane API]
   [Prospecting Configuration API]
+  [Proto-Idea Extraction API]
   [Gateway Registry Preflight]
   [Agent Gateway API (FastAPI)]
   [Agent Admin Screen]
@@ -59,6 +61,8 @@ package "Agent Testing Framework" {
 package "Deterministic Services" {
   [Prospecting Runtime Scheduler]
   [Prospecting Execution Service]
+  [Proto-Idea Extraction Service]
+  [Proto-Idea Stage Runner]
   [Template Renderer]
   [Rules Engine]
   [Output Normaliser]
@@ -116,15 +120,21 @@ package "AWS Production Deployment" {
 [Angular UI] --> [Idea Foundry Shell]
 [Idea Foundry Shell] --> [Idea Foundry Overview Board] : pipeline navigation and overview stages
 [Idea Foundry Shell] --> [Prospecting Configuration Screen] : prospecting submenu and operator controls
+[Idea Foundry Shell] --> [Proto-Idea Extraction Screen] : admin policy controls and agent run trigger
 [Prospecting Configuration Screen] --> [Prospecting Configuration API] : load config, trigger agent optimization cycles, and run prospecting execution
+[Proto-Idea Extraction Screen] --> [Proto-Idea Extraction API] : load policy, save policy, and run Proto-Idea Agent
 [Idea Foundry Overview Board] --> [Prospecting Configuration API] : read persisted source records or render empty states
 [Prospecting Configuration API] --> [Node Control Plane API] : authenticated control-plane request path
+[Proto-Idea Extraction API] --> [Node Control Plane API] : authenticated admin control-plane request path
 [Prospecting Configuration API] --> [Gateway Registry Preflight] : verify requested agent is registered before review runs
+[Proto-Idea Extraction API] --> [Gateway Registry Preflight] : verify requested agent is registered before extraction runs
 [Node Control Plane API] --> [Audit Logs] : persist gateway request traces, raw LLM output, and parsed JSON output for agent-driven workflows
 [Node Control Plane API] --> [Prospecting Runtime Scheduler] : start hourly prospecting runtime loop
 [Node Control Plane API] --> [Prospecting Execution Service] : execute latest saved prospecting strategy and close the review-feedback loop
+[Node Control Plane API] --> [Proto-Idea Extraction Service] : load persisted proto-ideas for pipeline reads
 [Prospecting Runtime Scheduler] --> [Prospecting Execution Service] : run hourly prospecting optimization cycles
 [Prospecting Runtime Scheduler] ..> [Prospecting Configuration API] : persisted next run stays aligned to enforced hourly cadence
+[Proto-Idea Stage Runner] --> [Proto-Idea Extraction Service] : run a controlled extraction pass over pending sources
 [Gateway Registry Preflight] --> [Agent Gateway API (FastAPI)] : fetch runtime registry snapshot
 [Angular UI] --> [Node Control Plane API] : load workspace unlock state and available strategy tools
 [Angular UI] --> [Value Proposition Screen]
@@ -190,6 +200,8 @@ package "AWS Production Deployment" {
 [Workflow Graph Engine] --> [Document Export Service]
 [Prospecting Execution Service] --> [Agent Gateway API (FastAPI)] : invoke shared web-search tool
 [Prospecting Execution Service] --> [Shared Registry PostgreSQL] : store normalized result records for the next prospecting review cycle
+[Proto-Idea Extraction Service] --> [Agent Gateway API (FastAPI)] : invoke Proto-Idea Agent for one claimed source at a time
+[Proto-Idea Extraction Service] --> [Shared Registry PostgreSQL] : store source processing state and extracted proto-ideas
 
 [Ideation Agent] --> [Tool Registry]
 [Value Proposition Agent] --> [Tool Registry]

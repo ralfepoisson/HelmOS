@@ -108,6 +108,9 @@ but a healthy local stack should go through the Angular proxy first.
 - Prospecting Configuration runs now perform a gateway-registry preflight check before starting a review, so local registry drift is surfaced as a clear operator error instead of silently falling back to deterministic routing.
 - The Node control plane now starts a prospecting runtime that polls every minute and runs due prospecting configurations on an enforced hourly schedule, with each cycle executing Prospecting Agent review followed immediately by Prospecting Execution.
 - Prospecting review persistence now writes the enforced hourly cadence back into the saved UI snapshot, and Prospecting Execution retries zero-result quoted boolean queries once with a simplified query before storing an empty result set.
+- Proto-Idea Extraction now persists claimed source-processing rows in `proto_idea_sources` plus extracted `proto_ideas`, using the source records produced by Prospecting Execution as upstream inputs.
+- Proto-Idea Extraction now also persists an administrator-managed `proto_idea_extraction_policies` record, exposes admin API endpoints for loading/saving that policy, and injects the saved policy into each Proto-Idea Agent run as structured runtime guidance.
+- Run one extraction pass locally with `npm run proto-ideas:run`. Set `PROTO_IDEA_BATCH_SIZE=<n>` to process a small batch and `PROTO_IDEA_RETRY_FAILED=true` to retry previously failed source rows.
 - Background prospecting runtime tick failures are now emitted to stderr instead of being swallowed, so database or infrastructure outages remain observable between automation runs.
 - The gateway uses separate runtime and registry database connections in local development: runtime writes stay on `HELMOS_DATABASE_URL`, while registry reads can point at the shared Prisma `DATABASE_URL`.
 - Alembic is declared as a dependency and the model layout is migration-friendly, but migrations are not generated in this first pass.
