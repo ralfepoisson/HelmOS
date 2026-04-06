@@ -66,6 +66,17 @@ Infrastructure endpoints:
 - `GET /api/admin/agents`
 - `POST /api/admin/agents`
 - `PATCH /api/admin/agents/:id`
+- `GET /api/idea-foundry/prospecting/configuration`
+- `GET /api/idea-foundry/prospecting/contents`
+- `POST /api/idea-foundry/prospecting/configuration/run`
+- `POST /api/idea-foundry/prospecting/configuration/execute`
+- `GET /api/idea-foundry/proto-idea/configuration`
+- `POST /api/idea-foundry/proto-idea/configuration`
+- `POST /api/idea-foundry/proto-idea/run`
+- `GET /api/idea-foundry/refinement/configuration`
+- `POST /api/idea-foundry/refinement/configuration`
+- `GET /api/idea-foundry/refinement/candidates`
+- `POST /api/idea-foundry/refinement/run`
 
 CRUD pattern for each resource:
 
@@ -107,7 +118,10 @@ single control-plane API.
 `GET /api/admin/agents` returns:
 
 - persisted `agent_definitions`
-- the latest active `prompt_configs` grouped by agent key
+- the latest active `prompt_configs` matched by exact prompt key prefix
+  Only prompt keys whose prefix exactly matches the agent key, such as
+  `ideation.default` for `ideation`, are returned. Similar keys such as
+  `ideation-agent.default` are treated as different agents.
 - a runtime snapshot from the FastAPI agent gateway when
   `AGENT_GATEWAY_BASE_URL` is configured
 
@@ -145,6 +159,48 @@ currently understands keys such as:
 The Node backend talks to the agent gateway over HTTP using:
 
 - `GET <AGENT_GATEWAY_BASE_URL>/admin/agents`
+
+## Idea Foundry stage APIs
+
+The Idea Foundry pipeline now exposes separate stage-specific control-plane
+endpoints instead of overloading one shared settings read.
+
+`GET /api/idea-foundry/prospecting/contents` returns:
+
+- persisted normalized source records
+- persisted proto-ideas
+- persisted idea candidates
+- current prospecting runtime metadata
+
+`GET /api/idea-foundry/proto-idea/configuration` and
+`POST /api/idea-foundry/proto-idea/configuration` load and save the
+administrator policy that shapes Proto-Idea Extraction.
+
+`POST /api/idea-foundry/proto-idea/run`:
+
+- claims the next eligible source
+- injects the saved extraction policy into the Proto-Idea Agent context
+- validates the JSON response
+- persists claimed-source state plus extracted `proto_ideas`
+
+`GET /api/idea-foundry/refinement/configuration` and
+`POST /api/idea-foundry/refinement/configuration` load and save the
+administrator policy for Idea Refinement.
+
+`GET /api/idea-foundry/refinement/candidates` returns:
+
+- persisted `idea_candidates`
+- proto-idea linkage for each candidate
+- selected conceptual tool names derived from the stored tool ids
+
+`POST /api/idea-foundry/refinement/run`:
+
+- selects the next eligible proto-idea, or a specific proto-idea when requested
+- loads active conceptual tools from the database
+- chooses a bounded, deterministic subset based on lightweight weakness heuristics
+- injects the static agent identity, saved policy, selected tools, and proto-idea payload into the runtime request
+- validates the JSON response and applies an internal quality threshold before persistence
+- creates or updates the persisted `idea_candidates` row while recording the policy and tools used
 
 ## Example requests
 

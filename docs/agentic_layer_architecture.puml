@@ -10,12 +10,16 @@ package "Agent Experience Layer" {
   [Idea Foundry Overview Board]
   [Prospecting Configuration Screen]
   [Proto-Idea Extraction Screen]
+  [Idea Refinement Screen]
   [Value Proposition Screen]
   [Node Control Plane API]
+  [Conceptual Tools API]
   [Prospecting Configuration API]
   [Proto-Idea Extraction API]
+  [Idea Refinement API]
   [Gateway Registry Preflight]
   [Agent Gateway API (FastAPI)]
+  [Conceptual Tools Admin Screen]
   [Agent Admin Screen]
   [Agent Test Admin Screen]
   [Logs Admin Screen]
@@ -64,6 +68,8 @@ package "Deterministic Services" {
   [Prospecting Execution Service]
   [Proto-Idea Extraction Service]
   [Proto-Idea Stage Runner]
+  [Idea Refinement Service]
+  [Idea Refinement Stage Runner]
   [Template Renderer]
   [Rules Engine]
   [Output Normaliser]
@@ -92,6 +98,7 @@ package "AgentOps & Observability" {
   [Audit Logs]
   [Agent Registry]
   [Prompt Registry]
+  [Conceptual Tools Registry]
 }
 
 package "AWS Production Deployment" {
@@ -122,20 +129,26 @@ package "AWS Production Deployment" {
 [Idea Foundry Shell] --> [Idea Foundry Overview Board] : pipeline navigation and overview stages
 [Idea Foundry Shell] --> [Prospecting Configuration Screen] : prospecting submenu and operator controls
 [Idea Foundry Shell] --> [Proto-Idea Extraction Screen] : admin policy controls and agent run trigger
+[Idea Foundry Shell] --> [Idea Refinement Screen] : admin policy controls, candidate review, and run trigger
 [Prospecting Configuration Screen] --> [Prospecting Configuration API] : load config, trigger agent optimization cycles, and run prospecting execution
 [Proto-Idea Extraction Screen] --> [Proto-Idea Extraction API] : load policy, save policy, and run Proto-Idea Agent
+[Idea Refinement Screen] --> [Idea Refinement API] : load policy, list candidates, save policy, and run Idea Refinement Agent
 [Idea Foundry Overview Board] --> [Prospecting Configuration API] : read persisted source records or render empty states
 [Prospecting Configuration API] --> [Node Control Plane API] : authenticated control-plane request path
 [Proto-Idea Extraction API] --> [Node Control Plane API] : authenticated admin control-plane request path
+[Idea Refinement API] --> [Node Control Plane API] : authenticated admin control-plane request path
 [Prospecting Configuration API] --> [Gateway Registry Preflight] : verify requested agent is registered before review runs
 [Proto-Idea Extraction API] --> [Gateway Registry Preflight] : verify requested agent is registered before extraction runs
+[Idea Refinement API] --> [Gateway Registry Preflight] : verify requested agent is registered before refinement runs
 [Node Control Plane API] --> [Audit Logs] : persist gateway request traces, raw LLM output, and parsed JSON output for agent-driven workflows
 [Node Control Plane API] --> [Prospecting Runtime Scheduler] : start hourly prospecting runtime loop
 [Node Control Plane API] --> [Prospecting Execution Service] : execute latest saved prospecting strategy and close the review-feedback loop
 [Node Control Plane API] --> [Proto-Idea Extraction Service] : load persisted proto-ideas for pipeline reads
+[Node Control Plane API] --> [Idea Refinement Service] : load persisted idea candidates for pipeline reads
 [Prospecting Runtime Scheduler] --> [Prospecting Execution Service] : run hourly prospecting optimization cycles
 [Prospecting Runtime Scheduler] ..> [Prospecting Configuration API] : persisted next run stays aligned to enforced hourly cadence
 [Proto-Idea Stage Runner] --> [Proto-Idea Extraction Service] : run a controlled extraction pass over pending sources
+[Idea Refinement Stage Runner] --> [Idea Refinement Service] : run a controlled refinement pass over eligible proto-ideas
 [Gateway Registry Preflight] --> [Agent Gateway API (FastAPI)] : fetch runtime registry snapshot
 [Angular UI] --> [Node Control Plane API] : load workspace unlock state and available strategy tools
 [Angular UI] --> [Value Proposition Screen]
@@ -146,8 +159,12 @@ package "AWS Production Deployment" {
 [Auth Callback & Route Guards] --> [JWT Session Bootstrap] : capture hash-route token before app bootstrap
 [Angular Dev Proxy] --> [Node Control Plane API] : /api
 [Angular Dev Proxy] --> [Agent Gateway API (FastAPI)] : /api/v1
+[Angular UI] --> [Conceptual Tools Admin Screen]
+[Conceptual Tools Admin Screen] --> [Conceptual Tools API] : list, create, edit, activate, deactivate
+[Conceptual Tools API] --> [Node Control Plane API] : authenticated admin control-plane request path
 [Angular UI] --> [Agent Admin Screen]
 [Agent Admin Screen] --> [Node Control Plane API] : create/update agent registry
+[Node Control Plane API] --> [Prompt Registry] : exact prompt-key lookup by agent key
 [Angular UI] --> [Agent Test Admin Screen]
 [Agent Test Admin Screen] --> [Agent Gateway API (FastAPI)] : fixture discovery, run control, and review data
 [Agent Test Admin Screen] --> [Run Detail Evidence API] : transcript turns, score evidence, and snapshot artifacts
@@ -155,6 +172,7 @@ package "AWS Production Deployment" {
 [Logs Admin Screen] --> [Node Control Plane API] : search backend logs, filter by scope, timed refresh
 [Node Control Plane API] --> [RBAC Policy] : verify JWT, derive user context, enforce access
 [Node Control Plane API] --> [Shared Registry PostgreSQL] : persist workspace feature unlocks and stage availability
+[Node Control Plane API] --> [Conceptual Tools Registry] : persist structured reasoning artefacts
 [RBAC Policy] --> [Shared Registry PostgreSQL] : upsert local user, tenant link, app role
 [Node Control Plane API] --> [Agent Gateway API (FastAPI)] : runtime snapshot
 [Node Control Plane API] --> [Agent Registry] : create/update definitions
@@ -205,6 +223,9 @@ package "AWS Production Deployment" {
 [Prospecting Execution Service] --> [Shared Registry PostgreSQL] : store normalized result records for the next prospecting review cycle
 [Proto-Idea Extraction Service] --> [Agent Gateway API (FastAPI)] : invoke Proto-Idea Agent for one claimed source at a time
 [Proto-Idea Extraction Service] --> [Shared Registry PostgreSQL] : store source processing state and extracted proto-ideas
+[Idea Refinement Service] --> [Conceptual Tools Registry] : load active conceptual tools and persist selected tool ids per candidate
+[Idea Refinement Service] --> [Agent Gateway API (FastAPI)] : invoke Idea Refinement Agent with policy, tools, and proto-idea context
+[Idea Refinement Service] --> [Shared Registry PostgreSQL] : store refinement policy, proto-idea processing state, and idea candidates
 
 [Ideation Agent] --> [Tool Registry]
 [Value Proposition Agent] --> [Tool Registry]
@@ -227,6 +248,7 @@ package "AWS Production Deployment" {
 [Workflow Graph Engine] --> [Audit Logs]
 [Workflow Graph Engine] --> [Agent Registry]
 [Workflow Graph Engine] --> [Prompt Registry]
+[Workflow Graph Engine] --> [Conceptual Tools Registry]
 [Test Harness Service] --> [Audit Logs]
 [Test Harness Service] --> [Agent Registry]
 [Test Harness Service] --> [Prompt Registry]

@@ -2,6 +2,7 @@ const { randomUUID } = require("node:crypto");
 const { z } = require("zod");
 
 const { createLogEntry } = require("./log-entry.service");
+const { getIdeaCandidatePipelineContents } = require("./idea-refinement.service");
 const { getProtoIdeaPipelineContents } = require("./proto-idea-extraction.service");
 
 const PROSPECTING_AGENT_KEY_CANDIDATES = ["prospecting", "prospecting_agent", "prospecting-agent"];
@@ -143,12 +144,15 @@ async function getProspectingConfiguration(prisma, currentUser) {
 
 async function getProspectingPipelineContents(prisma, currentUser) {
   const record = await loadProspectingConfiguration(prisma, currentUser.id);
-  const protoIdeas = await getProtoIdeaPipelineContents(prisma, currentUser.id);
+  const [protoIdeas, ideaCandidates] = await Promise.all([
+    getProtoIdeaPipelineContents(prisma, currentUser.id),
+    getIdeaCandidatePipelineContents(prisma, currentUser.id),
+  ]);
 
   return {
     sources: Array.isArray(record?.lastResultRecords) ? record.lastResultRecords : [],
     protoIdeas,
-    ideaCandidates: [],
+    ideaCandidates,
     curatedOpportunities: [],
     runtime: buildRuntimeState(record),
   };

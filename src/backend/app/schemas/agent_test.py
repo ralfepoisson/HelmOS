@@ -29,6 +29,8 @@ class CreateAgentTestRunRequest(BaseModel):
     suite_key: str | None = None
     target_model_name: str | None = None
     testing_agent_model_name: str | None = None
+    min_turns: int = 20
+    max_turns: int = 30
     operator_notes: str | None = None
 
 
@@ -47,6 +49,7 @@ class AgentTestRunSummaryResponse(BaseModel):
     status: str
     actual_turns: int
     min_turns: int
+    max_turns: int
     overall_score: float
     aggregate_confidence: float
     verdict: str

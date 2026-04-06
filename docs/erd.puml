@@ -198,7 +198,8 @@ Idea Foundry is now available as a dedicated UI surface.
 Its pipeline board now renders explicit empty states unless persisted
 source artefacts exist. Prospecting persists normalized source records,
 Proto-Idea Extraction persists claimed source-processing rows plus
-downstream proto-ideas, and later stages can now build on real
+downstream proto-ideas, Idea Refinement persists structured
+idea_candidates plus per-proto-idea refinement lifecycle state, and later stages can now build on real
 traceable pipeline storage instead of placeholders.
 end note
 
@@ -293,6 +294,64 @@ package "Idea Foundry Control" {
     status_tone : VARCHAR(100)
     agent_confidence : VARCHAR(100)
     status_explanation : TEXT
+    refinement_status : VARCHAR(20)
+    refinement_started_at : TIMESTAMP
+    refinement_completed_at : TIMESTAMP
+    refinement_failed_at : TIMESTAMP
+    refinement_attempts : INTEGER
+    latest_refinement_policy_id : UUID <<FK>>
+    latest_refinement_gateway_run_id : VARCHAR(255)
+    latest_refinement_error_message : TEXT
+    latest_refinement_error_meta : JSONB
+    raw_llm_payload : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
+  entity "idea_refinement_policies" as idea_refinement_policies {
+    *id : UUID <<PK>>
+    --
+    profile_name : VARCHAR(100)
+    refinement_depth : VARCHAR(30)
+    creativity_level : VARCHAR(30)
+    strictness : VARCHAR(30)
+    max_conceptual_tools_per_run : INTEGER
+    internal_quality_threshold : VARCHAR(30)
+    latest_run_status : VARCHAR(30)
+    last_run_at : TIMESTAMP
+    latest_run_summary_json : JSONB
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+    --
+    UNIQUE(profile_name)
+  }
+
+  entity "idea_candidates" as idea_candidates {
+    *id : UUID <<PK>>
+    --
+    owner_user_id : UUID <<FK>>
+    proto_idea_id : UUID <<FK>>
+    policy_id : UUID <<FK>>
+    problem_statement : TEXT
+    target_customer : TEXT
+    value_proposition : TEXT
+    opportunity_concept : TEXT
+    differentiation : TEXT
+    assumptions : JSONB
+    open_questions : JSONB
+    improvement_summary : TEXT
+    key_changes : JSONB
+    applied_reasoning_summary : TEXT
+    applied_conceptual_tool_ids : JSONB
+    quality_check_coherence : TEXT
+    quality_check_gaps : JSONB
+    quality_check_risks : JSONB
+    status_label : VARCHAR(100)
+    status_tone : VARCHAR(100)
+    agent_confidence : VARCHAR(100)
+    status_explanation : TEXT
+    refinement_iteration : INTEGER
+    deduplication_fingerprint : VARCHAR(1000)
     raw_llm_payload : JSONB
     created_at : TIMESTAMP
     updated_at : TIMESTAMP
@@ -321,6 +380,9 @@ note right of proto_ideas
 One source can yield zero, one, or many proto-ideas.
 Each stored proto-idea preserves explicit source signals separately
 from inferred signals so downstream refinement can stay grounded.
+The refinement lifecycle is also stored on the proto-idea itself so
+the next eligible candidate can be selected deterministically and
+failures remain inspectable and retryable.
 end note
 
 note right of proto_idea_extraction_policies
@@ -328,6 +390,20 @@ Stores the administrator-defined policy that shapes Proto-Idea Agent
 behavior at runtime. The policy remains structured and bounded rather
 than acting as a free-form prompt editor, and the latest run metadata
 supports simple operational visibility from the admin UI.
+end note
+
+note right of idea_refinement_policies
+Stores the administrator-defined policy that shapes Idea Refinement
+runtime behavior. The policy controls transformation depth, creativity,
+strictness, conceptual-tool count, and the minimum internal quality
+threshold required before a candidate is accepted.
+end note
+
+note right of idea_candidates
+Each candidate is a refined version of one proto-idea iteration.
+The row preserves the applied policy, selected conceptual tool ids,
+quality-check summary, and a deduplication fingerprint so cosmetically
+different duplicates are not stored as separate candidate versions.
 end note
 
 package "Knowledge Base" {
@@ -511,6 +587,22 @@ package "Conversation & Agent Orchestration" {
 }
 
 package "Agent Registry & Admin" {
+  entity "conceptual_tools" as conceptual_tools {
+    *id : UUID <<PK>>
+    --
+    name : VARCHAR(200) <<UK>>
+    category : VARCHAR(100)
+    purpose : TEXT
+    when_to_use : JSONB
+    when_not_to_use : JSONB
+    instructions : JSONB
+    expected_effect : TEXT
+    status : VARCHAR(20)
+    version : INTEGER
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
   entity "agent_definitions" as agent_definitions {
     *id : UUID <<PK>>
     --
@@ -539,6 +631,15 @@ package "Agent Registry & Admin" {
     UNIQUE(key, version)
   }
 }
+
+note right of conceptual_tools
+Conceptual tools are managed artefacts rather than ad hoc prompt text.
+The admin UI edits list-shaped fields as newline-delimited text, while
+the database persists those fields as structured JSON arrays so future
+runtime assembly can stay deterministic and version-aware.
+Idea Refinement now loads active tools from this registry and selects a
+small deterministic subset per proto-idea at run time.
+end note
 
 package "Agent Testing" {
   entity "agent_test_fixtures" as agent_test_fixtures {
@@ -705,6 +806,11 @@ proto_idea_extraction_policies ||--o{ proto_idea_sources : guides
 prospecting_configurations ||--o{ proto_idea_sources : feeds
 proto_idea_sources ||--o{ proto_ideas : yields
 users ||--o{ proto_ideas : owns
+idea_refinement_policies ||--o{ proto_ideas : latest_policy
+users ||--o{ idea_candidates : owns
+proto_ideas ||--o{ idea_candidates : refines
+idea_refinement_policies ||--o{ idea_candidates : guides
+conceptual_tools }o--o{ idea_candidates : applied
 users ||--o{ knowledge_bases : created_by
 users ||--o{ knowledge_bases : updated_by
 knowledge_bases ||--o{ knowledge_base_files
@@ -721,6 +827,9 @@ users ||--o{ knowledge_base_tool_audits : actor
 note bottom of prompt_configs
 Prompt configs are linked to agents by key convention
 for now, for example "ideation.default".
+The prefix before the first "." must match the
+agent_definitions.key exactly. Similar-looking keys
+must not be reused as fallback matches.
 end note
 
 workspaces ||--|| strategy_documents

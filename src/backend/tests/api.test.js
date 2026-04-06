@@ -19,10 +19,10 @@ function createTestJwt(overrides = {}) {
 function createSignedTestJwt(overrides = {}, { secret = null } = {}) {
   const header = encodeJwtPayload({ alg: secret ? "HS256" : "none", typ: "JWT" });
   const payload = encodeJwtPayload({
-    userid: "life2-user-1",
-    accountId: "life2-account-1",
-    email: "founder@example.com",
-    displayName: "Founder Example",
+    userid: "api-test-user-1",
+    accountId: "api-test-account-1",
+    email: "api-test-user@helmos.test",
+    displayName: "API Test User",
     timezone: "Europe/Paris",
     locale: "en-GB",
     isAdmin: false,
@@ -2619,6 +2619,413 @@ test("POST /api/idea-foundry/proto-idea/run executes the proto-idea agent using 
   );
 });
 
+test("GET /api/idea-foundry/refinement/configuration returns the persisted idea refinement policy", async () => {
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    ideaRefinementPolicy: {
+      upsert: async () => ({
+        id: "policy-1",
+        profileName: "default",
+        refinementDepth: "standard",
+        creativityLevel: "medium",
+        strictness: "balanced",
+        maxConceptualToolsPerRun: 3,
+        internalQualityThreshold: "standard",
+        latestRunStatus: "COMPLETED",
+        lastRunAt: new Date("2026-04-06T10:30:00Z"),
+        latestRunSummaryJson: {
+          completedCount: 1,
+          createdCount: 1,
+        },
+      }),
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient: {} });
+  const response = await withAuth(
+    request(app).get("/api/idea-foundry/refinement/configuration"),
+    { isAdmin: true, email: "ralfepoisson@gmail.com" }
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.policy.refinementDepth, "standard");
+  assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
+  assert.equal(response.body.data.runtime.latestRunSummary.createdCount, 1);
+});
+
+test("GET /api/idea-foundry/refinement/candidates returns persisted idea candidates with proto-idea linkage", async () => {
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    ideaCandidate: {
+      findMany: async () => [
+        {
+          id: "candidate-1",
+          ownerUserId: "admin-user-1",
+          protoIdeaId: "proto-1",
+          problemStatement: "Problem",
+          targetCustomer: "Customer",
+          valueProposition: "Value",
+          opportunityConcept: "Opportunity concept",
+          differentiation: "Differentiation",
+          assumptions: [],
+          openQuestions: [],
+          improvementSummary: "Improvement summary",
+          keyChanges: [],
+          appliedReasoningSummary: "Reasoning summary",
+          appliedConceptualToolIds: ["tool-1"],
+          qualityCheckCoherence: "Aligned",
+          qualityCheckGaps: [],
+          qualityCheckRisks: [],
+          statusLabel: "Refined",
+          statusTone: "success",
+          agentConfidence: "medium",
+          statusExplanation: "Clearer and more actionable",
+          refinementIteration: 1,
+          createdAt: new Date("2026-04-06T10:30:00Z"),
+          updatedAt: new Date("2026-04-06T10:40:00Z"),
+          protoIdea: {
+            id: "proto-1",
+            title: "Compliance workflow co-pilot",
+            sourceId: "source-1",
+            source: {
+              sourceTitle: "VAT reminder pain",
+            },
+          },
+        },
+      ],
+    },
+    conceptualTool: {
+      findMany: async () => [
+        {
+          id: "tool-1",
+          name: "Assumption Mapping",
+          category: "diagnostic",
+          purpose: "Surface assumptions",
+          whenToUse: [],
+          whenNotToUse: [],
+          instructions: [],
+          expectedEffect: "Clearer reasoning",
+          status: "ACTIVE",
+          version: 1,
+        },
+      ],
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient: {} });
+  const response = await withAuth(
+    request(app).get("/api/idea-foundry/refinement/candidates"),
+    { isAdmin: true, email: "ralfepoisson@gmail.com" }
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.length, 1);
+  assert.equal(response.body.data[0].protoIdeaTitle, "Compliance workflow co-pilot");
+  assert.deepEqual(response.body.data[0].selectedConceptualToolNames, ["Assumption Mapping"]);
+});
+
+test("POST /api/idea-foundry/refinement/configuration saves the idea refinement policy", async () => {
+  let storedPolicy = null;
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    ideaRefinementPolicy: {
+      async upsert({ create, update }) {
+        storedPolicy = {
+          id: "policy-1",
+          ...(storedPolicy ?? {}),
+          ...(storedPolicy ? update : create),
+        };
+        return storedPolicy;
+      },
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient: {} });
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/refinement/configuration")
+      .send({
+        profileName: "default",
+        refinementDepth: "deep",
+        creativityLevel: "high",
+        strictness: "exploratory",
+        maxConceptualToolsPerRun: 4,
+        internalQualityThreshold: "high",
+      }),
+    { isAdmin: true, email: "ralfepoisson@gmail.com" }
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.policy.refinementDepth, "deep");
+  assert.equal(response.body.data.policy.maxConceptualToolsPerRun, 4);
+  assert.equal(storedPolicy.creativityLevel, "high");
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "idea_refinement_policy_saved"),
+    true
+  );
+});
+
+test("POST /api/idea-foundry/refinement/run executes the idea refinement agent using the saved policy and selected tools", async () => {
+  let storedPolicy = {
+    id: "policy-1",
+    profileName: "default",
+    refinementDepth: "standard",
+    creativityLevel: "medium",
+    strictness: "balanced",
+    maxConceptualToolsPerRun: 3,
+    internalQualityThreshold: "standard",
+    latestRunStatus: null,
+    lastRunAt: null,
+    latestRunSummaryJson: null,
+  };
+  const protoIdeas = new Map([
+    [
+      "proto-1",
+      {
+        id: "proto-1",
+        ownerUserId: "admin-user-1",
+        sourceId: "proto-source-1",
+        title: "Compliance workflow co-pilot",
+        problemStatement: "Accounting teams are stuck chasing repetitive VAT reminder work.",
+        targetCustomer: "Small accounting firms",
+        opportunityHypothesis: "A workflow layer could help automate reminders.",
+        whyItMatters: "It wastes time and causes missed deadlines.",
+        opportunityType: "Workflow SaaS",
+        assumptions: [],
+        openQuestions: [],
+        refinementStatus: "PENDING",
+        refinementAttempts: 0,
+        source: {
+          id: "proto-source-1",
+          sourceTitle: "VAT reminder pain",
+          sourceUrl: "https://example.com/vat",
+          sourceCapturedAt: new Date("2026-04-06T09:00:00Z"),
+        },
+      },
+    ],
+  ]);
+  const createdCandidates = [];
+  let capturedGatewayPayload = null;
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    ideaRefinementPolicy: {
+      async upsert() {
+        return storedPolicy;
+      },
+      async update({ data }) {
+        storedPolicy = { ...storedPolicy, ...data };
+        return storedPolicy;
+      },
+    },
+    protoIdea: {
+      async findMany() {
+        return Array.from(protoIdeas.values());
+      },
+      async updateMany({ where, data }) {
+        Object.assign(protoIdeas.get(where.id), data);
+        return { count: 1 };
+      },
+      async findUnique({ where }) {
+        return protoIdeas.get(where.id);
+      },
+      async update({ where, data }) {
+        Object.assign(protoIdeas.get(where.id), data);
+        return protoIdeas.get(where.id);
+      },
+    },
+    conceptualTool: {
+      async findMany() {
+        return [
+          {
+            id: "tool-1",
+            name: "Assumption Mapping",
+            category: "diagnostic",
+            purpose: "Surface assumptions",
+            whenToUse: ["the idea relies on multiple unstated beliefs"],
+            whenNotToUse: [],
+            instructions: ["Write the hidden assumptions"],
+            expectedEffect: "Clearer reasoning",
+            status: "ACTIVE",
+            version: 1,
+          },
+        ];
+      },
+    },
+    ideaCandidate: {
+      async findFirst() {
+        return null;
+      },
+      async create({ data }) {
+        createdCandidates.push(data);
+        return data;
+      },
+    },
+    agentDefinition: {
+      async findMany() {
+        return [
+          {
+            key: "idea_refinement",
+            name: "Idea Refinement Agent",
+            active: true,
+            updatedAt: new Date("2026-04-06T09:45:00Z"),
+          },
+        ];
+      },
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+    async $transaction(callback) {
+      return callback(this);
+    },
+  };
+
+  const agentGatewayClient = {
+    async getAdminSnapshot() {
+      return {
+        status: "online",
+        agents: [{ key: "idea_refinement" }],
+      };
+    },
+    async startRun(payload) {
+      capturedGatewayPayload = payload;
+      return { id: "refine-run-1" };
+    },
+    async waitForRunCompletion() {
+      return {
+        id: "refine-run-1",
+        status: "completed",
+        normalized_output: {
+          reply_to_user: {
+            content: "Refined the proto-idea into a stronger compliance workflow candidate.",
+          },
+          refinement_overview: {
+            improvement_summary: "Clarified the ICP, wedge, and differentiation.",
+            key_changes: ["Narrowed the ICP", "Added a wedge"],
+            applied_reasoning_summary: "Used assumption mapping to surface the critical adoption risk.",
+          },
+          problem_statement: {
+            content: "Owner-led accounting firms lose time managing recurring compliance reminders across manual workflows.",
+            status: {
+              label: "Strong",
+              tone: "success",
+              agent_confidence: "high",
+              explanation: "The problem is clearer and more specific.",
+            },
+          },
+          target_customer: {
+            content: "Owner-led accounting firms with recurring monthly and quarterly deadlines.",
+            status: {
+              label: "Strong",
+              tone: "success",
+              agent_confidence: "high",
+              explanation: "The buyer is now specific enough to evaluate.",
+            },
+          },
+          value_proposition: {
+            content: "A workflow cockpit that automates compliance reminder sequencing and task handoffs.",
+            status: {
+              label: "Strong",
+              tone: "success",
+              agent_confidence: "high",
+              explanation: "The value is operational and tangible.",
+            },
+          },
+          opportunity_concept: {
+            content: "A compliance operations cockpit for small firms that turns recurring deadlines into managed workflows.",
+            status: {
+              label: "Refined",
+              tone: "success",
+              agent_confidence: "medium",
+              explanation: "The candidate is clearer and more actionable.",
+            },
+          },
+          differentiation: {
+            content: "Starts from recurring compliance operations instead of broad practice-management breadth.",
+            status: {
+              label: "Visible",
+              tone: "success",
+              agent_confidence: "medium",
+              explanation: "The wedge is now visible.",
+            },
+          },
+          assumptions: {
+            items: ["Firms will adopt workflow support before full automation."],
+          },
+          open_questions: {
+            items: ["Which recurring deadlines create the highest pain?"],
+          },
+          quality_check: {
+            coherence: "Problem, customer, and wedge are aligned with no contradictions.",
+            gaps: [],
+            risks: [],
+          },
+        },
+      };
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/refinement/run")
+      .send({ batchSize: 1 }),
+    { isAdmin: true, email: "ralfepoisson@gmail.com" }
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(capturedGatewayPayload.requested_agent, "idea_refinement");
+  assert.equal(capturedGatewayPayload.context.refinement_policy.max_conceptual_tools_per_run, 3);
+  assert.equal(response.body.data.policy.id, "policy-1");
+  assert.equal(response.body.data.result.completedCount, 1);
+  assert.equal(response.body.data.result.createdCount, 1);
+  assert.equal(createdCandidates.length, 1);
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "idea_refinement_agent_run_completed"),
+    true
+  );
+});
+
 test("POST /api/idea-foundry/prospecting/configuration/run executes a full prospecting optimization cycle and persists the refreshed result records", async () => {
   const currentSnapshot = {
     agentState: "active",
@@ -4553,7 +4960,7 @@ test("GET /api/admin/agents returns persisted agents with gateway runtime metada
       findMany: async () => [
         {
           id: "prompt-1",
-          key: "ideation-agent.default",
+          key: "ideation.default",
           version: "1.0.0",
           promptTemplate: "Generate a founder-oriented idea brief from: {prompt}",
           configJson: { temperature: 0.2 },
@@ -4594,7 +5001,79 @@ test("GET /api/admin/agents returns persisted agents with gateway runtime metada
   assert.equal(response.body.data.agents.length, 1);
   assert.deepEqual(response.body.data.agents[0].allowedTools, ["retrieval"]);
   assert.equal(response.body.data.agents[0].runtime.registered, true);
+  assert.equal(response.body.data.agents[0].promptConfig.key, "ideation.default");
   assert.equal(response.body.data.agents[0].promptConfig.version, "1.0.0");
+});
+
+test("GET /api/admin/agents ignores active prompt configs for similarly named agents", async () => {
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    agentDefinition: {
+      findMany: async () => [
+        {
+          id: "agent-1",
+          key: "ideation",
+          name: "Ideation Agent",
+          version: "1.0.0",
+          description: "Transforms founder input into structured idea briefs.",
+          allowedTools: ["retrieval"],
+          defaultModel: "helmos-default",
+          active: true,
+          createdAt: "2026-03-22T08:00:00.000Z",
+          updatedAt: "2026-03-22T08:05:00.000Z",
+        },
+      ],
+    },
+    promptConfig: {
+      findMany: async () => [
+        {
+          id: "prompt-1",
+          key: "ideation-agent.default",
+          version: "1.0.0",
+          promptTemplate: "Mock prompt that must not leak into the ideation agent.",
+          configJson: { temperature: 0.9 },
+          active: true,
+          updatedAt: "2026-03-22T08:06:00.000Z",
+        },
+      ],
+    },
+  };
+
+  const agentGatewayClient = {
+    getAdminSnapshot: async () => ({
+      configured: true,
+      status: "online",
+      message: "Agent gateway responded successfully.",
+      baseUrl: "http://localhost:8000/api/v1",
+      service: "helmos-agent-gateway",
+      checkedAt: "2026-03-22T08:10:00.000Z",
+      agents: [
+        {
+          key: "ideation",
+          name: "Ideation Agent",
+          version: "1.0.0",
+          purpose: "Transforms founder input into structured idea briefs.",
+          allowed_tools: ["retrieval"],
+        },
+      ],
+    }),
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(request(app).get("/api/admin/agents"), {
+    email: "ralfepoisson@gmail.com",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.agents.length, 1);
+  assert.equal(response.body.data.agents[0].promptConfig, null);
 });
 
 test("GET /api/admin/agents/:id returns one persisted agent without mutating state", async () => {
@@ -4957,6 +5436,164 @@ test("PATCH /api/admin/agents/:id updates agent registry and prompt config", asy
   assert.equal(promptConfigs.find((entry) => entry.id === "prompt-1").active, false);
 });
 
+test("PATCH /api/admin/agents/:id returns the exact matching prompt config after save", async () => {
+  const promptConfigs = [
+    {
+      id: "prompt-mock",
+      key: "ideation-agent.default",
+      version: "9.9.9",
+      promptTemplate: "Mock prompt that must not override the real ideation config.",
+      configJson: { temperature: 0.9 },
+      active: true,
+      updatedAt: "2026-03-22T10:00:00.000Z",
+    },
+    {
+      id: "prompt-1",
+      key: "ideation.default",
+      version: "1.0.0",
+      promptTemplate: "Initial ideation prompt",
+      configJson: { temperature: 0.2 },
+      active: true,
+      updatedAt: "2026-03-22T08:00:00.000Z",
+    },
+  ];
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    agentDefinition: {
+      findMany: async () => [
+        {
+          id: "agent-1",
+          key: "ideation",
+          name: "Ideation Agent",
+          version: "1.1.0",
+          description: "Refines founder concepts into structured idea briefs.",
+          allowedTools: ["retrieval", "web_search"],
+          defaultModel: "helmos-default",
+          active: true,
+          createdAt: "2026-03-22T08:00:00.000Z",
+          updatedAt: "2026-03-22T09:00:00.000Z",
+        },
+      ],
+      findUniqueOrThrow: async () => ({
+        id: "agent-1",
+        key: "ideation",
+        name: "Ideation Agent",
+        version: "1.0.0",
+        description: "Original description",
+        allowedTools: ["retrieval"],
+        defaultModel: "helmos-default",
+        active: true,
+        createdAt: "2026-03-22T08:00:00.000Z",
+        updatedAt: "2026-03-22T08:05:00.000Z",
+      }),
+      update: async ({ data }) => ({
+        id: "agent-1",
+        key: "ideation",
+        name: data.name,
+        version: data.version,
+        description: data.description,
+        allowedTools: data.allowedTools,
+        defaultModel: data.defaultModel,
+        active: data.active,
+        createdAt: "2026-03-22T08:00:00.000Z",
+        updatedAt: "2026-03-22T09:00:00.000Z",
+      }),
+    },
+    promptConfig: {
+      findMany: async () => [...promptConfigs].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+      updateMany: async ({ where, data }) => {
+        promptConfigs.forEach((entry) => {
+          if (entry.key === where.key && entry.active === where.active) {
+            entry.active = data.active;
+          }
+        });
+        return { count: 1 };
+      },
+      findFirst: async ({ where }) =>
+        promptConfigs.find((entry) => entry.key === where.key && entry.version === where.version) ?? null,
+      update: async ({ where, data }) => {
+        const index = promptConfigs.findIndex((entry) => entry.id === where.id);
+        promptConfigs[index] = {
+          ...promptConfigs[index],
+          ...data,
+          updatedAt: "2026-03-22T11:00:00.000Z",
+        };
+        return promptConfigs[index];
+      },
+      create: async ({ data }) => {
+        const created = {
+          id: "prompt-created",
+          updatedAt: "2026-03-22T11:00:00.000Z",
+          ...data,
+        };
+        promptConfigs.push(created);
+        return created;
+      },
+    },
+    logEntry: {
+      create: async () => ({}),
+    },
+    $transaction: async (callback) => callback(prisma),
+  };
+
+  const agentGatewayClient = {
+    getAdminSnapshot: async () => ({
+      configured: true,
+      status: "online",
+      message: "Agent gateway responded successfully.",
+      baseUrl: "http://localhost:8000/api/v1",
+      service: "helmos-agent-gateway",
+      checkedAt: "2026-03-22T11:00:00.000Z",
+      agents: [
+        {
+          key: "ideation",
+          name: "Ideation Agent",
+          version: "1.1.0",
+          purpose: "Refines founder concepts into structured idea briefs.",
+          allowed_tools: ["retrieval", "web_search"],
+        },
+      ],
+    }),
+  };
+
+  const app = createApp({ prisma, agentGatewayClient });
+  const response = await withAuth(
+    request(app)
+      .patch("/api/admin/agents/agent-1")
+      .send({
+        name: "Ideation Agent",
+        version: "1.1.0",
+        description: "Refines founder concepts into structured idea briefs.",
+        allowedTools: ["retrieval", "web_search"],
+        defaultModel: "helmos-default",
+        active: true,
+        promptConfig: {
+          version: "1.1.0",
+          promptTemplate: "Refine the founder brief from: {prompt}",
+          configJson: { temperature: 0.1, artifact_kind: "idea_brief" },
+        },
+      }),
+    { email: "ralfepoisson@gmail.com" },
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.promptConfig.key, "ideation.default");
+  assert.equal(response.body.data.promptConfig.version, "1.1.0");
+  assert.equal(response.body.data.promptConfig.promptTemplate, "Refine the founder brief from: {prompt}");
+  assert.deepEqual(response.body.data.promptConfig.configJson, {
+    temperature: 0.1,
+    artifact_kind: "idea_brief",
+  });
+});
+
 test("business idea routes reject requests without a valid bearer token", async () => {
   const app = createApp({ prisma: {} });
   const response = await request(app).get("/api/business-ideas");
@@ -5108,4 +5745,331 @@ test("the first admin-capable user in a tenant is bootstrapped as an admin", asy
   assert.equal(response.statusCode, 200);
   assert.equal(capturedCreate.appRole, "ADMIN");
   assert.equal(capturedCreate.life2AccountId, "tenant-1");
+});
+
+test("GET /api/admin/conceptual-tools returns persisted tools with optional status filtering", async () => {
+  const conceptualTools = [
+    {
+      id: "tool-1",
+      name: "Inversion",
+      category: "transformative",
+      purpose: "Challenge the default model by reversing core assumptions.",
+      whenToUse: ["high market saturation", "weak differentiation"],
+      whenNotToUse: ["problem statement unclear"],
+      instructions: ["Identify the dominant operating assumption", "Reverse it"],
+      expectedEffect: "Increase novelty and differentiation while preserving grounding.",
+      status: "ACTIVE",
+      version: 1,
+      createdAt: "2026-04-06T08:00:00.000Z",
+      updatedAt: "2026-04-06T08:30:00.000Z",
+    },
+    {
+      id: "tool-2",
+      name: "Failure Analysis",
+      category: "diagnostic",
+      purpose: "Surface likely failure modes before committing to an idea direction.",
+      whenToUse: ["execution path is uncertain"],
+      whenNotToUse: [],
+      instructions: ["List failure modes", "Trace likely causes"],
+      expectedEffect: "Reduce avoidable blind spots.",
+      status: "INACTIVE",
+      version: 1,
+      createdAt: "2026-04-06T09:00:00.000Z",
+      updatedAt: "2026-04-06T09:10:00.000Z",
+    },
+  ];
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    conceptualTool: {
+      lastFindManyArgs: null,
+      async findMany(args) {
+        this.lastFindManyArgs = args;
+        if (args?.where?.status) {
+          return conceptualTools.filter((entry) => entry.status === args.where.status);
+        }
+
+        return conceptualTools;
+      },
+    },
+    logEntry: {
+      async create({ data }) {
+        return { id: "log-1", ...data };
+      },
+    },
+  };
+
+  const app = createApp({ prisma });
+
+  const response = await withAuth(request(app).get("/api/admin/conceptual-tools?status=inactive"), {
+    email: "ralfepoisson@gmail.com",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(prisma.conceptualTool.lastFindManyArgs.where.status, "INACTIVE");
+  assert.equal(response.body.data.length, 1);
+  assert.equal(response.body.data[0].name, "Failure Analysis");
+});
+
+test("GET /api/admin/conceptual-tools falls back to raw SQL when the Prisma client is stale", async () => {
+  const executedSql = [];
+  const queriedSql = [];
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    async $executeRawUnsafe(sql, ...params) {
+      executedSql.push({ sql, params });
+      return 1;
+    },
+    async $queryRawUnsafe(sql, ...params) {
+      queriedSql.push({ sql, params });
+      return [
+        {
+          id: "tool-1",
+          name: "Inversion",
+          category: "transformative",
+          purpose: "Challenge the default model by reversing core assumptions.",
+          when_to_use: ["high market saturation"],
+          when_not_to_use: ["problem statement unclear"],
+          instructions: ["Reverse it"],
+          expected_effect: "Increase novelty.",
+          status: "ACTIVE",
+          version: 1,
+          created_at: "2026-04-06T08:00:00.000Z",
+          updated_at: "2026-04-06T08:30:00.000Z",
+        },
+      ];
+    },
+    logEntry: {
+      async create({ data }) {
+        return { id: "log-1", ...data };
+      },
+    },
+  };
+
+  const app = createApp({ prisma });
+  const response = await withAuth(request(app).get("/api/admin/conceptual-tools"), {
+    email: "ralfepoisson@gmail.com",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.length, 1);
+  assert.equal(response.body.data[0].name, "Inversion");
+  assert.equal(executedSql.length > 0, true);
+  assert.equal(queriedSql.length > 0, true);
+});
+
+test("GET /api/admin/conceptual-tools/:id returns one conceptual tool", async () => {
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    conceptualTool: {
+      async findUnique({ where }) {
+        if (where.id !== "tool-1") {
+          return null;
+        }
+
+        return {
+          id: "tool-1",
+          name: "Inversion",
+          category: "transformative",
+          purpose: "Challenge the default model by reversing core assumptions.",
+          whenToUse: ["high market saturation", "weak differentiation"],
+          whenNotToUse: ["problem statement unclear"],
+          instructions: ["Identify the dominant operating assumption", "Reverse it"],
+          expectedEffect: "Increase novelty and differentiation while preserving grounding.",
+          status: "ACTIVE",
+          version: 1,
+          createdAt: "2026-04-06T08:00:00.000Z",
+          updatedAt: "2026-04-06T08:30:00.000Z",
+        };
+      },
+    },
+    logEntry: {
+      async create({ data }) {
+        return { id: "log-1", ...data };
+      },
+    },
+  };
+
+  const app = createApp({ prisma });
+  const response = await withAuth(request(app).get("/api/admin/conceptual-tools/tool-1"), {
+    email: "ralfepoisson@gmail.com",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.id, "tool-1");
+  assert.deepEqual(response.body.data.instructions, ["Identify the dominant operating assumption", "Reverse it"]);
+});
+
+test("POST /api/admin/conceptual-tools creates a conceptual tool and normalizes newline-delimited fields", async () => {
+  const createdRecords = [];
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    conceptualTool: {
+      async create({ data }) {
+        const created = {
+          id: "tool-1",
+          createdAt: "2026-04-06T10:00:00.000Z",
+          updatedAt: "2026-04-06T10:00:00.000Z",
+          ...data,
+        };
+        createdRecords.push(created);
+        return created;
+      },
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+    async $transaction(callback) {
+      return callback(this);
+    },
+  };
+
+  const app = createApp({ prisma });
+  const response = await withAuth(
+    request(app).post("/api/admin/conceptual-tools").send({
+      name: "Inversion",
+      category: "transformative",
+      purpose: "Challenge the default model by reversing core assumptions.",
+      whenToUse: "high market saturation\n\nweak differentiation",
+      whenNotToUse: "problem statement unclear",
+      instructions:
+        "Identify the dominant operating assumption\nReverse it\nExplore whether the reversed model creates a viable opportunity",
+      expectedEffect: "Increase novelty and differentiation while preserving grounding.",
+      status: "active",
+      version: 1,
+    }),
+    { email: "ralfepoisson@gmail.com" },
+  );
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(createdRecords.length, 1);
+  assert.deepEqual(createdRecords[0].whenToUse, ["high market saturation", "weak differentiation"]);
+  assert.deepEqual(createdRecords[0].whenNotToUse, ["problem statement unclear"]);
+  assert.deepEqual(createdRecords[0].instructions, [
+    "Identify the dominant operating assumption",
+    "Reverse it",
+    "Explore whether the reversed model creates a viable opportunity",
+  ]);
+  assert.equal(createdRecords[0].status, "ACTIVE");
+  assert.equal(response.body.data.name, "Inversion");
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "conceptual_tool_created"),
+    true
+  );
+});
+
+test("PUT /api/admin/conceptual-tools/:id updates a conceptual tool including activation state", async () => {
+  const conceptualTools = [
+    {
+      id: "tool-1",
+      name: "Inversion",
+      category: "transformative",
+      purpose: "Challenge the default model by reversing core assumptions.",
+      whenToUse: ["high market saturation"],
+      whenNotToUse: ["problem statement unclear"],
+      instructions: ["Identify the dominant operating assumption"],
+      expectedEffect: "Increase novelty and differentiation while preserving grounding.",
+      status: "ACTIVE",
+      version: 1,
+      createdAt: "2026-04-06T08:00:00.000Z",
+      updatedAt: "2026-04-06T08:30:00.000Z",
+    },
+  ];
+
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    conceptualTool: {
+      async findUniqueOrThrow({ where }) {
+        const record = conceptualTools.find((entry) => entry.id === where.id);
+        if (!record) {
+          throw new Error("not found");
+        }
+        return record;
+      },
+      async update({ where, data }) {
+        const index = conceptualTools.findIndex((entry) => entry.id === where.id);
+        conceptualTools[index] = {
+          ...conceptualTools[index],
+          ...data,
+          updatedAt: "2026-04-06T11:00:00.000Z",
+        };
+        return conceptualTools[index];
+      },
+    },
+    logEntry: {
+      createCalls: [],
+      async create({ data }) {
+        this.createCalls.push(data);
+        return { id: `log-${this.createCalls.length}`, ...data };
+      },
+    },
+    async $transaction(callback) {
+      return callback(this);
+    },
+  };
+
+  const app = createApp({ prisma });
+  const response = await withAuth(
+    request(app).put("/api/admin/conceptual-tools/tool-1").send({
+      whenToUse: ["high market saturation", "weak differentiation"],
+      whenNotToUse: "problem statement unclear\nidea already validated by evidence",
+      instructions: "Identify the dominant operating assumption\nReverse it",
+      status: "inactive",
+      version: 2,
+    }),
+    { email: "ralfepoisson@gmail.com" },
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.status, "INACTIVE");
+  assert.equal(response.body.data.version, 2);
+  assert.deepEqual(response.body.data.whenNotToUse, [
+    "problem statement unclear",
+    "idea already validated by evidence",
+  ]);
+  assert.equal(
+    prisma.logEntry.createCalls.some((entry) => entry.event === "conceptual_tool_updated"),
+    true
+  );
 });

@@ -14,8 +14,7 @@ function getAgentKeyFromPromptKey(key) {
   }
 
   const [agentKey] = key.split(".");
-  const normalized = normalizeAgentKeySeed(agentKey);
-  return normalized || null;
+  return typeof agentKey === "string" && agentKey.trim().length > 0 ? agentKey.trim() : null;
 }
 
 function normalizeAgentKeySeed(value) {

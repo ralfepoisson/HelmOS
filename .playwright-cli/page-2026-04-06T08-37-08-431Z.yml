@@ -1,0 +1,45 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - link "Go to home" [ref=e6] [cursor=pointer]:
+        - /url: "#/"
+        - img "HelmOS logo" [ref=e7]
+        - generic [ref=e8]:
+          - generic [ref=e9]: HelmOS
+          - generic [ref=e10]: Strategy Copilot
+      - generic [ref=e12]:
+        - generic [ref=e13]: Business idea
+        - generic [ref=e14]:
+          - combobox "Business idea switcher" [ref=e15]:
+            - option "+ New Business Idea" [selected]
+          - generic:
+            - img
+      - generic [ref=e16]:
+        - generic [ref=e19]: All changes saved
+        - generic "Primary" [ref=e20]:
+          - link "Strategy Copilot" [ref=e21] [cursor=pointer]:
+            - /url: "#/strategy-copilot"
+          - link "Idea Foundry" [ref=e22] [cursor=pointer]:
+            - /url: "#/idea-foundry"
+        - button "Admin" [ref=e24] [cursor=pointer]:
+          - text: Admin
+          - generic:
+            - img
+        - generic [ref=e25]:
+          - generic [ref=e26]: RE
+          - generic [ref=e27]:
+            - generic [ref=e28]: Ralf E
+            - generic [ref=e29]: Admin
+          - button "Sign Out" [ref=e30] [cursor=pointer]
+  - main [ref=e31]:
+    - generic [ref=e33]:
+      - generic [ref=e34]:
+        - paragraph [ref=e35]: New Idea
+        - heading "What is the working title of the idea?" [level=1] [ref=e36]
+      - textbox "Working title of the idea" [ref=e38]:
+        - /placeholder: Type the working title...
+      - generic "Business type" [ref=e39]:
+        - button "Product-based" [ref=e40] [cursor=pointer]
+        - button "Service-based" [ref=e41] [cursor=pointer]
+        - button "Mixture" [ref=e42] [cursor=pointer]
+      - button "Create" [disabled] [ref=e43]

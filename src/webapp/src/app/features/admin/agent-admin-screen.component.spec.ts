@@ -9,6 +9,7 @@ import { AgentAdminService } from './agent-admin.service';
 
 describe('AgentAdminScreenComponent', () => {
   const listAgents = vi.fn();
+  const getAgent = vi.fn();
   const updateAgent = vi.fn();
 
   beforeEach(async () => {
@@ -28,6 +29,13 @@ describe('AgentAdminScreenComponent', () => {
             version: '1.0.0',
             purpose: 'Transforms founder input into structured idea briefs.',
             allowedTools: ['retrieval']
+          },
+          {
+            key: 'prospecting',
+            name: 'Prospecting Agent',
+            version: '1.0.0',
+            purpose: 'Helps the user systematically discover and refine high-potential opportunity signals.',
+            allowedTools: ['web_search']
           }
         ]
       },
@@ -74,8 +82,121 @@ describe('AgentAdminScreenComponent', () => {
             purpose: 'Transforms founder input into structured idea briefs.',
             allowedTools: ['retrieval']
           }
+        },
+        {
+          id: 'agent-2',
+          key: 'prospecting',
+          name: 'Prospecting Agent',
+          version: '1.0.0',
+          description: 'Purpose: Helps the user systematically discover and refine high-potential opportunity signals.',
+          allowedTools: ['web_search'],
+          defaultModel: 'helmos-default',
+          active: true,
+          createdAt: '2026-04-05T14:06:10.874Z',
+          updatedAt: '2026-04-05T14:06:10.874Z',
+          promptConfig: null,
+          runtime: {
+            registered: true,
+            name: 'Prospecting Agent',
+            version: '1.0.0',
+            purpose: 'Helps the user systematically discover and refine high-potential opportunity signals.',
+            allowedTools: ['web_search']
+          }
         }
       ]
+    });
+
+    getAgent.mockImplementation(async (agentId: string) => {
+      if (agentId === 'agent-1') {
+        return {
+          id: 'agent-1',
+          key: 'ideation',
+          name: 'Ideation Agent',
+          version: '1.0.0',
+          description: 'Purpose: Transforms founder input into structured idea briefs.\n\nScope: Focus on early-stage idea clarification.',
+          allowedTools: ['retrieval'],
+          defaultModel: 'helmos-default',
+          active: true,
+          createdAt: '2026-03-22T08:00:00.000Z',
+          updatedAt: '2026-03-22T08:05:00.000Z',
+          promptConfig: {
+            id: 'prompt-1',
+            key: 'ideation.default',
+            version: '1.0.0',
+            promptTemplate:
+              'Role / Persona:\nYou are the HelmOS ideation specialist.\n\nTask Instructions:\nClarify the founder idea and identify assumptions.\n\nConstraints:\nDo not invent market evidence.\n\nOutput Format:\nReturn summary, risks, and next steps.',
+            configJson: {
+              purpose: 'Transforms founder input into structured idea briefs.',
+              scopeNotes: 'Focus on early-stage idea clarification.',
+              temperature: 0.2,
+              maxSteps: 8,
+              timeoutSeconds: 180,
+              retryPolicy: 'standard',
+              reasoningMode: 'balanced',
+              promptSections: {
+                rolePersona: 'You are the HelmOS ideation specialist.',
+                taskInstructions: 'Clarify the founder idea and identify assumptions.',
+                constraints: 'Do not invent market evidence.',
+                outputFormat: 'Return summary, risks, and next steps.'
+              }
+            },
+            active: true,
+            updatedAt: '2026-03-22T08:06:00.000Z'
+          },
+          runtime: {
+            registered: true,
+            name: 'Ideation Agent',
+            version: '1.0.0',
+            purpose: 'Transforms founder input into structured idea briefs.',
+            allowedTools: ['retrieval']
+          }
+        };
+      }
+
+      return {
+        id: 'agent-2',
+        key: 'prospecting',
+        name: 'Prospecting Agent',
+        version: '1.0.0',
+        description:
+          'Purpose: Help the user systematically discover, steer, and refine high-potential opportunity signals.\n\nScope: Covers search strategy, source mix definition, signal quality framing, and cadence guidance.',
+        allowedTools: ['web_search'],
+        defaultModel: 'helmos-default',
+        active: true,
+        createdAt: '2026-04-05T14:06:10.874Z',
+        updatedAt: '2026-04-05T14:06:10.874Z',
+        promptConfig: {
+          id: 'prompt-2',
+          key: 'prospecting.default',
+          version: '1.0.0',
+          promptTemplate:
+            'Role / Persona:\nYou are the HelmOS prospecting specialist.\n\nTask Instructions:\nGenerate search themes and high-signal source plans.\n\nConstraints:\nDo not fabricate market evidence.\n\nOutput Format:\nReturn search themes, sources, and scoring guidance.',
+          configJson: {
+            purpose: 'Help the user systematically discover, steer, and refine high-potential opportunity signals.',
+            scopeNotes: 'Covers search strategy, source mix definition, signal quality framing, and cadence guidance.',
+            temperature: 0.3,
+            maxSteps: 8,
+            timeoutSeconds: 180,
+            retryPolicy: 'standard',
+            reasoningMode: 'balanced',
+            promptSections: {
+              rolePersona: 'You are the HelmOS prospecting specialist.',
+              taskInstructions: 'Generate search themes and high-signal source plans.',
+              constraints: 'Do not fabricate market evidence.',
+              outputFormat: 'Return search themes, sources, and scoring guidance.'
+            }
+          },
+          active: true,
+          updatedAt: '2026-04-05T14:06:10.874Z'
+        },
+        runtime: {
+          registered: true,
+          name: 'Prospecting Agent',
+          version: '1.0.0',
+          purpose: 'Helps the user systematically discover and refine high-potential opportunity signals.',
+          allowedTools: ['web_search']
+        }
+      };
     });
 
     updateAgent.mockImplementation(async (_agentId: string, payload: Record<string, unknown>) => ({
@@ -131,6 +252,7 @@ describe('AgentAdminScreenComponent', () => {
           provide: AgentAdminService,
           useValue: {
             listAgents,
+            getAgent,
             updateAgent,
             createAgent: vi.fn()
           }
@@ -146,8 +268,8 @@ describe('AgentAdminScreenComponent', () => {
     fixture.detectChanges();
 
     const host = fixture.nativeElement as HTMLElement;
-    const temperatureLabel = Array.from(host.querySelectorAll('label')).find(
-      (label) => label.textContent?.includes('Temperature')
+    const temperatureLabel = Array.from(host.querySelectorAll('label')).find((label) =>
+      label.textContent?.includes('Temperature')
     );
     const temperatureInput = temperatureLabel?.querySelector('input') as HTMLInputElement | null;
     expect(temperatureInput).toBeTruthy();
@@ -165,5 +287,39 @@ describe('AgentAdminScreenComponent', () => {
 
     expect(updateAgent).toHaveBeenCalledTimes(1);
     expect(updateAgent.mock.calls[0]?.[1]).toHaveProperty('promptConfig.configJson.temperature', 0.5);
+  });
+
+  it('fetches full agent details when a different agent is selected', async () => {
+    const fixture = TestBed.createComponent(AgentAdminScreenComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(getAgent).toHaveBeenCalledWith('agent-1');
+
+    const prospectingButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Prospecting Agent')
+    );
+    expect(prospectingButton).toBeTruthy();
+
+    prospectingButton!.dispatchEvent(new MouseEvent('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(getAgent).toHaveBeenCalledWith('agent-2');
+
+    const roleLabel = Array.from(host.querySelectorAll('label')).find((label) =>
+      label.textContent?.includes('Role / Persona')
+    );
+    const roleTextarea = roleLabel?.querySelector('textarea') as HTMLTextAreaElement | null;
+    expect(roleTextarea?.value).toBe('You are the HelmOS prospecting specialist.');
+
+    const taskLabel = Array.from(host.querySelectorAll('label')).find((label) =>
+      label.textContent?.includes('Task Instructions')
+    );
+    const taskTextarea = taskLabel?.querySelector('textarea') as HTMLTextAreaElement | null;
+    expect(taskTextarea?.value).toBe('Generate search themes and high-signal source plans.');
   });
 });

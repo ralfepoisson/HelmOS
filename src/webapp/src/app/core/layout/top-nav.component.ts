@@ -79,6 +79,16 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
 
             <div *ngIf="adminMenuOpen" class="admin-panel helmos-card" role="menu">
               <a
+                routerLink="/admin/conceptual-tools"
+                routerLinkActive="admin-link-active"
+                class="admin-link"
+                role="menuitem"
+                (click)="closeAdminMenu()"
+              >
+                <span class="admin-link-title">Conceptual Tools</span>
+                <span class="admin-link-copy">Manage reusable reasoning artefacts, versions, and activation state.</span>
+              </a>
+              <a
                 routerLink="/admin/knowledge-bases"
                 routerLinkActive="admin-link-active"
                 class="admin-link"

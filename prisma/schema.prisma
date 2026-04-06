@@ -150,6 +150,18 @@ enum ProtoIdeaProcessingStatus {
   FAILED
 }
 
+enum IdeaRefinementProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ConceptualToolStatus {
+  ACTIVE
+  INACTIVE
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique @db.VarChar(320)
@@ -180,6 +192,7 @@ model User {
   knowledgeBaseToolAudits KnowledgeBaseToolAudit[]
   protoIdeaSources       ProtoIdeaSource[]
   protoIdeas             ProtoIdea[]
+  ideaCandidates         IdeaCandidate[]
 
   @@unique([authProvider, authProviderUserId], map: "users_auth_provider_auth_provider_user_id_key")
   @@map("users")
@@ -664,6 +677,26 @@ model PromptConfig {
   @@map("prompt_configs")
 }
 
+model ConceptualTool {
+  id             String               @id @default(uuid()) @db.Uuid
+  name           String               @unique @db.VarChar(200)
+  category       String               @db.VarChar(100)
+  purpose        String
+  whenToUse      Json                 @default("[]") @map("when_to_use")
+  whenNotToUse   Json                 @default("[]") @map("when_not_to_use")
+  instructions   Json                 @default("[]")
+  expectedEffect String               @map("expected_effect")
+  status         ConceptualToolStatus @default(ACTIVE)
+  version        Int                  @default(1)
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  ideaCandidates IdeaCandidate[]
+
+  @@index([status, updatedAt])
+  @@index([category, name])
+  @@map("conceptual_tools")
+}
+
 model ProspectingConfiguration {
   id                String   @id @default(uuid()) @db.Uuid
   ownerUserId       String   @unique @map("owner_user_id") @db.Uuid
@@ -701,6 +734,26 @@ model ProtoIdeaExtractionPolicy {
 
   @@index([profileName])
   @@map("proto_idea_extraction_policies")
+}
+
+model IdeaRefinementPolicy {
+  id                       String          @id @default(uuid()) @db.Uuid
+  profileName              String          @unique @default("default") @map("profile_name") @db.VarChar(100)
+  refinementDepth          String          @default("standard") @map("refinement_depth") @db.VarChar(30)
+  creativityLevel          String          @default("medium") @map("creativity_level") @db.VarChar(30)
+  strictness               String          @default("balanced") @db.VarChar(30)
+  maxConceptualToolsPerRun Int             @default(3) @map("max_conceptual_tools_per_run")
+  internalQualityThreshold String          @default("standard") @map("internal_quality_threshold") @db.VarChar(30)
+  latestRunStatus          String?         @map("latest_run_status") @db.VarChar(30)
+  lastRunAt                DateTime?       @map("last_run_at")
+  latestRunSummaryJson     Json?           @map("latest_run_summary_json")
+  createdAt                DateTime        @default(now()) @map("created_at")
+  updatedAt                DateTime        @updatedAt @map("updated_at")
+  protoIdeas               ProtoIdea[]
+  ideaCandidates           IdeaCandidate[]
+
+  @@index([profileName])
+  @@map("idea_refinement_policies")
 }
 
 model ProtoIdeaSource {
@@ -766,13 +819,65 @@ model ProtoIdea {
   statusTone            String          @map("status_tone") @db.VarChar(100)
   agentConfidence       String          @map("agent_confidence") @db.VarChar(100)
   statusExplanation     String          @map("status_explanation")
+  refinementStatus      IdeaRefinementProcessingStatus @default(PENDING) @map("refinement_status")
+  refinementStartedAt   DateTime?       @map("refinement_started_at")
+  refinementCompletedAt DateTime?       @map("refinement_completed_at")
+  refinementFailedAt    DateTime?       @map("refinement_failed_at")
+  refinementAttempts    Int             @default(0) @map("refinement_attempts")
+  latestRefinementPolicyId String?      @map("latest_refinement_policy_id") @db.Uuid
+  latestRefinementGatewayRunId String?  @map("latest_refinement_gateway_run_id") @db.VarChar(255)
+  latestRefinementErrorMessage String?  @map("latest_refinement_error_message")
+  latestRefinementErrorMeta Json?       @map("latest_refinement_error_meta")
   rawLlmPayload         Json?           @map("raw_llm_payload")
   createdAt             DateTime        @default(now()) @map("created_at")
   updatedAt             DateTime        @updatedAt @map("updated_at")
   ownerUser             User            @relation(fields: [ownerUserId], references: [id])
   source                ProtoIdeaSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  latestRefinementPolicy IdeaRefinementPolicy? @relation(fields: [latestRefinementPolicyId], references: [id])
+  ideaCandidates        IdeaCandidate[]
 
   @@index([ownerUserId, createdAt])
   @@index([sourceId, createdAt])
+  @@index([ownerUserId, refinementStatus, createdAt])
+  @@index([latestRefinementPolicyId, refinementStatus])
   @@map("proto_ideas")
+}
+
+model IdeaCandidate {
+  id                        String               @id @default(uuid()) @db.Uuid
+  ownerUserId               String               @map("owner_user_id") @db.Uuid
+  protoIdeaId               String               @map("proto_idea_id") @db.Uuid
+  policyId                  String?              @map("policy_id") @db.Uuid
+  problemStatement          String               @map("problem_statement")
+  targetCustomer            String               @map("target_customer")
+  valueProposition          String               @map("value_proposition")
+  opportunityConcept        String               @map("opportunity_concept")
+  differentiation           String
+  assumptions               Json                 @default("[]")
+  openQuestions             Json                 @default("[]") @map("open_questions")
+  improvementSummary        String               @map("improvement_summary")
+  keyChanges                Json                 @default("[]") @map("key_changes")
+  appliedReasoningSummary   String               @map("applied_reasoning_summary")
+  appliedConceptualToolIds  Json                 @default("[]") @map("applied_conceptual_tool_ids")
+  qualityCheckCoherence     String               @map("quality_check_coherence")
+  qualityCheckGaps          Json                 @default("[]") @map("quality_check_gaps")
+  qualityCheckRisks         Json                 @default("[]") @map("quality_check_risks")
+  statusLabel               String               @map("status_label") @db.VarChar(100)
+  statusTone                String               @map("status_tone") @db.VarChar(100)
+  agentConfidence           String               @map("agent_confidence") @db.VarChar(100)
+  statusExplanation         String               @map("status_explanation")
+  refinementIteration       Int                  @default(1) @map("refinement_iteration")
+  deduplicationFingerprint  String?              @map("deduplication_fingerprint") @db.VarChar(1000)
+  rawLlmPayload             Json?                @map("raw_llm_payload")
+  createdAt                 DateTime             @default(now()) @map("created_at")
+  updatedAt                 DateTime             @updatedAt @map("updated_at")
+  ownerUser                 User                 @relation(fields: [ownerUserId], references: [id])
+  protoIdea                 ProtoIdea            @relation(fields: [protoIdeaId], references: [id], onDelete: Cascade)
+  policy                    IdeaRefinementPolicy? @relation(fields: [policyId], references: [id])
+  conceptualTools           ConceptualTool[]
+
+  @@index([ownerUserId, createdAt])
+  @@index([protoIdeaId, refinementIteration])
+  @@index([policyId, createdAt])
+  @@map("idea_candidates")
 }

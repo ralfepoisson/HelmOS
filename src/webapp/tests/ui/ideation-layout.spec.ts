@@ -927,4 +927,587 @@ test.describe('HelmOS ideation workspace', () => {
     await expect(page.getByText('Registered Ideation Agent')).toBeVisible();
   });
 
+  test('saves an edited existing agent via PATCH and keeps the edited ideation config visible', async ({
+    page
+  }) => {
+    let capturedPatchPayload: Record<string, unknown> | null = null;
+    let patchCount = 0;
+
+    await page.addInitScript(() => {
+      window.localStorage.setItem('helmos.auth.token', 'ui-test-token');
+      window.localStorage.setItem(
+        'helmos.auth.session',
+        JSON.stringify({
+          userId: 'admin-user-1',
+          accountId: 'account-1',
+          email: 'ralfepoisson@gmail.com',
+          displayName: 'Ralfe Poisson',
+          avatarUrl: null,
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+          appRole: 'ADMIN'
+        })
+      );
+    });
+
+    await page.route('**/api/admin/agents', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            gateway: {
+              configured: true,
+              status: 'online',
+              message: 'Agent gateway responded successfully.',
+              baseUrl: 'http://localhost:8000/api/v1',
+              service: 'helmos-agent-gateway',
+              checkedAt: '2026-03-29T06:44:20.358Z',
+              agents: [
+                {
+                  key: 'ideation',
+                  name: 'Ideation Agent',
+                  version: '1.0.0',
+                  purpose:
+                    'Help the user transform an initial idea into a structured, validated concept by clarifying intent, identifying assumptions, and defining the problem space.',
+                  allowed_tools: ['retrieval', 'web_search', 'object_storage']
+                },
+                {
+                  key: 'ideation-agent',
+                  name: 'Mock Ideation Agent',
+                  version: '9.9.9',
+                  purpose: 'Mock purpose that must never appear in the real ideation editor.',
+                  allowed_tools: ['retrieval']
+                }
+              ]
+            },
+            agents: [
+              {
+                id: '62cacf20-6bbc-4fb0-9f38-a3c1444096ac',
+                key: 'ideation',
+                name: 'Ideation Agent',
+                version: '1.0.0',
+                description:
+                  'Purpose: Help the user transform an initial idea into a structured, validated concept by clarifying intent, identifying assumptions, and defining the problem space.\n\nScope: Covers early-stage idea clarification, problem framing, target user definition, value proposition shaping, assumption identification, and concept structuring.',
+                allowedTools: ['retrieval', 'web_search', 'object_storage'],
+                defaultModel: 'helmos-default',
+                active: true,
+                createdAt: '2026-03-22T07:29:38.386Z',
+                updatedAt: '2026-03-29T06:44:20.358Z',
+                promptConfig: {
+                  id: 'd4b5373b-7e94-4455-a91a-7ea833a24452',
+                  key: 'ideation.default',
+                  version: '1.0.0',
+                  promptTemplate:
+                    'Role / Persona:\nYou are a strategic innovation consultant.\n\nTask Instructions:\nClarify the founder idea and identify assumptions.\n\nConstraints:\nDo not invent market evidence.\n\nOutput Format:\nReturn summary, risks, and next steps.',
+                  configJson: {
+                    purpose:
+                      'Help the user transform an initial idea into a structured, validated concept by clarifying intent, identifying assumptions, and defining the problem space.',
+                    scopeNotes:
+                      'Covers early-stage idea clarification, problem framing, target user definition, value proposition shaping, assumption identification, and concept structuring.',
+                    lifecycleState: 'active',
+                    reasoningMode: 'balanced',
+                    retryPolicy: 'standard',
+                    temperature: 0.5,
+                    maxSteps: 8,
+                    timeoutSeconds: 180,
+                    promptSections: {
+                      rolePersona: 'You are a strategic innovation consultant.',
+                      taskInstructions: 'Clarify the founder idea and identify assumptions.',
+                      constraints: 'Do not invent market evidence.',
+                      outputFormat: 'Return summary, risks, and next steps.'
+                    }
+                  },
+                  active: true,
+                  updatedAt: '2026-03-29T06:44:20.358Z'
+                },
+                runtime: {
+                  registered: true,
+                  name: 'Ideation Agent',
+                  version: '1.0.0',
+                  purpose:
+                    'Help the user transform an initial idea into a structured, validated concept by clarifying intent, identifying assumptions, and defining the problem space.',
+                  allowedTools: ['retrieval', 'web_search', 'object_storage']
+                }
+              },
+              {
+                id: 'mock-agent-1',
+                key: 'ideation-agent',
+                name: 'Mock Ideation Agent',
+                version: '9.9.9',
+                description: 'Purpose: Mock purpose that must never appear in the real ideation editor.',
+                allowedTools: ['retrieval'],
+                defaultModel: 'helmos-default',
+                active: true,
+                createdAt: '2026-03-22T07:29:38.386Z',
+                updatedAt: '2026-03-29T06:44:20.358Z',
+                promptConfig: {
+                  id: 'mock-prompt-1',
+                  key: 'ideation-agent.default',
+                  version: '9.9.9',
+                  promptTemplate:
+                    'Role / Persona:\nYou are MOCK DATA and should never appear.\n\nTask Instructions:\nShow mock data.\n\nConstraints:\nNone.\n\nOutput Format:\nAnything.',
+                  configJson: {
+                    purpose: 'Mock purpose that must never appear in the real ideation editor.',
+                    promptSections: {
+                      rolePersona: 'You are MOCK DATA and should never appear.',
+                      taskInstructions: 'Show mock data.',
+                      constraints: 'None.',
+                      outputFormat: 'Anything.'
+                    }
+                  },
+                  active: true,
+                  updatedAt: '2026-03-29T06:44:20.358Z'
+                },
+                runtime: {
+                  registered: true,
+                  name: 'Mock Ideation Agent',
+                  version: '9.9.9',
+                  purpose: 'Mock purpose that must never appear in the real ideation editor.',
+                  allowedTools: ['retrieval']
+                }
+              }
+            ]
+          }
+        })
+      });
+    });
+
+    await page.route('**/api/admin/agents/62cacf20-6bbc-4fb0-9f38-a3c1444096ac', async (route) => {
+      const method = route.request().method();
+
+      if (method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              id: '62cacf20-6bbc-4fb0-9f38-a3c1444096ac',
+              key: 'ideation',
+              name: 'Ideation Agent',
+              version: '1.0.0',
+              description:
+                'Purpose: Help the user transform an initial idea into a structured, validated concept by clarifying intent, identifying assumptions, and defining the problem space.\n\nScope: Covers early-stage idea clarification, problem framing, target user definition, value proposition shaping, assumption identification, and concept structuring.',
+              allowedTools: ['retrieval', 'web_search', 'object_storage'],
+              defaultModel: 'helmos-default',
+              active: true,
+              createdAt: '2026-03-22T07:29:38.386Z',
+              updatedAt: '2026-03-29T06:44:20.358Z',
+              promptConfig: {
+                id: 'd4b5373b-7e94-4455-a91a-7ea833a24452',
+                key: 'ideation.default',
+                version: '1.0.0',
+                promptTemplate:
+                  'Role / Persona:\nYou are a strategic innovation consultant.\n\nTask Instructions:\nClarify the founder idea and identify assumptions.\n\nConstraints:\nDo not invent market evidence.\n\nOutput Format:\nReturn summary, risks, and next steps.',
+                configJson: {
+                  purpose:
+                    'Help the user transform an initial idea into a structured, validated concept by clarifying intent, identifying assumptions, and defining the problem space.',
+                  scopeNotes:
+                    'Covers early-stage idea clarification, problem framing, target user definition, value proposition shaping, assumption identification, and concept structuring.',
+                  lifecycleState: 'active',
+                  reasoningMode: 'balanced',
+                  retryPolicy: 'standard',
+                  temperature: 0.5,
+                  maxSteps: 8,
+                  timeoutSeconds: 180,
+                  promptSections: {
+                    rolePersona: 'You are a strategic innovation consultant.',
+                    taskInstructions: 'Clarify the founder idea and identify assumptions.',
+                    constraints: 'Do not invent market evidence.',
+                    outputFormat: 'Return summary, risks, and next steps.'
+                  }
+                },
+                active: true,
+                updatedAt: '2026-03-29T06:44:20.358Z'
+              },
+              runtime: {
+                registered: true,
+                name: 'Ideation Agent',
+                version: '1.0.0',
+                purpose:
+                  'Help the user transform an initial idea into a structured, validated concept by clarifying intent, identifying assumptions, and defining the problem space.',
+                allowedTools: ['retrieval', 'web_search', 'object_storage']
+              }
+            }
+          })
+        });
+        return;
+      }
+
+      expect(method).toBe('PATCH');
+      patchCount += 1;
+      capturedPatchPayload = route.request().postDataJSON() as Record<string, unknown>;
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: '62cacf20-6bbc-4fb0-9f38-a3c1444096ac',
+            key: 'ideation',
+            name: 'Ideation Agent',
+            version: '1.0.1',
+            description:
+              'Purpose: Help the user transform an initial idea into a structured, validated concept.\n\nScope: Use the saved ideation brief and preserve exact edits.',
+            allowedTools: ['retrieval', 'web_search', 'object_storage'],
+            defaultModel: 'helmos-default',
+            active: true,
+            createdAt: '2026-03-22T07:29:38.386Z',
+            updatedAt: '2026-04-06T07:30:00.000Z',
+            promptConfig: {
+              id: 'd4b5373b-7e94-4455-a91a-7ea833a24452',
+              key: 'ideation.default',
+              version: '1.0.1',
+              promptTemplate:
+                'Role / Persona:\nYou are the persisted ideation editor.\n\nTask Instructions:\nUse the saved ideation brief and preserve exact edits.\n\nConstraints:\nNever fabricate evidence or replace user-provided config with mock data.\n\nOutput Format:\nReturn a structured ideation brief with assumptions and next actions.',
+              configJson: {
+                purpose: 'Help the user transform an initial idea into a structured, validated concept.',
+                scopeNotes: 'Use the saved ideation brief and preserve exact edits.',
+                lifecycleState: 'active',
+                reasoningMode: 'balanced',
+                retryPolicy: 'standard',
+                temperature: 0.5,
+                maxSteps: 8,
+                timeoutSeconds: 180,
+                promptSections: {
+                  rolePersona: 'You are the persisted ideation editor.',
+                  taskInstructions: 'Use the saved ideation brief and preserve exact edits.',
+                  constraints: 'Never fabricate evidence or replace user-provided config with mock data.',
+                  outputFormat: 'Return a structured ideation brief with assumptions and next actions.'
+                }
+              },
+              active: true,
+              updatedAt: '2026-04-06T07:30:00.000Z'
+            },
+            runtime: {
+              registered: true,
+              name: 'Ideation Agent',
+              version: '1.0.0',
+              purpose:
+                'Help the user transform an initial idea into a structured, validated concept by clarifying intent, identifying assumptions, and defining the problem space.',
+              allowedTools: ['retrieval', 'web_search', 'object_storage']
+            }
+          }
+        })
+      });
+    });
+
+    await page.goto('/#/admin/agents');
+    await expect(page).toHaveURL(/#\/admin\/agents$/);
+    await expect(page.getByRole('heading', { name: 'Agent Admin' })).toBeVisible();
+
+    const editorCard = page.locator('.agent-card').first();
+    const versionInput = editorCard.getByRole('textbox', { name: /^Version$/ });
+    const promptVersionInput = editorCard.getByRole('textbox', { name: /^Prompt version$/ });
+    const roleInput = editorCard.locator('label').filter({ hasText: 'Role / Persona' }).locator('textarea');
+    const taskInput = editorCard.locator('label').filter({ hasText: 'Task Instructions' }).locator('textarea');
+    const constraintsInput = editorCard.locator('label').filter({ hasText: 'Constraints' }).locator('textarea');
+    const outputInput = editorCard.locator('label').filter({ hasText: 'Output Format' }).locator('textarea');
+    const promptJsonInput = editorCard
+      .locator('label')
+      .filter({ hasText: 'Additional structured config (JSON)' })
+      .locator('textarea');
+
+    await versionInput.fill('1.0.1');
+    await promptVersionInput.fill('1.0.1');
+    await roleInput.fill('You are the persisted ideation editor.');
+    await taskInput.fill('Use the saved ideation brief and preserve exact edits.');
+    await constraintsInput.fill('Never fabricate evidence or replace user-provided config with mock data.');
+    await outputInput.fill('Return a structured ideation brief with assumptions and next actions.');
+    await promptJsonInput.fill('{}');
+
+    await page.getByRole('button', { name: 'Save agent' }).click();
+
+    await expect
+      .poll(() => patchCount, {
+        message: 'Expected exactly one PATCH request when saving the edited agent.'
+      })
+      .toBe(1);
+
+    expect(capturedPatchPayload).toMatchObject({
+      version: '1.0.1',
+      active: true,
+      promptConfig: {
+        key: 'ideation.default',
+        version: '1.0.1'
+      }
+    });
+    expect(capturedPatchPayload).toHaveProperty(
+      'promptConfig.configJson.promptSections.rolePersona',
+      'You are the persisted ideation editor.'
+    );
+    expect(capturedPatchPayload).toHaveProperty(
+      'promptConfig.configJson.promptSections.taskInstructions',
+      'Use the saved ideation brief and preserve exact edits.'
+    );
+    expect(capturedPatchPayload).toHaveProperty(
+      'promptConfig.configJson.promptSections.constraints',
+      'Never fabricate evidence or replace user-provided config with mock data.'
+    );
+    expect(capturedPatchPayload).toHaveProperty(
+      'promptConfig.configJson.promptSections.outputFormat',
+      'Return a structured ideation brief with assumptions and next actions.'
+    );
+
+    await expect(page.getByText('Saved Ideation Agent')).toBeVisible();
+    await expect(roleInput).toHaveValue('You are the persisted ideation editor.');
+    await expect(taskInput).toHaveValue('Use the saved ideation brief and preserve exact edits.');
+    await expect(constraintsInput).toHaveValue(
+      'Never fabricate evidence or replace user-provided config with mock data.'
+    );
+    await expect(outputInput).toHaveValue(
+      'Return a structured ideation brief with assumptions and next actions.'
+    );
+    await expect(editorCard.getByText('You are MOCK DATA and should never appear.')).toHaveCount(0);
+    await expect(editorCard.getByText('Mock purpose that must never appear in the real ideation editor.')).toHaveCount(0);
+  });
+
+  test('fetches agent details when selecting an agent whose list snapshot is incomplete', async ({ page }) => {
+    let selectedAgentDetailCalls = 0;
+
+    await page.addInitScript(() => {
+      window.localStorage.setItem('helmos.auth.token', 'ui-test-token');
+      window.localStorage.setItem(
+        'helmos.auth.session',
+        JSON.stringify({
+          userId: 'admin-user-1',
+          accountId: 'account-1',
+          email: 'ralfepoisson@gmail.com',
+          displayName: 'Ralfe Poisson',
+          avatarUrl: null,
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+          appRole: 'ADMIN'
+        })
+      );
+    });
+
+    await page.route('**/api/admin/agents', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            gateway: {
+              configured: true,
+              status: 'online',
+              message: 'Agent gateway responded successfully.',
+              baseUrl: 'http://localhost:8000/api/v1',
+              service: 'helmos-agent-gateway',
+              checkedAt: '2026-04-05T14:06:10.874Z',
+              agents: [
+                {
+                  key: 'ideation',
+                  name: 'Ideation Agent',
+                  version: '1.0.0',
+                  purpose: 'Transforms founder input into structured idea briefs.',
+                  allowed_tools: ['retrieval']
+                },
+                {
+                  key: 'prospecting',
+                  name: 'Prospecting Agent',
+                  version: '1.0.0',
+                  purpose: 'Help the user systematically discover and refine high-potential opportunity signals.',
+                  allowed_tools: ['web_search']
+                }
+              ]
+            },
+            agents: [
+              {
+                id: 'ideation-agent-id',
+                key: 'ideation',
+                name: 'Ideation Agent',
+                version: '1.0.0',
+                description: 'Purpose: Transforms founder input into structured idea briefs.',
+                allowedTools: ['retrieval'],
+                defaultModel: 'helmos-default',
+                active: true,
+                createdAt: '2026-03-22T08:00:00.000Z',
+                updatedAt: '2026-03-22T08:05:00.000Z',
+                promptConfig: {
+                  id: 'prompt-1',
+                  key: 'ideation.default',
+                  version: '1.0.0',
+                  promptTemplate:
+                    'Role / Persona:\nYou are the HelmOS ideation specialist.\n\nTask Instructions:\nClarify the founder idea and identify assumptions.\n\nConstraints:\nDo not invent market evidence.\n\nOutput Format:\nReturn summary, risks, and next steps.',
+                  configJson: {
+                    purpose: 'Transforms founder input into structured idea briefs.',
+                    scopeNotes: 'Focus on early-stage idea clarification.',
+                    temperature: 0.2,
+                    maxSteps: 8,
+                    timeoutSeconds: 180,
+                    retryPolicy: 'standard',
+                    reasoningMode: 'balanced',
+                    promptSections: {
+                      rolePersona: 'You are the HelmOS ideation specialist.',
+                      taskInstructions: 'Clarify the founder idea and identify assumptions.',
+                      constraints: 'Do not invent market evidence.',
+                      outputFormat: 'Return summary, risks, and next steps.'
+                    }
+                  },
+                  active: true,
+                  updatedAt: '2026-03-22T08:06:00.000Z'
+                },
+                runtime: {
+                  registered: true,
+                  name: 'Ideation Agent',
+                  version: '1.0.0',
+                  purpose: 'Transforms founder input into structured idea briefs.',
+                  allowedTools: ['retrieval']
+                }
+              },
+              {
+                id: 'prospecting-agent-id',
+                key: 'prospecting',
+                name: 'Prospecting Agent',
+                version: '1.0.0',
+                description: 'Purpose: Help the user systematically discover and refine high-potential opportunity signals.',
+                allowedTools: ['web_search'],
+                defaultModel: 'helmos-default',
+                active: true,
+                createdAt: '2026-04-05T14:06:10.874Z',
+                updatedAt: '2026-04-05T14:06:10.874Z',
+                promptConfig: null,
+                runtime: {
+                  registered: true,
+                  name: 'Prospecting Agent',
+                  version: '1.0.0',
+                  purpose: 'Help the user systematically discover and refine high-potential opportunity signals.',
+                  allowedTools: ['web_search']
+                }
+              }
+            ]
+          }
+        })
+      });
+    });
+
+    await page.route('**/api/admin/agents/prospecting-agent-id', async (route) => {
+      selectedAgentDetailCalls += 1;
+      expect(route.request().method()).toBe('GET');
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'prospecting-agent-id',
+            key: 'prospecting',
+            name: 'Prospecting Agent',
+            version: '1.0.0',
+            description:
+              'Purpose: Help the user systematically discover, steer, and refine high-potential opportunity signals.\n\nScope: Covers search strategy, source mix definition, signal quality framing, and cadence guidance.',
+            allowedTools: ['web_search'],
+            defaultModel: 'helmos-default',
+            active: true,
+            createdAt: '2026-04-05T14:06:10.874Z',
+            updatedAt: '2026-04-05T14:06:10.874Z',
+            promptConfig: {
+              id: 'prompt-2',
+              key: 'prospecting.default',
+              version: '1.0.0',
+              promptTemplate:
+                'Role / Persona:\nYou are the HelmOS prospecting specialist.\n\nTask Instructions:\nGenerate search themes and high-signal source plans.\n\nConstraints:\nDo not fabricate market evidence.\n\nOutput Format:\nReturn search themes, sources, and scoring guidance.',
+              configJson: {
+                purpose: 'Help the user systematically discover, steer, and refine high-potential opportunity signals.',
+                scopeNotes: 'Covers search strategy, source mix definition, signal quality framing, and cadence guidance.',
+                temperature: 0.3,
+                maxSteps: 8,
+                timeoutSeconds: 180,
+                retryPolicy: 'standard',
+                reasoningMode: 'balanced',
+                promptSections: {
+                  rolePersona: 'You are the HelmOS prospecting specialist.',
+                  taskInstructions: 'Generate search themes and high-signal source plans.',
+                  constraints: 'Do not fabricate market evidence.',
+                  outputFormat: 'Return search themes, sources, and scoring guidance.'
+                }
+              },
+              active: true,
+              updatedAt: '2026-04-05T14:06:10.874Z'
+            },
+            runtime: {
+              registered: true,
+              name: 'Prospecting Agent',
+              version: '1.0.0',
+              purpose: 'Help the user systematically discover and refine high-potential opportunity signals.',
+              allowedTools: ['web_search']
+            }
+          }
+        })
+      });
+    });
+
+    await page.route('**/api/admin/agents/ideation-agent-id', async (route) => {
+      expect(route.request().method()).toBe('GET');
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'ideation-agent-id',
+            key: 'ideation',
+            name: 'Ideation Agent',
+            version: '1.0.0',
+            description: 'Purpose: Transforms founder input into structured idea briefs.',
+            allowedTools: ['retrieval'],
+            defaultModel: 'helmos-default',
+            active: true,
+            createdAt: '2026-03-22T08:00:00.000Z',
+            updatedAt: '2026-03-22T08:05:00.000Z',
+            promptConfig: {
+              id: 'prompt-1',
+              key: 'ideation.default',
+              version: '1.0.0',
+              promptTemplate:
+                'Role / Persona:\nYou are the HelmOS ideation specialist.\n\nTask Instructions:\nClarify the founder idea and identify assumptions.\n\nConstraints:\nDo not invent market evidence.\n\nOutput Format:\nReturn summary, risks, and next steps.',
+              configJson: {
+                purpose: 'Transforms founder input into structured idea briefs.',
+                scopeNotes: 'Focus on early-stage idea clarification.',
+                temperature: 0.2,
+                maxSteps: 8,
+                timeoutSeconds: 180,
+                retryPolicy: 'standard',
+                reasoningMode: 'balanced',
+                promptSections: {
+                  rolePersona: 'You are the HelmOS ideation specialist.',
+                  taskInstructions: 'Clarify the founder idea and identify assumptions.',
+                  constraints: 'Do not invent market evidence.',
+                  outputFormat: 'Return summary, risks, and next steps.'
+                }
+              },
+              active: true,
+              updatedAt: '2026-03-22T08:06:00.000Z'
+            },
+            runtime: {
+              registered: true,
+              name: 'Ideation Agent',
+              version: '1.0.0',
+              purpose: 'Transforms founder input into structured idea briefs.',
+              allowedTools: ['retrieval']
+            }
+          }
+        })
+      });
+    });
+
+    await page.goto('/#/admin/agents');
+    await expect(page.getByRole('heading', { name: 'Agent Admin' })).toBeVisible();
+
+    await page.getByRole('button', { name: /Prospecting Agent/ }).click();
+
+    await expect
+      .poll(() => selectedAgentDetailCalls, {
+        message: 'Expected a detail GET request when selecting the prospecting agent.'
+      })
+      .toBe(1);
+
+    const editorCard = page.locator('.agent-card').first();
+    await expect(editorCard.getByRole('heading', { name: 'Prospecting Agent' })).toBeVisible();
+    await expect(editorCard.getByRole('textbox', { name: 'Role / Persona' })).toHaveValue(
+      'You are the HelmOS prospecting specialist.'
+    );
+    await expect(editorCard.getByRole('textbox', { name: 'Task Instructions' })).toHaveValue(
+      'Generate search themes and high-signal source plans.'
+    );
+  });
+
 });

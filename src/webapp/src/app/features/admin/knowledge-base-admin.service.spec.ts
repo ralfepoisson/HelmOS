@@ -20,11 +20,11 @@ describe('KnowledgeBaseAdminService', () => {
     delete (window as typeof window & { __HELMOS_CONFIG__?: unknown }).__HELMOS_CONFIG__;
   });
 
-  it('loads knowledge bases from the local admin API fallback in development', async () => {
+  it('loads knowledge bases from the configured admin API', async () => {
     const service = TestBed.inject(KnowledgeBaseAdminService);
     const promise = service.listKnowledgeBases();
 
-    const request = httpTesting.expectOne('http://localhost:3001/api/admin/knowledge-bases');
+    const request = httpTesting.expectOne('http://localhost:3000/api/admin/knowledge-bases');
     expect(request.request.method).toBe('GET');
     request.flush(
       JSON.stringify({
@@ -66,7 +66,7 @@ describe('KnowledgeBaseAdminService', () => {
       limit: 5
     });
 
-    const request = httpTesting.expectOne('http://localhost:3001/api/admin/knowledge-base-search');
+    const request = httpTesting.expectOne('http://localhost:3000/api/admin/knowledge-base-search');
     expect(request.request.method).toBe('POST');
     expect(request.request.body.query).toBe('pricing objections');
     request.flush(

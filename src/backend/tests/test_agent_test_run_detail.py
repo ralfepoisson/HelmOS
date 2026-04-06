@@ -28,6 +28,7 @@ def test_build_run_detail_response_includes_transcript_and_artifacts():
         status="completed",
         actual_turns=4,
         min_turns=20,
+        metadata_json={"operator_notes": "debug", "execution_completed": True, "max_turns": 30},
         overall_score=56.88,
         aggregate_confidence=0.3,
         verdict="REVIEW_REQUIRED",
@@ -40,7 +41,6 @@ def test_build_run_detail_response_includes_transcript_and_artifacts():
             "quality_failures": [{"message": "Too little customer evidence."}],
             "missed_opportunities": [],
         },
-        metadata_json={"operator_notes": "debug", "execution_completed": True},
         created_at=created_at,
         updated_at=updated_at,
     )
@@ -115,3 +115,4 @@ def test_build_run_detail_response_includes_transcript_and_artifacts():
     assert detail.annotations[0].tag == "strong_question_signal"
     assert detail.scores[0].dimension_key == "problem_clarity"
     assert detail.operator_notes == "debug"
+    assert detail.max_turns == 30

@@ -1839,6 +1839,12 @@ Default values:
 
 Long-context mode may raise maximum turns above `30`.
 
+For admin-created draft runs, the create-run form should prepopulate
+`min_turns = 20` and `max_turns = 30`, while still allowing operators to
+override both values per run. Fixture-authored turn bounds remain useful
+as scenario guidance and reporting context, but runtime execution should
+honor the run's configured turn window.
+
 ---
 
 ## 24. Scheduling and Release Use

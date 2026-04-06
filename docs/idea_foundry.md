@@ -127,6 +127,7 @@ Current implementation note:
 * The Proto-Idea Agent identity is loaded from `docs/agents/proto-idea_agent.md` and injected into the extraction prompt for each source
 * An administrator-facing Proto-Idea Extraction page now persists a structured extraction policy covering breadth, inference tolerance, novelty bias, signal threshold, and max proto-ideas per source
 * The saved policy is injected into each Proto-Idea Agent run as structured runtime guidance instead of ad hoc prompt editing
+* Manual Proto-Idea runs from the administrator UI are scoped to the signed-in operator's own prospecting records so the resulting proto-ideas appear in that operator's pipeline view
 * Validated outputs are stored as one-to-many `proto_ideas` records linked back to their claimed source row
 * Explicit signals, inferred signals, assumptions, open questions, qualitative confidence, and raw LLM payloads are preserved for downstream refinement
 * Obvious duplicate proto-ideas returned for the same source are merged before persistence, and the source-level deduplication note records what happened
@@ -172,6 +173,18 @@ Current implementation note:
 #### Output:
 
 * Refined idea object (structured and enriched)
+
+Current implementation note:
+
+* The stage now persists a structured `idea_refinement_policies` record that administrators can edit from the Idea Foundry UI
+* The Idea Refinement page exposes bounded policy controls for depth, creativity, strictness, conceptual-tool count, and internal quality threshold
+* Runtime assembly now loads the static Idea Refinement Agent identity from `docs/agents/idea_refinement_agent.md`, appends the saved policy, selected conceptual tools, and the current proto-idea as structured context, then invokes the registered refinement agent
+* Active conceptual tools are loaded from the database at run time and selected deterministically per proto-idea using lightweight weakness heuristics rather than a free-form or all-tools prompt dump
+* Refinement processing state is now tracked directly on `proto_ideas` using `PENDING`, `PROCESSING`, `COMPLETED`, and `FAILED` lifecycle markers so runs remain inspectable and retryable
+* Validated outputs are stored in `idea_candidates`, linked back to their source proto-idea, stamped with the policy used, the selected conceptual tool ids, a deduplicating fingerprint, and an explicit refinement iteration number
+* A lightweight internal quality check now rejects weak or contradictory outputs before persistence instead of silently accepting any syntactically valid JSON
+* The Idea Foundry overview board and the dedicated Idea Refinement screen now render persisted idea candidates, showing linkage back to the proto-idea plus the selected conceptual tools used during refinement
+* A backend runner command, `npm run idea-refinement:run`, executes a controlled refinement pass and can optionally target a specific proto-idea or retry failed refinements through environment flags
 
 ---
 

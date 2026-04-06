@@ -47,8 +47,9 @@ still talking to both backend surfaces:
 - business idea CRUD and agent admin flows through the Node control plane
 - durable agent runs and approvals through the FastAPI gateway
 
-The frontend retains direct fallback logic for resilience in development, but
-the proxy path is now the intended local integration route.
+The frontend now uses the configured proxy path as the single local integration
+route so API failures surface directly instead of being masked by silent
+client-side failover.
 
 ## Key Boundaries
 

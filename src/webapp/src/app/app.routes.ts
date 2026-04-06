@@ -11,6 +11,7 @@ import { AdminLogsScreenComponent } from './features/admin/admin-logs-screen.com
 import { KnowledgeBaseDetailScreenComponent } from './features/admin/knowledge-base-detail-screen.component';
 import { KnowledgeBaseListScreenComponent } from './features/admin/knowledge-base-list-screen.component';
 import { KnowledgeBaseSearchScreenComponent } from './features/admin/knowledge-base-search-screen.component';
+import { ConceptualToolsScreenComponent } from './features/admin/conceptual-tools-screen.component';
 import { NewIdeaPageComponent } from './features/ideation/new-idea-page.component';
 import { IdeationScreenComponent } from './features/ideation/ideation-screen.component';
 import { ValuePropositionScreenComponent } from './features/value-proposition/value-proposition-screen.component';
@@ -19,6 +20,7 @@ import { StrategyCopilotHomeComponent } from './features/strategy-copilot/strate
 import { IdeaFoundryOverviewComponent } from './features/idea-foundry/idea-foundry-overview.component';
 import { IdeaFoundryShellComponent } from './features/idea-foundry/idea-foundry-shell.component';
 import { IdeaFoundryStagePageComponent } from './features/idea-foundry/idea-foundry-stage-page.component';
+import { IdeaRefinementComponent } from './features/idea-foundry/idea-refinement.component';
 import { ProspectingConfigurationComponent } from './features/idea-foundry/prospecting-configuration.component';
 import { ProtoIdeaExtractionComponent } from './features/idea-foundry/proto-idea-extraction.component';
 
@@ -96,14 +98,9 @@ export const routes: Routes = [
       },
       {
         path: 'idea-refinement',
-        component: IdeaFoundryStagePageComponent,
+        component: IdeaRefinementComponent,
+        canActivate: [adminGuard],
         title: 'HelmOS Idea Foundry Idea Refinement',
-        data: {
-          title: 'Idea Refinement',
-          summary: 'Challenge, reshape, and strengthen candidate ideas until they are clearer, more differentiated, and more viable.',
-          detail:
-            'This screen is scaffolded and ready for refinement loops, cognitive tool application, and structured quality-improvement workflows.'
-        }
       },
       {
         path: 'idea-evaluator',
@@ -121,6 +118,12 @@ export const routes: Routes = [
   {
     path: 'ideation',
     redirectTo: 'strategy-copilot/ideation'
+  },
+  {
+    path: 'admin/conceptual-tools',
+    component: ConceptualToolsScreenComponent,
+    canActivate: [adminGuard],
+    title: 'HelmOS Conceptual Tools'
   },
   {
     path: 'admin/knowledge-bases',

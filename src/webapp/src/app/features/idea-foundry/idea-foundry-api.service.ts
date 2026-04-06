@@ -39,10 +39,31 @@ export interface ProspectingConfigurationResponse {
 
 export interface IdeaFoundryPipelineContentsResponse {
   sources: ProspectingResultRecord[];
-  protoIdeas: Array<Record<string, unknown>>;
-  ideaCandidates: Array<Record<string, unknown>>;
+  protoIdeas: ProtoIdeaRecord[];
+  ideaCandidates: IdeaCandidateRecord[];
   curatedOpportunities: Array<Record<string, unknown>>;
   runtime: ProspectingConfigurationRuntimeState;
+}
+
+export interface ProtoIdeaRecord {
+  id: string;
+  sourceId: string;
+  title: string;
+  problemStatement: string;
+  targetCustomer: string;
+  opportunityHypothesis: string;
+  whyItMatters: string;
+  opportunityType: string;
+  explicitSignals: string[];
+  inferredSignals: string[];
+  assumptions: string[];
+  openQuestions: string[];
+  statusLabel: string;
+  statusTone: string;
+  agentConfidence: string;
+  statusExplanation: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ProtoIdeaExtractionPolicy {
@@ -78,47 +99,105 @@ export interface ProtoIdeaExtractionRunResponse extends ProtoIdeaExtractionConfi
   };
 }
 
+export interface IdeaRefinementPolicy {
+  id: string | null;
+  profileName: string;
+  refinementDepth: 'light' | 'standard' | 'deep';
+  creativityLevel: 'low' | 'medium' | 'high';
+  strictness: 'conservative' | 'balanced' | 'exploratory';
+  maxConceptualToolsPerRun: number;
+  internalQualityThreshold: 'basic' | 'standard' | 'high';
+}
+
+export interface IdeaRefinementRuntimeState {
+  latestRunStatus: string;
+  lastRunAt: string | null;
+  latestRunSummary: Record<string, unknown> | null;
+}
+
+export interface IdeaRefinementConfigurationResponse {
+  policy: IdeaRefinementPolicy;
+  runtime: IdeaRefinementRuntimeState;
+}
+
+export interface IdeaCandidateRecord {
+  id: string;
+  protoIdeaId: string;
+  policyId?: string | null;
+  problemStatement: string;
+  targetCustomer: string;
+  valueProposition: string;
+  opportunityConcept: string;
+  differentiation: string;
+  assumptions: string[];
+  openQuestions: string[];
+  improvementSummary: string;
+  keyChanges: string[];
+  appliedReasoningSummary: string;
+  appliedConceptualToolIds: string[];
+  selectedConceptualToolNames?: string[];
+  qualityCheckCoherence: string;
+  qualityCheckGaps: string[];
+  qualityCheckRisks: string[];
+  statusLabel: string;
+  statusTone: string;
+  agentConfidence: string;
+  statusExplanation: string;
+  refinementIteration: number;
+  protoIdeaTitle?: string | null;
+  sourceTitle?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface IdeaRefinementRunResponse extends IdeaRefinementConfigurationResponse {
+  result: {
+    processedCount: number;
+    completedCount: number;
+    failedCount: number;
+    skippedCount: number;
+    selectedProtoIdeaIds: string[];
+    createdCount: number;
+    updatedCount: number;
+    candidateCount: number;
+    policyId: string | null;
+    policyProfileName: string;
+  };
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class IdeaFoundryApiService {
   private readonly http = inject(HttpClient);
-  private readonly primaryApiBaseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api`;
-  private readonly fallbackApiBaseUrl = this.buildLocalDevApiBaseUrl();
-  private readonly preferredApiBaseUrl = this.fallbackApiBaseUrl ?? this.primaryApiBaseUrl;
+  private readonly apiBaseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api`;
 
   async getProspectingConfiguration(): Promise<ProspectingConfigurationResponse> {
-    const response = await this.requestWithDevFallback('/idea-foundry/prospecting/configuration');
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/prospecting/configuration`, 'GET');
     return this.parseApiResponse<ProspectingConfigurationResponse>(response, 'load the prospecting configuration');
   }
 
   async getIdeaFoundryContents(): Promise<IdeaFoundryPipelineContentsResponse> {
-    const response = await this.requestWithDevFallback('/idea-foundry/prospecting/contents');
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/prospecting/contents`, 'GET');
     return this.parseApiResponse<IdeaFoundryPipelineContentsResponse>(response, 'load the idea foundry contents');
   }
 
   async runProspectingConfigurationReview(
     snapshot: ProspectingConfigurationSnapshot
   ): Promise<ProspectingConfigurationResponse> {
-    const response = await this.requestWithDevFallback(
-      '/idea-foundry/prospecting/configuration/run',
-      { snapshot },
-      'POST'
-    );
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/prospecting/configuration/run`, 'POST', {
+      snapshot
+    });
     return this.parseApiResponse<ProspectingConfigurationResponse>(response, 'run the prospecting agent');
   }
 
   async executeProspectingRun(): Promise<ProspectingConfigurationResponse> {
-    const response = await this.requestWithDevFallback(
-      '/idea-foundry/prospecting/configuration/execute',
-      {},
-      'POST'
-    );
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/prospecting/configuration/execute`, 'POST', {});
     return this.parseApiResponse<ProspectingConfigurationResponse>(response, 'execute the prospecting strategy');
   }
 
   async getProtoIdeaExtractionConfiguration(): Promise<ProtoIdeaExtractionConfigurationResponse> {
-    const response = await this.requestWithDevFallback('/idea-foundry/proto-idea/configuration');
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/proto-idea/configuration`, 'GET');
     return this.parseApiResponse<ProtoIdeaExtractionConfigurationResponse>(
       response,
       'load the Proto-Idea extraction policy'
@@ -128,11 +207,7 @@ export class IdeaFoundryApiService {
   async saveProtoIdeaExtractionConfiguration(
     policy: ProtoIdeaExtractionPolicy
   ): Promise<ProtoIdeaExtractionConfigurationResponse> {
-    const response = await this.requestWithDevFallback(
-      '/idea-foundry/proto-idea/configuration',
-      policy,
-      'POST'
-    );
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/proto-idea/configuration`, 'POST', policy);
     return this.parseApiResponse<ProtoIdeaExtractionConfigurationResponse>(
       response,
       'save the Proto-Idea extraction policy'
@@ -140,46 +215,45 @@ export class IdeaFoundryApiService {
   }
 
   async runProtoIdeaAgent(payload: { batchSize?: number; retryFailed?: boolean } = {}): Promise<ProtoIdeaExtractionRunResponse> {
-    const response = await this.requestWithDevFallback(
-      '/idea-foundry/proto-idea/run',
-      payload,
-      'POST'
-    );
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/proto-idea/run`, 'POST', payload);
     return this.parseApiResponse<ProtoIdeaExtractionRunResponse>(
       response,
       'run the Proto-Idea agent'
     );
   }
 
-  private async requestWithDevFallback(
-    path: string,
-    payload?: unknown,
-    method: 'GET' | 'POST' = 'GET'
-  ): Promise<HttpResponse<string>> {
-    if (this.preferredApiBaseUrl === this.fallbackApiBaseUrl && this.fallbackApiBaseUrl) {
-      try {
-        return await this.requestText(`${this.fallbackApiBaseUrl}${path}`, method, payload);
-      } catch (error) {
-        throw this.normalizeRequestError(error, `${this.fallbackApiBaseUrl}${path}`);
-      }
-    }
+  async getIdeaRefinementConfiguration(): Promise<IdeaRefinementConfigurationResponse> {
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/refinement/configuration`, 'GET');
+    return this.parseApiResponse<IdeaRefinementConfigurationResponse>(
+      response,
+      'load the Idea Refinement policy'
+    );
+  }
 
-    try {
-      const primaryResponse = await this.requestText(`${this.primaryApiBaseUrl}${path}`, method, payload);
-      if (!this.shouldRetryAgainstFallback(primaryResponse)) {
-        return primaryResponse;
-      }
-    } catch (error) {
-      if (!this.shouldRetryAgainstFallbackError(error)) {
-        throw error;
-      }
-    }
+  async saveIdeaRefinementConfiguration(policy: IdeaRefinementPolicy): Promise<IdeaRefinementConfigurationResponse> {
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/refinement/configuration`, 'POST', policy);
+    return this.parseApiResponse<IdeaRefinementConfigurationResponse>(
+      response,
+      'save the Idea Refinement policy'
+    );
+  }
 
-    try {
-      return await this.requestText(`${this.fallbackApiBaseUrl}${path}`, method, payload);
-    } catch (error) {
-      throw this.normalizeRequestError(error, `${this.fallbackApiBaseUrl}${path}`);
-    }
+  async getIdeaCandidates(): Promise<IdeaCandidateRecord[]> {
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/refinement/candidates`, 'GET');
+    return this.parseApiResponse<IdeaCandidateRecord[]>(
+      response,
+      'load refined idea candidates'
+    );
+  }
+
+  async runIdeaRefinementAgent(
+    payload: { batchSize?: number; retryFailed?: boolean; protoIdeaId?: string } = {}
+  ): Promise<IdeaRefinementRunResponse> {
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/refinement/run`, 'POST', payload);
+    return this.parseApiResponse<IdeaRefinementRunResponse>(
+      response,
+      'run the Idea Refinement agent'
+    );
   }
 
   private async requestText(
@@ -231,42 +305,6 @@ export class IdeaFoundryApiService {
     }
   }
 
-  private shouldRetryAgainstFallback(response: HttpResponse<string>): boolean {
-    if (!this.fallbackApiBaseUrl) {
-      return false;
-    }
-
-    const body = response.body ?? '';
-    const contentType = response.headers.get('content-type') ?? '';
-
-    return contentType.includes('text/html') || body.trimStart().startsWith('<!doctype');
-  }
-
-  private shouldRetryAgainstFallbackError(error: unknown): boolean {
-    if (!this.fallbackApiBaseUrl) {
-      return false;
-    }
-
-    if (!(error instanceof HttpErrorResponse)) {
-      return false;
-    }
-
-    const errorBody =
-      typeof error.error === 'string'
-        ? error.error
-        : typeof error.error?.text === 'string'
-          ? error.error.text
-          : '';
-
-    return (
-      error.status === 0 ||
-      error.status === 404 ||
-      (error.status >= 500 && error.status < 600) ||
-      errorBody.trimStart().startsWith('<!doctype') ||
-      errorBody.includes('<html')
-    );
-  }
-
   private normalizeRequestError(error: unknown, url: string): Error {
     if (!(error instanceof HttpErrorResponse)) {
       return error instanceof Error ? error : new Error('The Idea Foundry API request failed.');
@@ -281,24 +319,6 @@ export class IdeaFoundryApiService {
     return new Error(error.error?.error ?? error.message);
   }
 
-  private buildLocalDevApiBaseUrl(): string | null {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    if (this.primaryApiBaseUrl !== `${window.location.origin}/api`) {
-      return null;
-    }
-
-    const { hostname, port } = window.location;
-    const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
-
-    if (!isLocalHost || port === '3001') {
-      return null;
-    }
-
-    return 'http://localhost:3001/api';
-  }
 }
 
 function normalizeBaseUrl(value: string): string {

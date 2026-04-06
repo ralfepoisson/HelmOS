@@ -43,6 +43,7 @@ def _checksum_text(value: str) -> str:
 
 
 def _to_run_summary(run: AgentTestRun) -> AgentTestRunSummaryResponse:
+    configured_max_turns = (run.metadata_json or {}).get("max_turns", 30)
     return AgentTestRunSummaryResponse(
         id=run.id,
         suite_key=run.suite_key,
@@ -58,6 +59,7 @@ def _to_run_summary(run: AgentTestRun) -> AgentTestRunSummaryResponse:
         status=run.status,
         actual_turns=run.actual_turns,
         min_turns=run.min_turns,
+        max_turns=int(configured_max_turns),
         overall_score=run.overall_score,
         aggregate_confidence=run.aggregate_confidence,
         verdict=run.verdict,
@@ -240,6 +242,16 @@ async def create_agent_test_run(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Fixture '{fixture.fixture_key}' is not applicable to agent '{payload.target_agent_key}'.",
         )
+    if payload.min_turns < 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Minimum turns must be at least 1.",
+        )
+    if payload.max_turns < payload.min_turns:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum turns must be greater than or equal to minimum turns.",
+        )
 
     rubric = RubricRegistry().get(
         payload.target_agent_key,
@@ -261,13 +273,18 @@ async def create_agent_test_run(
             driver_version=fixture.driver_version_hint,
             status="draft",
             actual_turns=0,
-            min_turns=fixture.min_turns,
+            min_turns=payload.min_turns,
             overall_score=0.0,
             aggregate_confidence=0.0,
             verdict="PENDING",
             review_required=False,
             summary="Configured and ready to run.",
-            metadata_json={"operator_notes": payload.operator_notes or ""},
+            metadata_json={
+                "operator_notes": payload.operator_notes or "",
+                "fixture_min_turns": fixture.min_turns,
+                "fixture_max_turns": fixture.max_turns,
+                "max_turns": payload.max_turns,
+            },
         )
     )
     await repository.add_snapshot(
@@ -614,12 +631,15 @@ async def evaluate_agent_transcript(
             driver_version=payload.driver_version or fixture.driver_version_hint,
             actual_turns=len(payload.transcript),
             min_turns=fixture.min_turns,
+            metadata_json={
+                **payload.metadata_json,
+                "max_turns": payload.metadata_json.get("max_turns", fixture.max_turns),
+            },
             overall_score=evaluation.overall_score,
             aggregate_confidence=evaluation.aggregate_confidence,
             verdict=evaluation.verdict,
             review_required=evaluation.review_required,
             summary=evaluation.summary,
-            metadata_json=payload.metadata_json,
         )
     )
 

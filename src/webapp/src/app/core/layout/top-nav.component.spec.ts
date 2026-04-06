@@ -95,7 +95,7 @@ describe('TopNavComponent', () => {
     expect(authService.signOut).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the Agent Testing destination in the admin menu', async () => {
+  it('shows conceptual tools and agent testing in the admin menu', async () => {
     const fixture = await renderComponent();
     const compiled = fixture.nativeElement as HTMLElement;
     const adminTrigger = Array.from(compiled.querySelectorAll('button')).find(
@@ -106,6 +106,7 @@ describe('TopNavComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
+    expect(compiled.textContent).toContain('Conceptual Tools');
     expect(compiled.textContent).toContain('Agent Testing');
   });
 

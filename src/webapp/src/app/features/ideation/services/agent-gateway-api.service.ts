@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpErrorResponse, HttpResponse } from '@angular/common/http';
+import { HttpClient, HttpResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { IdeationAgentResponsePayload } from '../ideation.models';
@@ -42,8 +42,7 @@ export interface RunSummaryResponse extends RunStatusResponse {
 })
 export class AgentGatewayApiService {
   private readonly http = inject(HttpClient);
-  private readonly primaryBaseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api/v1`;
-  private readonly fallbackBaseUrl = this.buildLocalDevFallbackBaseUrl();
+  private readonly baseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api/v1`;
 
   async startIdeationRun(inputText: string, sessionTitle?: string): Promise<RunStatusResponse> {
     return this.requestWithFallback<RunStatusResponse>('/runs', 'POST', {
@@ -86,14 +85,7 @@ export class AgentGatewayApiService {
     method: 'GET' | 'POST' = 'GET',
     payload?: unknown
   ): Promise<T> {
-    try {
-      return await this.request<T>(`${this.primaryBaseUrl}${path}`, method, payload);
-    } catch (error) {
-      if (!this.shouldRetryAgainstFallback(error)) {
-        throw error;
-      }
-      return this.request<T>(`${this.fallbackBaseUrl}${path}`, method, payload);
-    }
+    return this.request<T>(`${this.baseUrl}${path}`, method, payload);
   }
 
   private async request<T>(url: string, method: 'GET' | 'POST', payload?: unknown): Promise<T> {
@@ -118,55 +110,8 @@ export class AgentGatewayApiService {
 
     return body as T;
   }
-
-  private shouldRetryAgainstFallback(error: unknown): boolean {
-    if (error instanceof Error && error.message.includes('invalid response')) {
-      return true;
-    }
-
-    if (error instanceof HttpErrorResponse) {
-      const errorBody =
-        typeof error.error === 'string'
-          ? error.error
-          : typeof error.error?.text === 'string'
-            ? error.error.text
-            : '';
-
-      return (
-        error.status === 0 ||
-        error.status === 404 ||
-        error.status === 200 ||
-        (error.status >= 500 && error.status < 600) ||
-        errorBody.trimStart().startsWith('<!doctype') ||
-        errorBody.includes('<html')
-      );
-    }
-
-    return (
-      error instanceof HttpErrorResponse &&
-      (error.status === 0 || error.status === 404 || (error.status >= 500 && error.status < 600))
-    );
-  }
-
   private isApiEnvelope<T>(body: ApiEnvelope<T> | T): body is ApiEnvelope<T> {
     return typeof body === 'object' && body !== null && 'data' in body;
-  }
-
-  private buildLocalDevFallbackBaseUrl(): string | null {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    if (this.primaryBaseUrl !== `${window.location.origin}/api/v1`) {
-      return null;
-    }
-
-    const hostname = window.location.hostname;
-    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-      return null;
-    }
-
-    return 'http://localhost:8000/api/v1';
   }
 }
 

@@ -8,6 +8,12 @@ const {
   updateAgentAdmin,
 } = require("../services/agent-admin.service");
 const {
+  createConceptualTool,
+  getConceptualTool,
+  listConceptualTools,
+  updateConceptualTool,
+} = require("../services/conceptual-tools.service");
+const {
   createKnowledgeBase,
   deleteKnowledgeBase,
   deleteKnowledgeBaseFile,
@@ -33,6 +39,9 @@ const nullableModelField = () => z.union([modelField(), z.null()]);
 const toolArrayField = () => z.array(z.enum(supportedToolNames)).max(25);
 const uuidField = () => z.string().uuid();
 const stringArrayField = (max) => z.array(stringField(max)).max(25);
+const stringOrArrayField = (max, limit = 100) =>
+  z.union([z.string().trim(), z.array(stringField(max)).max(limit)]);
+const conceptualToolStatusField = () => z.enum(["active", "inactive"]).or(z.enum(["ACTIVE", "INACTIVE"]));
 
 const promptConfigSchema = z
   .object({
@@ -75,6 +84,22 @@ const knowledgeBaseSearchSchema = z
     limit: z.number().int().min(1).max(25).optional(),
   })
   .strict();
+
+const conceptualToolSchema = z
+  .object({
+    name: stringField(200),
+    category: stringField(100),
+    purpose: z.string().trim().min(1),
+    whenToUse: stringOrArrayField(300, 50),
+    whenNotToUse: stringOrArrayField(300, 50),
+    instructions: stringOrArrayField(500, 100),
+    expectedEffect: z.string().trim().min(1),
+    status: conceptualToolStatusField().optional(),
+    version: z.number().int().min(1).max(999).optional(),
+  })
+  .strict();
+
+const updateConceptualToolSchema = conceptualToolSchema.partial().strict();
 
 const updateAgentAdminSchema = z
   .object({
@@ -153,6 +178,50 @@ function createAdminRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, s
 
     res.json({
       data: agent,
+    });
+  });
+
+  router.get("/conceptual-tools", async (req, res) => {
+    const records = await listConceptualTools(prisma, {
+      status: req.query.status,
+    });
+
+    res.json({
+      data: records,
+    });
+  });
+
+  router.get("/conceptual-tools/:id", async (req, res) => {
+    const tool = await getConceptualTool(prisma, req.params.id);
+
+    if (!tool) {
+      res.status(404).json({
+        error: "Conceptual tool not found",
+      });
+      return;
+    }
+
+    res.json({
+      data: tool,
+    });
+  });
+
+  router.post("/conceptual-tools", async (req, res) => {
+    const payload = conceptualToolSchema.parse(req.body);
+    const tool = await createConceptualTool(prisma, payload);
+
+    res.status(201).json({
+      data: tool,
+    });
+  });
+
+  router.put("/conceptual-tools/:id", async (req, res) => {
+    const payload = updateConceptualToolSchema.parse(req.body);
+    ensureUpdatePayload(payload);
+    const tool = await updateConceptualTool(prisma, req.params.id, payload);
+
+    res.json({
+      data: tool,
     });
   });
 

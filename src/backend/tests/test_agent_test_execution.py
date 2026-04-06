@@ -145,7 +145,7 @@ def _draft_run() -> AgentTestRun:
         verdict="PENDING",
         review_required=False,
         summary=None,
-        metadata_json={"operator_notes": ""},
+        metadata_json={"operator_notes": "", "max_turns": 8},
         report_json={},
     )
 
@@ -237,3 +237,35 @@ async def test_execution_service_terminates_when_low_exploration_depth_persists(
     assert result.run.metadata_json["conversation_progression"]["stagnation_cycles"] >= 2
     assert any("LOW EXPLORATION DEPTH FAILURE" in failure["message"] for failure in result.run.report_json["hard_failures"])
     assert "## Progression Metrics" in result.report_markdown
+
+
+@pytest.mark.asyncio
+async def test_execution_service_honors_run_level_turn_bounds():
+    service = AgentTestExecutionService()
+    agent = FakeAgent(
+        [
+            "What problem hurts most today?",
+            "Which teams feel this most?",
+            "How would onboarding work?",
+            "What evidence do you already have?",
+            "What would make this meaningfully better than existing tools?",
+        ]
+    )
+    run = _draft_run()
+    run.min_turns = 4
+    run.metadata_json = {"operator_notes": "", "max_turns": 5}
+    fixture = _fixture()
+    rubric = RubricRegistry().get(run.target_agent_key, fixture.scenario_dimensions, run.rubric_version)
+
+    result = await service.execute(
+        run=run,
+        fixture=fixture,
+        rubric=rubric,
+        runtime_agent=agent,
+        identity_markdown_path=None,
+    )
+
+    assert result.run.actual_turns == 5
+    assert result.run.report_json["stop_reason"] == "max_turns_reached"
+    assert result.run.metadata_json["min_turns"] == 4
+    assert result.run.metadata_json["max_turns"] == 5

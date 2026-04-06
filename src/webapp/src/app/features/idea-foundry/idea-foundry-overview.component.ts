@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 
-import { IdeaFoundryApiService, ProspectingResultRecord } from './idea-foundry-api.service';
+import { IdeaCandidateRecord, IdeaFoundryApiService, ProspectingResultRecord, ProtoIdeaRecord } from './idea-foundry-api.service';
 
 interface IdeaPipelineCard {
   id: string;
@@ -335,7 +335,7 @@ export class IdeaFoundryOverviewComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     try {
       const payload = await this.ideaFoundryApi.getIdeaFoundryContents();
-      this.columns = buildColumnsFromResultRecords(payload.sources);
+      this.columns = buildColumnsFromPipelinePayload(payload.sources, payload.protoIdeas, payload.ideaCandidates);
       this.sourceLoadError = null;
     } catch (error) {
       this.columns = buildEmptyColumns();
@@ -359,15 +359,21 @@ export class IdeaFoundryOverviewComponent implements OnInit {
   }
 
   isCollapsibleCard(columnId: string, card: IdeaPipelineCard): boolean {
-    return columnId === 'sources' && Boolean(card.href);
+    return columnId === 'sources' || columnId === 'proto-ideas';
   }
 }
 
-function buildColumnsFromResultRecords(resultRecords: ProspectingResultRecord[]): IdeaPipelineColumn[] {
+function buildColumnsFromPipelinePayload(
+  resultRecords: ProspectingResultRecord[],
+  protoIdeas: ProtoIdeaRecord[],
+  ideaCandidates: IdeaCandidateRecord[]
+): IdeaPipelineColumn[] {
   const columns = buildEmptyColumns();
   const sourceColumn = columns.find((column) => column.id === 'sources');
+  const protoIdeaColumn = columns.find((column) => column.id === 'proto-ideas');
+  const candidateColumn = columns.find((column) => column.id === 'idea-candidates');
 
-  if (!sourceColumn) {
+  if (!sourceColumn || !protoIdeaColumn || !candidateColumn) {
     return columns;
   }
 
@@ -390,6 +396,44 @@ function buildColumnsFromResultRecords(resultRecords: ProspectingResultRecord[])
           }
         ];
 
+  const normalizedProtoIdeaCards = Array.isArray(protoIdeas)
+    ? protoIdeas
+        .filter((protoIdea) => typeof protoIdea?.id === 'string' && protoIdea.id.trim().length > 0)
+        .map((protoIdea) => mapProtoIdeaToCard(protoIdea))
+    : [];
+
+  protoIdeaColumn.cards =
+    normalizedProtoIdeaCards.length > 0
+      ? normalizedProtoIdeaCards
+      : [
+          {
+            id: 'proto-ideas-empty',
+            title: 'No proto-ideas yet',
+            summary: 'No extracted ideas have been persisted from live source records yet.',
+            signal: 'Run prospecting and extraction against real inputs to populate this stage',
+            status: 'Waiting'
+          }
+        ];
+
+  const normalizedIdeaCandidateCards = Array.isArray(ideaCandidates)
+    ? ideaCandidates
+        .filter((candidate) => typeof candidate?.id === 'string' && candidate.id.trim().length > 0)
+        .map((candidate) => mapIdeaCandidateToCard(candidate))
+    : [];
+
+  candidateColumn.cards =
+    normalizedIdeaCandidateCards.length > 0
+      ? normalizedIdeaCandidateCards
+      : [
+          {
+            id: 'idea-candidates-empty',
+            title: 'No idea candidates yet',
+            summary: 'No refined opportunities have been persisted from real prospecting data yet.',
+            signal: 'This stage will fill as extracted ideas are reviewed and strengthened',
+            status: 'Waiting'
+          }
+        ];
+
   return columns;
 }
 
@@ -407,11 +451,61 @@ function mapResultRecordToSourceCard(record: ProspectingResultRecord): IdeaPipel
   };
 }
 
+function mapProtoIdeaToCard(record: ProtoIdeaRecord): IdeaPipelineCard {
+  return {
+    id: record.id,
+    title: record.title?.trim() || 'Proto-idea',
+    summary:
+      record.problemStatement?.trim() ||
+      record.opportunityHypothesis?.trim() ||
+      'A proto-idea has been extracted from a processed source.',
+    signal: buildProtoIdeaMeta(record),
+    status: record.statusLabel?.trim() || 'Extracted',
+    timestamp: formatCapturedAt(record.createdAt)
+  };
+}
+
+function mapIdeaCandidateToCard(record: IdeaCandidateRecord): IdeaPipelineCard {
+  return {
+    id: record.id,
+    title: record.protoIdeaTitle?.trim() || record.opportunityConcept?.trim() || 'Idea candidate',
+    summary:
+      record.opportunityConcept?.trim() ||
+      record.improvementSummary?.trim() ||
+      record.valueProposition?.trim() ||
+      'A refined idea candidate has been persisted from a proto-idea.',
+    signal: buildIdeaCandidateMeta(record),
+    status: record.statusLabel?.trim() || 'Refined',
+    timestamp: formatCapturedAt(record.updatedAt || record.createdAt)
+  };
+}
+
 function buildSourceMeta(record: ProspectingResultRecord): string {
   const parts = [
     record.queryFamilyTitle ? `Query family: ${record.queryFamilyTitle}` : null,
     record.themeLink ? `Theme: ${record.themeLink}` : null,
     record.query ? `Query: ${record.query}` : null
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  return parts.join(' · ');
+}
+
+function buildProtoIdeaMeta(record: ProtoIdeaRecord): string {
+  const parts = [
+    record.targetCustomer ? `Customer: ${record.targetCustomer}` : null,
+    record.opportunityType ? `Type: ${record.opportunityType}` : null,
+    record.agentConfidence ? `Confidence: ${record.agentConfidence}` : null
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  return parts.join(' · ');
+}
+
+function buildIdeaCandidateMeta(record: IdeaCandidateRecord): string {
+  const parts = [
+    record.targetCustomer ? `Customer: ${record.targetCustomer}` : null,
+    record.agentConfidence ? `Confidence: ${record.agentConfidence}` : null,
+    typeof record.refinementIteration === 'number' ? `Iteration: ${record.refinementIteration}` : null,
+    record.selectedConceptualToolNames?.length ? `Tools: ${record.selectedConceptualToolNames.join(', ')}` : null
   ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
 
   return parts.join(' · ');

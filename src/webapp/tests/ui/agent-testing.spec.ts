@@ -179,5 +179,9 @@ test.describe('Agent Testing admin workspace', () => {
     await expect(page.getByText(/Loading agents/i)).toHaveCount(0);
     await expect(page.getByText(/Loading runs/i)).toBeVisible();
     await expect(page.getByText('Testing Agent', { exact: true })).toHaveCount(0);
+
+    await page.getByRole('button', { name: /\+ Test/i }).click();
+    await expect(page.getByLabel('Minimum turns')).toHaveValue('20');
+    await expect(page.getByLabel('Maximum turns')).toHaveValue('30');
   });
 });

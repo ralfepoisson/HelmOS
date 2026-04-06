@@ -29,9 +29,7 @@ describe('AdminLogsService', () => {
       scope: 'admin'
     });
 
-    const request = httpTesting.expectOne(
-      'http://localhost:3001/api/admin/logs?q=agent&timeRange=30m&levels=info&scope=admin'
-    );
+    const request = httpTesting.expectOne('http://localhost:3000/api/admin/logs?q=agent&timeRange=30m&levels=info&scope=admin');
     expect(request.request.method).toBe('GET');
     request.flush(
       JSON.stringify({

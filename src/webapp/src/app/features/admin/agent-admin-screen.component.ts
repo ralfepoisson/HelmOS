@@ -579,7 +579,13 @@ const RETRY_OPTIONS: Array<{ value: RetryPolicy; label: string; description: str
 
           <footer class="agent-card-footer">
             <div class="agent-footnote">
+              <span *ngIf="selectedAgentLoadingId === agent.id">Loading agent details...</span>
+              <span *ngIf="selectedAgentLoadError && selectedAgentId === agent.id" class="save-error">
+                {{ selectedAgentLoadError }}
+              </span>
+              <span *ngIf="selectedAgentLoadingId !== agent.id && !(selectedAgentLoadError && selectedAgentId === agent.id)">
               Last updated {{ formatTimestamp(agent.updatedAt) }}
+              </span>
             </div>
             <div class="footer-actions">
               <div *ngIf="agent.saveError" class="save-error">{{ agent.saveError }}</div>
@@ -1742,6 +1748,8 @@ export class AgentAdminScreenComponent implements OnInit {
   gateway: AgentGatewayStatus | null = null;
   agents: EditableAgentRecord[] = [];
   selectedAgentId: string | null = null;
+  selectedAgentLoadError: string | null = null;
+  selectedAgentLoadingId: string | null = null;
   showGatewayDetails = false;
   createDraft = this.buildCreateDraft();
   createModalOpen = false;
@@ -1817,6 +1825,8 @@ export class AgentAdminScreenComponent implements OnInit {
 
   selectAgent(agentId: string): void {
     this.selectedAgentId = agentId;
+    this.selectedAgentLoadError = null;
+    void this.hydrateSelectedAgent(agentId);
   }
 
   setAgentLifecycle(agent: EditableAgentRecord, value: LifecycleState): void {
@@ -1997,6 +2007,40 @@ export class AgentAdminScreenComponent implements OnInit {
     this.agents = snapshot.agents.map((agent) => this.toEditableRecord(agent));
     this.selectedAgentId =
       this.agents.find((agent) => agent.id === this.selectedAgentId)?.id ?? this.agents[0]?.id ?? null;
+    this.selectedAgentLoadError = null;
+    if (this.selectedAgentId) {
+      void this.hydrateSelectedAgent(this.selectedAgentId);
+    }
+  }
+
+  private async hydrateSelectedAgent(agentId: string): Promise<void> {
+    this.selectedAgentLoadingId = agentId;
+
+    try {
+      const detailedAgent = await this.agentAdminService.getAgent(agentId);
+
+      if (this.selectedAgentId !== agentId) {
+        return;
+      }
+
+      const index = this.agents.findIndex((agent) => agent.id === agentId);
+      if (index >= 0) {
+        this.agents[index] = this.toEditableRecord(detailedAgent);
+      } else {
+        this.agents = [this.toEditableRecord(detailedAgent), ...this.agents];
+      }
+
+      this.selectedAgentLoadError = null;
+    } catch (error) {
+      if (this.selectedAgentId === agentId) {
+        this.selectedAgentLoadError = this.toErrorMessage(error);
+      }
+    } finally {
+      if (this.selectedAgentLoadingId === agentId) {
+        this.selectedAgentLoadingId = null;
+      }
+      this.changeDetector.detectChanges();
+    }
   }
 
   private toEditableRecord(agent: AgentAdminRecord): EditableAgentRecord {

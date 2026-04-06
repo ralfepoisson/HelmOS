@@ -75,11 +75,13 @@ class AgentTestExecutionService:
                 "target_agent_key": run.target_agent_key,
                 "fixture_key": fixture.fixture_key,
                 "fixture_version": fixture.fixture_version,
-                "min_turns": fixture.min_turns,
-                "max_turns": fixture.max_turns,
+                "min_turns": self._configured_min_turns(run, fixture),
+                "max_turns": self._configured_max_turns(run, fixture),
             },
             full_context=True,
         )
+        configured_min_turns = self._configured_min_turns(run, fixture)
+        configured_max_turns = self._configured_max_turns(run, fixture)
         transcript: list[AgentTestTurnInput] = []
         state = ScenarioState(
             known_to_user=self._known_user_facts(fixture),
@@ -101,7 +103,7 @@ class AgentTestExecutionService:
 
         stop_reason = "max_turns_reached"
         latest_progression: TurnProgressionAnalysis | None = None
-        while len(transcript) < fixture.max_turns:
+        while len(transcript) < configured_max_turns:
             self._raise_if_stopped(run.id, stop_event)
             logger.info("agent_test_execution.turn_started", run_id=run.id, transcript_length=len(transcript))
             agent_reply, output = await self._run_target_agent(
@@ -140,11 +142,11 @@ class AgentTestExecutionService:
                 stop_reason = "low_exploration_depth_failure"
                 break
 
-            if len(transcript) >= fixture.min_turns and self._agent_message_can_end(agent_reply):
+            if len(transcript) >= configured_min_turns and self._agent_message_can_end(agent_reply):
                 stop_reason = "minimum_turns_satisfied_with_next_step"
                 break
 
-            if len(transcript) >= fixture.max_turns:
+            if len(transcript) >= configured_max_turns:
                 stop_reason = "max_turns_reached_after_agent_reply"
                 break
 
@@ -173,13 +175,15 @@ class AgentTestExecutionService:
             rubric=rubric,
             transcript=transcript,
             annotations=annotations,
-            min_turns=fixture.min_turns,
+            min_turns=configured_min_turns,
         )
         metadata_json = {
             **(run.metadata_json or {}),
             "execution_requested": True,
             "execution_completed": True,
             "execution_stop_reason": stop_reason,
+            "min_turns": configured_min_turns,
+            "max_turns": configured_max_turns,
             "revealed_fact_ids": sorted(state.revealed_fact_ids),
             "conversation_progression": progress_state.to_metadata(),
         }
@@ -235,6 +239,8 @@ class AgentTestExecutionService:
                 "overall_score": run.overall_score,
                 "aggregate_confidence": run.aggregate_confidence,
                 "stop_reason": stop_reason,
+                "min_turns": configured_min_turns,
+                "max_turns": configured_max_turns,
                 "revealed_fact_ids": sorted(state.revealed_fact_ids),
             },
             full_context=True,
@@ -250,6 +256,14 @@ class AgentTestExecutionService:
             report_markdown=report_markdown,
             metadata_json=metadata_json,
         )
+
+    def _configured_min_turns(self, run: AgentTestRun, fixture: AgentTestFixture) -> int:
+        return max(1, int(run.min_turns or fixture.min_turns))
+
+    def _configured_max_turns(self, run: AgentTestRun, fixture: AgentTestFixture) -> int:
+        metadata = run.metadata_json if isinstance(run.metadata_json, dict) else {}
+        configured_max = int(metadata.get("max_turns", fixture.max_turns))
+        return max(self._configured_min_turns(run, fixture), configured_max)
 
     async def _run_target_agent(
         self,

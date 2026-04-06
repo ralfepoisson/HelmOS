@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpErrorResponse, HttpResponse } from '@angular/common/http';
+import { HttpClient, HttpResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { readAuthConfig } from '../../core/auth/bootstrap-auth';
@@ -35,6 +35,7 @@ export interface AgentTestRunSummary {
   status: string;
   actual_turns: number;
   min_turns: number;
+  max_turns: number;
   overall_score: number;
   aggregate_confidence: number;
   verdict: string;
@@ -115,6 +116,8 @@ export interface CreateAgentTestRunPayload {
   suite_key?: string | null;
   target_model_name?: string | null;
   testing_agent_model_name?: string | null;
+  min_turns: number;
+  max_turns: number;
   operator_notes?: string | null;
 }
 
@@ -123,8 +126,7 @@ export interface CreateAgentTestRunPayload {
 })
 export class AgentTestingService {
   private readonly http = inject(HttpClient);
-  private readonly primaryBaseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api/v1`;
-  private readonly fallbackBaseUrl = this.buildLocalDevFallbackBaseUrl();
+  private readonly baseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api/v1`;
 
   async listFixtures(): Promise<AgentTestFixtureSummary[]> {
     const response = await this.requestWithFallback<{ fixtures: AgentTestFixtureSummary[] }>('/admin/agent-tests/fixtures');
@@ -167,14 +169,7 @@ export class AgentTestingService {
     method: 'GET' | 'POST' | 'DELETE' = 'GET',
     payload?: unknown
   ): Promise<T> {
-    try {
-      return await this.request<T>(`${this.primaryBaseUrl}${path}`, method, payload);
-    } catch (error) {
-      if (!this.shouldRetryAgainstFallback(error) || !this.fallbackBaseUrl) {
-        throw error;
-      }
-      return this.request<T>(`${this.fallbackBaseUrl}${path}`, method, payload);
-    }
+    return this.request<T>(`${this.baseUrl}${path}`, method, payload);
   }
 
   private async request<T>(url: string, method: 'GET' | 'POST' | 'DELETE', payload?: unknown): Promise<T> {
@@ -202,50 +197,8 @@ export class AgentTestingService {
     return body as T;
   }
 
-  private shouldRetryAgainstFallback(error: unknown): boolean {
-    if (error instanceof Error && error.message.includes('invalid response')) {
-      return true;
-    }
-
-    if (error instanceof HttpErrorResponse) {
-      const errorBody =
-        typeof error.error === 'string'
-          ? error.error
-          : typeof error.error?.text === 'string'
-            ? error.error.text
-            : '';
-
-      return (
-        error.status === 0 ||
-        error.status === 404 ||
-        error.status === 200 ||
-        errorBody.trimStart().startsWith('<!doctype') ||
-        errorBody.includes('<html')
-      );
-    }
-
-    return false;
-  }
-
   private isApiEnvelope<T>(body: ApiEnvelope<T> | T): body is ApiEnvelope<T> {
     return typeof body === 'object' && body !== null && 'data' in body;
-  }
-
-  private buildLocalDevFallbackBaseUrl(): string | null {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    if (this.primaryBaseUrl !== `${window.location.origin}/api/v1`) {
-      return null;
-    }
-
-    const hostname = window.location.hostname;
-    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-      return null;
-    }
-
-    return 'http://localhost:8000/api/v1';
   }
 }
 

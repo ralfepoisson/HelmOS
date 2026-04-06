@@ -95,17 +95,15 @@ interface ApiResponse<T> {
 })
 export class KnowledgeBaseAdminService {
   private readonly http = inject(HttpClient);
-  private readonly primaryApiBaseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api`;
-  private readonly fallbackApiBaseUrl = this.buildLocalDevApiBaseUrl();
-  private readonly preferredApiBaseUrl = this.fallbackApiBaseUrl ?? this.primaryApiBaseUrl;
+  private readonly apiBaseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api`;
 
   async listKnowledgeBases(): Promise<KnowledgeBaseSummary[]> {
-    const response = await this.requestWithDevFallback('/admin/knowledge-bases');
+    const response = await this.requestText(`${this.apiBaseUrl}/admin/knowledge-bases`, 'GET');
     return this.parseApiResponse<KnowledgeBaseSummary[]>(response, 'load knowledge bases');
   }
 
   async getKnowledgeBase(id: string): Promise<KnowledgeBaseDetail> {
-    const response = await this.requestWithDevFallback(`/admin/knowledge-bases/${id}`);
+    const response = await this.requestText(`${this.apiBaseUrl}/admin/knowledge-bases/${id}`, 'GET');
     return this.parseApiResponse<KnowledgeBaseDetail>(response, 'load knowledge base details');
   }
 
@@ -116,7 +114,7 @@ export class KnowledgeBaseAdminService {
     ownerId?: string | null;
     status?: 'ACTIVE' | 'ARCHIVED';
   }): Promise<KnowledgeBaseSummary> {
-    const response = await this.requestWithDevFallback('/admin/knowledge-bases', payload, 'POST');
+    const response = await this.requestText(`${this.apiBaseUrl}/admin/knowledge-bases`, 'POST', payload);
     return this.parseApiResponse<KnowledgeBaseSummary>(response, 'create a knowledge base');
   }
 
@@ -130,12 +128,12 @@ export class KnowledgeBaseAdminService {
       status: 'ACTIVE' | 'ARCHIVED';
     }>
   ): Promise<KnowledgeBaseSummary> {
-    const response = await this.requestWithDevFallback(`/admin/knowledge-bases/${id}`, payload, 'PUT');
+    const response = await this.requestText(`${this.apiBaseUrl}/admin/knowledge-bases/${id}`, 'PUT', payload);
     return this.parseApiResponse<KnowledgeBaseSummary>(response, 'update the knowledge base');
   }
 
   async deleteKnowledgeBase(id: string): Promise<void> {
-    await this.requestWithDevFallback(`/admin/knowledge-bases/${id}`, undefined, 'DELETE');
+    await this.requestText(`${this.apiBaseUrl}/admin/knowledge-bases/${id}`, 'DELETE');
   }
 
   async uploadFile(payload: {
@@ -146,17 +144,17 @@ export class KnowledgeBaseAdminService {
     sourceType?: string | null;
     tags?: string[];
   }): Promise<KnowledgeBaseFileRecord> {
-    const response = await this.requestWithDevFallback('/admin/knowledge-base-files/upload', payload, 'POST');
+    const response = await this.requestText(`${this.apiBaseUrl}/admin/knowledge-base-files/upload`, 'POST', payload);
     return this.parseApiResponse<KnowledgeBaseFileRecord>(response, 'upload the file');
   }
 
   async getFile(id: string): Promise<KnowledgeBaseFileDetail> {
-    const response = await this.requestWithDevFallback(`/admin/knowledge-base-files/${id}`);
+    const response = await this.requestText(`${this.apiBaseUrl}/admin/knowledge-base-files/${id}`, 'GET');
     return this.parseApiResponse<KnowledgeBaseFileDetail>(response, 'load the file details');
   }
 
   async deleteFile(id: string): Promise<void> {
-    await this.requestWithDevFallback(`/admin/knowledge-base-files/${id}`, undefined, 'DELETE');
+    await this.requestText(`${this.apiBaseUrl}/admin/knowledge-base-files/${id}`, 'DELETE');
   }
 
   async search(payload: {
@@ -166,43 +164,8 @@ export class KnowledgeBaseAdminService {
     mediaTypes?: Array<'text' | 'document' | 'image' | 'audio' | 'video'>;
     limit?: number;
   }): Promise<KnowledgeBaseSearchResult[]> {
-    const response = await this.requestWithDevFallback('/admin/knowledge-base-search', payload, 'POST');
+    const response = await this.requestText(`${this.apiBaseUrl}/admin/knowledge-base-search`, 'POST', payload);
     return this.parseApiResponse<KnowledgeBaseSearchResult[]>(response, 'search the knowledge base');
-  }
-
-  private async requestWithDevFallback(
-    path: string,
-    payload?: unknown,
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET'
-  ): Promise<HttpResponse<string>> {
-    if (this.preferredApiBaseUrl === this.fallbackApiBaseUrl && this.fallbackApiBaseUrl) {
-      try {
-        return await this.requestText(`${this.fallbackApiBaseUrl}${path}`, method, payload);
-      } catch (error) {
-        throw this.normalizeRequestError(error, `${this.fallbackApiBaseUrl}${path}`);
-      }
-    }
-
-    try {
-      const primaryResponse = await this.requestText(`${this.primaryApiBaseUrl}${path}`, method, payload);
-      if (!this.shouldRetryAgainstFallback(primaryResponse)) {
-        return primaryResponse;
-      }
-    } catch (error) {
-      if (!this.shouldRetryAgainstFallbackError(error)) {
-        throw error;
-      }
-    }
-
-    if (!this.fallbackApiBaseUrl) {
-      throw new Error('The admin API is unavailable.');
-    }
-
-    try {
-      return await this.requestText(`${this.fallbackApiBaseUrl}${path}`, method, payload);
-    } catch (error) {
-      throw this.normalizeRequestError(error, `${this.fallbackApiBaseUrl}${path}`);
-    }
   }
 
   private async requestText(
@@ -253,37 +216,6 @@ export class KnowledgeBaseAdminService {
     }
   }
 
-  private shouldRetryAgainstFallback(response: HttpResponse<string>): boolean {
-    if (!this.fallbackApiBaseUrl) {
-      return false;
-    }
-
-    const body = response.body ?? '';
-    const contentType = response.headers.get('content-type') ?? '';
-    return contentType.includes('text/html') || body.trimStart().startsWith('<!doctype');
-  }
-
-  private shouldRetryAgainstFallbackError(error: unknown): boolean {
-    if (!this.fallbackApiBaseUrl || !(error instanceof HttpErrorResponse)) {
-      return false;
-    }
-
-    const errorBody =
-      typeof error.error === 'string'
-        ? error.error
-        : typeof error.error?.text === 'string'
-          ? error.error.text
-          : '';
-
-    return (
-      error.status === 0 ||
-      error.status === 404 ||
-      (error.status >= 500 && error.status < 600) ||
-      errorBody.trimStart().startsWith('<!doctype') ||
-      errorBody.includes('<html')
-    );
-  }
-
   private normalizeRequestError(error: unknown, url: string): Error {
     if (!(error instanceof HttpErrorResponse)) {
       return error instanceof Error ? error : new Error('The knowledge base admin API request failed.');
@@ -303,19 +235,6 @@ export class KnowledgeBaseAdminService {
           : error.message;
 
     return new Error(message || 'The knowledge base admin API request failed.');
-  }
-
-  private buildLocalDevApiBaseUrl(): string | null {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:3001/api';
-    }
-
-    return null;
   }
 }
 

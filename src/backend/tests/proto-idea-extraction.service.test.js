@@ -591,3 +591,237 @@ test("runProtoIdeaExtractionPass marks the source as failed when the agent retur
   assert.match(failedSource.lastErrorMessage, /invalid json/i);
   assert.equal(storedPolicy.latestRunStatus, "FAILED");
 });
+
+test("runProtoIdeaExtractionPass scopes candidate selection to the requested owner user", async () => {
+  const createdSources = [];
+  const createdIdeas = [];
+  const sourceRows = new Map();
+  let storedPolicy = {
+    id: "policy-1",
+    profileName: "default",
+    extractionBreadth: "standard",
+    inferenceTolerance: "balanced",
+    noveltyBias: "balanced",
+    minimumSignalThreshold: "medium",
+    maxProtoIdeasPerSource: 4,
+    latestRunStatus: null,
+    latestRunSummaryJson: null,
+    lastRunAt: null,
+  };
+
+  const prisma = {
+    prospectingConfiguration: {
+      async findMany({ where } = {}) {
+        const records = [
+          {
+            id: "prospecting-config-other",
+            ownerUserId: "user-other",
+            lastRunAt: new Date("2026-04-01T12:00:00.000Z"),
+            lastResultRecords: [
+              {
+                id: "source-other",
+                sourceTitle: "Older other-user source",
+                sourceUrl: "https://example.com/other",
+                snippet: "Other user's signal",
+                provider: "web_search",
+                capturedAt: "2026-04-01T10:00:00.000Z",
+              },
+            ],
+            ownerUser: {
+              id: "user-other",
+              email: "other@example.com",
+            },
+          },
+          {
+            id: "prospecting-config-current",
+            ownerUserId: "user-current",
+            lastRunAt: new Date("2026-04-05T12:00:00.000Z"),
+            lastResultRecords: [
+              {
+                id: "source-current",
+                sourceTitle: "Current user source",
+                sourceUrl: "https://example.com/current",
+                snippet: "Current user's signal",
+                provider: "web_search",
+                capturedAt: "2026-04-05T10:00:00.000Z",
+              },
+            ],
+            ownerUser: {
+              id: "user-current",
+              email: "current@example.com",
+            },
+          },
+        ];
+
+        if (!where?.ownerUserId) {
+          return records;
+        }
+
+        return records.filter((record) => record.ownerUserId === where.ownerUserId);
+      },
+    },
+    protoIdeaExtractionPolicy: {
+      async upsert() {
+        return storedPolicy;
+      },
+      async update({ data }) {
+        storedPolicy = {
+          ...storedPolicy,
+          ...data,
+        };
+        return storedPolicy;
+      },
+    },
+    protoIdeaSource: {
+      async findUnique({ where }) {
+        return sourceRows.get(`${where.ownerUserId_sourceKey.ownerUserId}:${where.ownerUserId_sourceKey.sourceKey}`) ?? null;
+      },
+      async create({ data }) {
+        const key = `${data.ownerUserId}:${data.sourceKey}`;
+        const row = {
+          id: `proto-source-${createdSources.length + 1}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...data,
+        };
+        createdSources.push(row);
+        sourceRows.set(key, row);
+        return row;
+      },
+      async updateMany({ where, data }) {
+        const row = Array.from(sourceRows.values()).find((entry) => entry.id === where.id);
+        if (!row) {
+          return { count: 0 };
+        }
+        Object.assign(row, data, { updatedAt: new Date() });
+        return { count: 1 };
+      },
+      async update({ where, data }) {
+        const row = Array.from(sourceRows.values()).find((entry) => entry.id === where.id);
+        Object.assign(row, data, { updatedAt: new Date() });
+        return row;
+      },
+    },
+    protoIdea: {
+      async deleteMany() {
+        return { count: 0 };
+      },
+      async create({ data }) {
+        createdIdeas.push(data);
+        return data;
+      },
+    },
+    agentDefinition: {
+      async findMany() {
+        return [
+          {
+            key: "proto-idea",
+            name: "Proto-Idea Agent",
+            active: true,
+            updatedAt: new Date("2026-04-05T20:00:00.000Z"),
+          },
+        ];
+      },
+    },
+    logEntry: {
+      async create({ data }) {
+        return { id: data.id ?? "log-1", ...data };
+      },
+    },
+    async $transaction(callback) {
+      return callback(this);
+    },
+  };
+
+  const agentGatewayClient = {
+    async getAdminSnapshot() {
+      return {
+        status: "online",
+        agents: [{ key: "proto-idea" }],
+      };
+    },
+    async startRun(payload) {
+      assert.match(payload.input_text, /Current user source/);
+      assert.doesNotMatch(payload.input_text, /Older other-user source/);
+      return { id: "gateway-run-1" };
+    },
+    async waitForRunCompletion() {
+      return {
+        id: "gateway-run-1",
+        status: "completed",
+        normalized_output: {
+          reply_to_user: {
+            content: "Extracted grounded proto-ideas.",
+          },
+          source_analysis: {
+            source_id: "source-current",
+            source_type: "web_search",
+            source_title: "Current user source",
+            summary: "Current user's signal.",
+            primary_signals: ["Current user's signal"],
+            observed_problems_or_needs: ["Current user's need"],
+            inferred_patterns: ["Current user's pattern"],
+            overall_signal_strength: {
+              label: "Strong",
+              tone: "success",
+              agent_confidence: "high",
+              explanation: "Scoped correctly.",
+            },
+          },
+          proto_idea_overview: {
+            extraction_readiness: {
+              label: "Ready",
+              reason: "The source is sufficiently concrete.",
+              next_best_action: "Persist and refine later.",
+            },
+            extraction_notes: "Scoped run.",
+          },
+          proto_ideas: [
+            {
+              proto_idea_id: "idea-current",
+              title: "Current user proto-idea",
+              source_grounding: {
+                explicit_signals: ["Current user's signal"],
+                inferred_from_source: ["Current user's opportunity"],
+              },
+              problem_statement: "Current user's problem.",
+              target_customer: "Current user's customer.",
+              opportunity_hypothesis: "Current user's hypothesis.",
+              why_it_matters: "Current user's value.",
+              opportunity_type: "Workflow software",
+              assumptions: [],
+              open_questions: [],
+              status: {
+                label: "Promising",
+                tone: "success",
+                agent_confidence: "medium",
+                explanation: "Scoped correctly.",
+              },
+              ui_hints: {
+                highlight: true,
+                needs_attention: false,
+              },
+            },
+          ],
+          deduplication_notes: {
+            potential_overlap_detected: false,
+            explanation: "",
+          },
+        },
+      };
+    },
+  };
+
+  const result = await runProtoIdeaExtractionPass(prisma, agentGatewayClient, {
+    batchSize: 1,
+    ownerUserId: "user-current",
+    agentIdentityMarkdown: "# Proto-Idea Agent\n\nReturn JSON only.",
+  });
+
+  assert.equal(result.processedCount, 1);
+  assert.equal(createdSources.length, 1);
+  assert.equal(createdSources[0].ownerUserId, "user-current");
+  assert.equal(createdSources[0].upstreamSourceRecordId, "source-current");
+  assert.equal(createdIdeas.length, 1);
+  assert.equal(createdIdeas[0].ownerUserId, "user-current");
+});

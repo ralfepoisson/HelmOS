@@ -643,12 +643,18 @@ async function claimProtoIdeaSource(prisma, candidate, policy, options = {}) {
   };
 }
 
-async function listPendingProtoIdeaCandidates(prisma) {
+async function listPendingProtoIdeaCandidates(prisma, options = {}) {
   if (!prisma?.prospectingConfiguration || typeof prisma.prospectingConfiguration.findMany !== "function") {
     return [];
   }
 
+  const where = {};
+  if (typeof options.ownerUserId === "string" && options.ownerUserId.trim().length > 0) {
+    where.ownerUserId = options.ownerUserId.trim();
+  }
+
   const configurations = await prisma.prospectingConfiguration.findMany({
+    where,
     include: {
       ownerUser: {
         select: {
@@ -1005,6 +1011,10 @@ async function runProtoIdeaExtractionPass(prisma, agentGatewayClient, options = 
     ? Math.max(1, Math.min(options.batchSize, 10))
     : DEFAULT_BATCH_SIZE;
   const retryFailed = Boolean(options.retryFailed);
+  const ownerUserId =
+    typeof options.ownerUserId === "string" && options.ownerUserId.trim().length > 0
+      ? options.ownerUserId.trim()
+      : null;
   const agentIdentityMarkdown = options.agentIdentityMarkdown ?? loadProtoIdeaAgentIdentity();
   const requestedAgent = await resolveProtoIdeaAgentKey(prisma);
   const policy = options.policy ? normalizePolicyRecord(options.policy) : await ensureProtoIdeaExtractionPolicy(prisma);
@@ -1028,6 +1038,7 @@ async function runProtoIdeaExtractionPass(prisma, agentGatewayClient, options = 
       noveltyBias: policy.noveltyBias,
       minimumSignalThreshold: policy.minimumSignalThreshold,
       maxProtoIdeasPerSource: policy.maxProtoIdeasPerSource,
+      ownerUserId,
     },
   });
 
@@ -1040,7 +1051,7 @@ async function runProtoIdeaExtractionPass(prisma, agentGatewayClient, options = 
     },
   });
 
-  const candidates = await listPendingProtoIdeaCandidates(prisma);
+  const candidates = await listPendingProtoIdeaCandidates(prisma, { ownerUserId });
   const outcome = {
     ...DEFAULT_RUNTIME_RESULT,
     policyId: policy.id ?? null,
@@ -1242,6 +1253,7 @@ async function runProtoIdeaExtractionStage(prisma, agentGatewayClient, currentUs
       profileName: policy.profileName,
       batchSize: options.batchSize ?? DEFAULT_BATCH_SIZE,
       retryFailed: Boolean(options.retryFailed),
+      ownerUserId: currentUser?.id ?? null,
     },
   });
 
@@ -1249,6 +1261,7 @@ async function runProtoIdeaExtractionStage(prisma, agentGatewayClient, currentUs
     const result = await runProtoIdeaExtractionPass(prisma, agentGatewayClient, {
       ...options,
       policy,
+      ownerUserId: currentUser?.id ?? null,
     });
     const refreshed = await getProtoIdeaExtractionConfiguration(prisma);
 

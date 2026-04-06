@@ -42,9 +42,7 @@ interface ApiResponse<T> {
 })
 export class AdminLogsService {
   private readonly http = inject(HttpClient);
-  private readonly primaryApiBaseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api`;
-  private readonly fallbackApiBaseUrl = this.buildLocalDevApiBaseUrl();
-  private readonly preferredApiBaseUrl = this.fallbackApiBaseUrl ?? this.primaryApiBaseUrl;
+  private readonly apiBaseUrl = `${normalizeBaseUrl(readAuthConfig().apiBaseUrl)}/api`;
 
   async listLogs(filters: {
     query?: string;
@@ -71,37 +69,9 @@ export class AdminLogsService {
     }
 
     const path = `/admin/logs${query.size > 0 ? `?${query.toString()}` : ''}`;
-    const response = await this.requestWithDevFallback(path);
+    const response = await this.requestText(`${this.apiBaseUrl}${path}`);
 
     return this.parseApiResponse<AdminLogsSnapshot>(response, 'load admin logs');
-  }
-
-  private async requestWithDevFallback(path: string): Promise<HttpResponse<string>> {
-    if (this.preferredApiBaseUrl === this.fallbackApiBaseUrl && this.fallbackApiBaseUrl) {
-      try {
-        return await this.requestText(`${this.fallbackApiBaseUrl}${path}`);
-      } catch (error) {
-        throw this.normalizeRequestError(error, `${this.fallbackApiBaseUrl}${path}`);
-      }
-    }
-
-    try {
-      const primaryResponse = await this.requestText(`${this.primaryApiBaseUrl}${path}`);
-
-      if (!this.shouldRetryAgainstFallback(primaryResponse)) {
-        return primaryResponse;
-      }
-    } catch (error) {
-      if (!this.shouldRetryAgainstFallbackError(error)) {
-        throw error;
-      }
-    }
-
-    try {
-      return await this.requestText(`${this.fallbackApiBaseUrl}${path}`);
-    } catch (error) {
-      throw this.normalizeRequestError(error, `${this.fallbackApiBaseUrl}${path}`);
-    }
   }
 
   private async requestText(url: string): Promise<HttpResponse<string>> {
@@ -140,42 +110,6 @@ export class AdminLogsService {
     }
   }
 
-  private shouldRetryAgainstFallback(response: HttpResponse<string>): boolean {
-    if (!this.fallbackApiBaseUrl) {
-      return false;
-    }
-
-    const body = response.body ?? '';
-    const contentType = response.headers.get('content-type') ?? '';
-
-    return contentType.includes('text/html') || body.trimStart().startsWith('<!doctype');
-  }
-
-  private shouldRetryAgainstFallbackError(error: unknown): boolean {
-    if (!this.fallbackApiBaseUrl) {
-      return false;
-    }
-
-    if (!(error instanceof HttpErrorResponse)) {
-      return false;
-    }
-
-    const errorBody =
-      typeof error.error === 'string'
-        ? error.error
-        : typeof error.error?.text === 'string'
-          ? error.error.text
-          : '';
-
-    return (
-      error.status === 0 ||
-      error.status === 404 ||
-      (error.status >= 500 && error.status < 600) ||
-      errorBody.trimStart().startsWith('<!doctype') ||
-      errorBody.includes('<html')
-    );
-  }
-
   private normalizeRequestError(error: unknown, url: string): Error {
     if (!(error instanceof HttpErrorResponse)) {
       return error instanceof Error ? error : new Error('The admin API request failed.');
@@ -199,23 +133,6 @@ export class AdminLogsService {
     }
 
     return new Error(`The admin API request failed with status ${error.status}.`);
-  }
-
-  private buildLocalDevApiBaseUrl(): string | null {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    if (this.primaryApiBaseUrl !== `${window.location.origin}/api`) {
-      return null;
-    }
-
-    const hostname = window.location.hostname;
-    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-      return null;
-    }
-
-    return 'http://localhost:3001/api';
   }
 }
 

@@ -177,18 +177,14 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
               [class.run-card-active]="run.id === selectedRunKey"
               (click)="selectRun(run.id)"
             >
-              <div class="run-card-top">
-                <strong>{{ formatTestModeLabel(run.test_mode) }}</strong>
-                <span class="run-status-pill" [class.run-status-pill-queued]="run.status === 'queued'">
-                  {{ formatRunStatus(run.status) }}
-                </span>
-              </div>
-
-              <p>{{ resolveFixtureTitle(run.fixture_key, run.fixture_version) }}</p>
-
-              <div class="run-card-meta">
-                <span>{{ run.created_at | date: 'mediumDate' }}</span>
-                <span>{{ run.target_model_name || 'Model to resolve' }}</span>
+              <div class="run-card-compact">
+                <span class="run-timestamp">{{ run.updated_at | date: 'short' }}</span>
+                <span
+                  class="run-verdict-indicator"
+                  [ngClass]="resolveRunVerdictIndicatorClass(run.verdict)"
+                  [attr.aria-label]="resolveRunVerdictLabel(run.verdict)"
+                  [attr.title]="resolveRunVerdictLabel(run.verdict)"
+                ></span>
               </div>
             </button>
           </div>
@@ -252,7 +248,12 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
           </div>
 
           <div *ngIf="selectedRun && !loadingRunDetail" class="detail-grid">
-            <article class="detail-card detail-card-highlight">
+            <article
+              class="detail-card detail-card-highlight"
+              [class.detail-card-highlight-pending]="selectedRun.verdict === 'PENDING'"
+              [class.detail-card-highlight-review-required]="selectedRun.verdict === 'REVIEW_REQUIRED'"
+              [class.detail-card-highlight-fail]="selectedRun.verdict === 'FAIL'"
+            >
               <h3>Run Summary</h3>
               <dl class="detail-list">
                 <div>
@@ -277,7 +278,15 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
                 </div>
                 <div>
                   <dt>Verdict</dt>
-                  <dd>{{ selectedRun.verdict }}</dd>
+                  <dd class="verdict-value">
+                    <span>{{ selectedRun.verdict }}</span>
+                    <span
+                      *ngIf="selectedRun.verdict === 'PENDING'"
+                      class="verdict-loading-spinner"
+                      aria-label="Pending evaluation in progress"
+                      title="Pending evaluation in progress"
+                    ></span>
+                  </dd>
                 </div>
               </dl>
               <p class="detail-summary">{{ selectedRun.summary || 'No execution summary available yet.' }}</p>
@@ -309,6 +318,10 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
                 <div>
                   <dt>Minimum turns</dt>
                   <dd>{{ selectedRun.min_turns }}</dd>
+                </div>
+                <div>
+                  <dt>Maximum turns</dt>
+                  <dd>{{ selectedRun.max_turns }}</dd>
                 </div>
               </dl>
               <p class="detail-summary">
@@ -611,6 +624,28 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
           />
         </label>
 
+        <label class="field">
+          <span>Minimum turns</span>
+          <input
+            class="form-control"
+            type="number"
+            min="1"
+            [(ngModel)]="newRunMinTurns"
+            name="newRunMinTurns"
+          />
+        </label>
+
+        <label class="field">
+          <span>Maximum turns</span>
+          <input
+            class="form-control"
+            type="number"
+            [min]="newRunMinTurns || 1"
+            [(ngModel)]="newRunMaxTurns"
+            name="newRunMaxTurns"
+          />
+        </label>
+
         <label class="field field-wide">
           <span>Operator notes</span>
           <textarea
@@ -854,6 +889,53 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
         color: var(--helmos-muted);
       }
 
+      .run-list {
+        gap: 0.55rem;
+      }
+
+      .run-card {
+        padding: 0.7rem 0.8rem;
+        min-height: 0;
+      }
+
+      .run-card-compact {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
+
+      .run-timestamp {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: var(--helmos-text);
+      }
+
+      .run-verdict-indicator {
+        width: 0.7rem;
+        height: 0.7rem;
+        flex: 0 0 auto;
+        border-radius: 999px;
+        background: #94a3b8;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+      }
+
+      .run-verdict-indicator-pending {
+        background: #94a3b8;
+      }
+
+      .run-verdict-indicator-pass {
+        background: #22c55e;
+      }
+
+      .run-verdict-indicator-review-required {
+        background: #f59e0b;
+      }
+
+      .run-verdict-indicator-fail {
+        background: #ef4444;
+      }
+
       .empty-panel {
         border: 1px dashed rgba(53, 100, 137, 0.22);
         border-radius: 1rem;
@@ -916,6 +998,21 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
         background: linear-gradient(180deg, rgba(248, 252, 249, 0.98), rgba(236, 248, 240, 0.94));
       }
 
+      .detail-card-highlight-pending {
+        border-color: rgba(148, 163, 184, 0.24);
+        background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.95));
+      }
+
+      .detail-card-highlight-review-required {
+        border-color: rgba(214, 130, 28, 0.2);
+        background: linear-gradient(180deg, rgba(255, 249, 239, 0.98), rgba(255, 239, 214, 0.95));
+      }
+
+      .detail-card-highlight-fail {
+        border-color: rgba(187, 48, 64, 0.2);
+        background: linear-gradient(180deg, rgba(255, 244, 246, 0.98), rgba(252, 226, 231, 0.95));
+      }
+
       .detail-actions {
         display: flex;
         align-items: center;
@@ -940,6 +1037,32 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
       .detail-list dd {
         margin: 0.18rem 0 0;
         font-weight: 600;
+      }
+
+      .verdict-value {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.45rem;
+      }
+
+      .verdict-loading-spinner {
+        width: 1rem;
+        height: 1rem;
+        border-radius: 999px;
+        border: 2px solid rgba(100, 116, 139, 0.18);
+        border-top-color: #64748b;
+        animation: spin 0.9s linear infinite;
+      }
+
+      @keyframes spin {
+        from {
+          transform: rotate(0deg);
+        }
+
+        to {
+          transform: rotate(360deg);
+        }
       }
 
       .detail-summary {
@@ -1328,6 +1451,8 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
   protected newRunFixtureKey = '';
   protected newRunTargetModelName = '';
   protected newRunTestingModelName = '';
+  protected newRunMinTurns = 20;
+  protected newRunMaxTurns = 30;
   protected newRunOperatorNotes = '';
 
   protected get saveStatusLabel(): string {
@@ -1379,7 +1504,12 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
   }
 
   protected get canCreateDraftRun(): boolean {
-    return !!this.selectedAgentKey && !!this.newRunFixtureKey;
+    return (
+      !!this.selectedAgentKey &&
+      !!this.newRunFixtureKey &&
+      this.newRunMinTurns >= 1 &&
+      this.newRunMaxTurns >= this.newRunMinTurns
+    );
   }
 
   protected get canExecuteSelectedRun(): boolean {
@@ -1457,6 +1587,8 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
     this.newRunFixtureKey = this.filteredFixtures[0]?.fixture_key ?? '';
     this.newRunTargetModelName = this.agents.find((agent) => agent.key === this.selectedAgentKey)?.defaultModel ?? '';
     this.newRunTestingModelName = '';
+    this.newRunMinTurns = 20;
+    this.newRunMaxTurns = 30;
     this.newRunOperatorNotes = '';
     this.newRunModalOpen = true;
   }
@@ -1517,6 +1649,8 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
         test_mode: this.newRunTestMode,
         target_model_name: this.newRunTargetModelName || null,
         testing_agent_model_name: this.newRunTestingModelName || null,
+        min_turns: this.newRunMinTurns,
+        max_turns: this.newRunMaxTurns,
         operator_notes: this.newRunOperatorNotes || null
       });
 
@@ -1715,6 +1849,37 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
 
   protected formatRunStatus(status: string): string {
     return status.replace(/[_-]/g, ' ').replace(/\b\w/g, (value) => value.toUpperCase());
+  }
+
+  protected resolveRunVerdictIndicatorClass(verdict: string): string {
+    const normalizedVerdict = String(verdict ?? '').trim().toUpperCase();
+    if (normalizedVerdict === 'PASS' || normalizedVerdict === 'CONDITIONAL_PASS') {
+      return 'run-verdict-indicator-pass';
+    }
+    if (normalizedVerdict === 'REVIEW_REQUIRED') {
+      return 'run-verdict-indicator-review-required';
+    }
+    if (normalizedVerdict === 'FAIL') {
+      return 'run-verdict-indicator-fail';
+    }
+    return 'run-verdict-indicator-pending';
+  }
+
+  protected resolveRunVerdictLabel(verdict: string): string {
+    const normalizedVerdict = String(verdict ?? '').trim().toUpperCase();
+    if (normalizedVerdict === 'CONDITIONAL_PASS') {
+      return 'Conditionally passed';
+    }
+    if (normalizedVerdict === 'REVIEW_REQUIRED') {
+      return 'Review required';
+    }
+    if (normalizedVerdict === 'FAIL') {
+      return 'Failed';
+    }
+    if (normalizedVerdict === 'PASS') {
+      return 'Passed';
+    }
+    return 'Pending';
   }
 
   protected formatTestModeLabel(testMode: string): string {
