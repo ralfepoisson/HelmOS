@@ -83,6 +83,7 @@ architecture:
 
 - `Testing Agent`
 - `Test Harness Service`
+- `Conversation Progression Service`
 - `Scenario Fixture Repository`
 - `Scenario Driver`
 - `Rubric Registry`
@@ -130,6 +131,15 @@ Responsible for:
 - generating the next simulated user message
 - obeying scenario state and reveal rules
 - preserving hidden information until release conditions are met
+
+#### Conversation Progression Service
+
+Responsible for:
+
+- tracking turn-level information gain and novelty
+- detecting redundant questioning and stagnation
+- switching the driver between cooperative and adversarial challenge modes
+- producing deterministic progression metrics for reporting and scoring
 
 #### Comparison Engine
 

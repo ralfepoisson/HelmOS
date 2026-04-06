@@ -11,6 +11,11 @@ from app.schemas.agent import AgentExecutionInput, AgentExecutionOutput
 from app.schemas.agent_test import AgentTestAnnotationInput, AgentTestTurnInput, EvaluateTranscriptRequest
 from app.services.agent_test_driver import ScenarioState
 from app.services.agent_test_fixtures import AgentTestFixture
+from app.services.agent_test_progression import (
+    AgentTestConversationProgressionService,
+    ConversationState as ProgressConversationState,
+    TurnProgressionAnalysis,
+)
 from app.services.agent_test_reporting import AgentTestReportRenderer
 from app.services.agent_test_rubrics import RubricDefinition
 from app.services.agent_test_scoring import AgentTestScoringService, ComputedDimensionScore, ComputedEvaluation
@@ -44,9 +49,11 @@ class AgentTestExecutionService:
         *,
         scoring_service: AgentTestScoringService | None = None,
         report_renderer: AgentTestReportRenderer | None = None,
+        progression_service: AgentTestConversationProgressionService | None = None,
     ):
         self.scoring_service = scoring_service or AgentTestScoringService()
         self.report_renderer = report_renderer or AgentTestReportRenderer()
+        self.progression_service = progression_service or AgentTestConversationProgressionService()
 
     async def execute(
         self,
@@ -79,6 +86,7 @@ class AgentTestExecutionService:
             revealable_facts=fixture.revealable_facts,
             blocked_facts=fixture.blocked_facts,
         )
+        progress_state = ProgressConversationState()
 
         latest_user_message = self._initial_user_message(fixture)
         transcript.append(
@@ -92,6 +100,7 @@ class AgentTestExecutionService:
         )
 
         stop_reason = "max_turns_reached"
+        latest_progression: TurnProgressionAnalysis | None = None
         while len(transcript) < fixture.max_turns:
             self._raise_if_stopped(run.id, stop_event)
             logger.info("agent_test_execution.turn_started", run_id=run.id, transcript_length=len(transcript))
@@ -117,6 +126,19 @@ class AgentTestExecutionService:
                     },
                 )
             )
+            latest_progression = await self.progression_service.analyze_target_turn(
+                state=progress_state,
+                turn_number=len(transcript),
+                message_text=agent_reply,
+            )
+            transcript[-1].metadata_json = {
+                **transcript[-1].metadata_json,
+                "progression": latest_progression.to_metadata(),
+            }
+
+            if latest_progression.low_exploration_depth_failure:
+                stop_reason = "low_exploration_depth_failure"
+                break
 
             if len(transcript) >= fixture.min_turns and self._agent_message_can_end(agent_reply):
                 stop_reason = "minimum_turns_satisfied_with_next_step"
@@ -131,6 +153,8 @@ class AgentTestExecutionService:
                 state=state,
                 transcript=transcript,
                 agent_message=agent_reply,
+                progress_state=progress_state,
+                progression=latest_progression,
             )
             self._raise_if_stopped(run.id, stop_event)
             transcript.append(
@@ -157,6 +181,7 @@ class AgentTestExecutionService:
             "execution_completed": True,
             "execution_stop_reason": stop_reason,
             "revealed_fact_ids": sorted(state.revealed_fact_ids),
+            "conversation_progression": progress_state.to_metadata(),
         }
         request = EvaluateTranscriptRequest(
             test_mode=run.test_mode,
@@ -195,6 +220,7 @@ class AgentTestExecutionService:
             "missed_opportunities": evaluation.missed_opportunities,
             "summary": evaluation.summary,
             "stop_reason": stop_reason,
+            "progression_metrics": evaluation.progression_metrics,
         }
         run.metadata_json = metadata_json
         await persist_runtime_log(
@@ -320,7 +346,22 @@ class AgentTestExecutionService:
         state: ScenarioState,
         transcript: list[AgentTestTurnInput],
         agent_message: str,
+        progress_state: ProgressConversationState,
+        progression: TurnProgressionAnalysis | None,
     ) -> str:
+        if progression and progression.synthesis_checkpoint_required and not (
+            progression.synthesis_checkpoint_satisfied and progression.contradiction_checkpoint_satisfied
+        ):
+            return "Summarize the core problem in one sentence before continuing, and either name the contradiction you see or explicitly say that no contradictions are visible yet."
+
+        if progression and progression.stagnation_event:
+            return self._stagnation_reply(progress_state, progression)
+
+        if progression and progression.mode == "adversarial":
+            adversarial_reply = self._adversarial_reply(agent_message, progression)
+            if adversarial_reply:
+                return adversarial_reply
+
         turn_index = len(transcript) + 1
         satisfied_conditions = self._detect_reveal_conditions(agent_message)
         eligible = state.eligible_facts(turn_index=turn_index, satisfied_conditions=satisfied_conditions)
@@ -345,6 +386,34 @@ class AgentTestExecutionService:
         if "next step" in lowered:
             return "I probably need to validate the real pain and buying urgency before I go deeper on features."
         return "That is directionally what I am thinking, but it is still early and a bit broad."
+
+    def _stagnation_reply(
+        self,
+        progress_state: ProgressConversationState,
+        progression: TurnProgressionAnalysis,
+    ) -> str:
+        if progress_state.contradictions_found:
+            contradiction = progress_state.contradictions_found[-1]
+            return f"This conflicts with what you said earlier about {contradiction}. Reconcile that before asking another question."
+        if progression.redundant_question:
+            return "You are circling the same question. Summarize the core problem in one sentence before continuing."
+        if progression.generic_question:
+            return "That still feels vague. Why do you believe customers would pay for this instead of tolerating the problem?"
+        return "Before we continue, challenge your strongest assumption directly: why does this matter enough for a buyer to act?"
+
+    def _adversarial_reply(
+        self,
+        agent_message: str,
+        progression: TurnProgressionAnalysis,
+    ) -> str | None:
+        lowered = agent_message.lower()
+        if progression.generic_question:
+            return "That question is still too broad. Be specific about the customer, constraint, or contradiction you want to test."
+        if progression.redundant_question:
+            return "You already asked a very similar question. Tell me what new uncertainty you are trying to resolve."
+        if "why" not in lowered and "assumption" not in lowered and "contradiction" not in lowered:
+            return "Why do you believe this reasoning holds? Push on the assumption instead of staying descriptive."
+        return None
 
     def _detect_reveal_conditions(self, agent_message: str) -> set[str]:
         lowered = agent_message.lower()

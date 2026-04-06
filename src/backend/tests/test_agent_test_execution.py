@@ -209,3 +209,31 @@ async def test_execution_service_only_reveals_fact_when_condition_is_met():
     assert any("three startup teams" in message for message in driver_messages)
     assert any("hands-on cost reviews" in message for message in driver_messages)
     assert "I have only spoken with three startup teams so far." not in driver_messages[0]
+
+
+@pytest.mark.asyncio
+async def test_execution_service_terminates_when_low_exploration_depth_persists():
+    service = AgentTestExecutionService()
+    run = _draft_run()
+    fixture = _fixture()
+    rubric = RubricRegistry().get(run.target_agent_key, fixture.scenario_dimensions, run.rubric_version)
+    agent = FakeAgent(
+        [
+            "Can you tell me more about that?",
+            "Can you tell me more about that?",
+            "Can you tell me more about that?",
+        ]
+    )
+
+    result = await service.execute(
+        run=run,
+        fixture=fixture,
+        rubric=rubric,
+        runtime_agent=agent,
+        identity_markdown_path=None,
+    )
+
+    assert result.run.report_json["stop_reason"] == "low_exploration_depth_failure"
+    assert result.run.metadata_json["conversation_progression"]["stagnation_cycles"] >= 2
+    assert any("LOW EXPLORATION DEPTH FAILURE" in failure["message"] for failure in result.run.report_json["hard_failures"])
+    assert "## Progression Metrics" in result.report_markdown

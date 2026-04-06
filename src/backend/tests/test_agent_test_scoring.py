@@ -10,6 +10,19 @@ def _transcript():
             actor_type="target_agent",
             message_role="assistant",
             message_text="Who specifically is feeling this cloud cost pain today, and what problem hurts most?",
+            metadata_json={
+                "progression": {
+                    "redundant_question": False,
+                    "generic_question": False,
+                    "stagnation_event": False,
+                    "information_gain_score": 2,
+                    "contradiction_surfaced": False,
+                    "synthesis_checkpoint_required": False,
+                    "synthesis_checkpoint_satisfied": False,
+                    "contradiction_checkpoint_satisfied": False,
+                    "low_exploration_depth_failure": False,
+                }
+            },
         ),
         AgentTestTurnInput(
             turn_index=2,
@@ -22,12 +35,38 @@ def _transcript():
             actor_type="target_agent",
             message_role="assistant",
             message_text="To recap, there may be a contradiction between low monthly pricing and hands-on onboarding. What evidence do you have so far?",
+            metadata_json={
+                "progression": {
+                    "redundant_question": False,
+                    "generic_question": False,
+                    "stagnation_event": False,
+                    "information_gain_score": 3,
+                    "contradiction_surfaced": True,
+                    "synthesis_checkpoint_required": False,
+                    "synthesis_checkpoint_satisfied": True,
+                    "contradiction_checkpoint_satisfied": True,
+                    "low_exploration_depth_failure": False,
+                }
+            },
         ),
         AgentTestTurnInput(
             turn_index=4,
             actor_type="target_agent",
             message_role="assistant",
             message_text="The next step is to validate whether visibility or remediation is the sharper problem through more customer interviews.",
+            metadata_json={
+                "progression": {
+                    "redundant_question": True,
+                    "generic_question": False,
+                    "stagnation_event": True,
+                    "information_gain_score": -1,
+                    "contradiction_surfaced": False,
+                    "synthesis_checkpoint_required": False,
+                    "synthesis_checkpoint_satisfied": False,
+                    "contradiction_checkpoint_satisfied": False,
+                    "low_exploration_depth_failure": False,
+                }
+            },
         ),
     ]
 
@@ -84,3 +123,5 @@ def test_scoring_service_computes_conditional_pass_when_blocking_dimension_breac
     assert any(score.dimension_key == "critical_constraints_identified" for score in evaluation.scores)
     assert evaluation.aggregate_confidence > 0
     assert evaluation.summary.startswith("ideation scored")
+    assert "redundancy_rate" in evaluation.progression_metrics
+    assert evaluation.progression_metrics["avg_information_gain_per_turn"] != 0

@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectorRef, Component, HostListener, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
-import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
+import { faDownload, faTrashCan } from '@fortawesome/free-solid-svg-icons';
 
 import { TopNavComponent } from '../../core/layout/top-nav.component';
 import { WorkspaceShellService } from '../../core/services/workspace-shell.service';
@@ -202,6 +202,17 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
             </div>
 
             <div *ngIf="selectedRun" class="detail-actions">
+              <button
+                type="button"
+                class="download-action-button"
+                [disabled]="!canDownloadSelectedReport || deleteActionInFlight || runActionInFlight || stopActionInFlight || resumeActionInFlight"
+                aria-label="Download full test report"
+                title="Download full test report"
+                (click)="downloadReport()"
+              >
+                <fa-icon [icon]="downloadIcon"></fa-icon>
+              </button>
+
               <button
                 type="button"
                 class="delete-action-button"
@@ -452,7 +463,17 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
           <div class="section-kicker">Run Details</div>
           <h2 id="detail-modal-title">{{ detailModalTitle }}</h2>
         </div>
-        <button type="button" class="close-button" aria-label="Close detail modal" (click)="closeDetailModal()">×</button>
+        <div class="modal-header-actions">
+          <button
+            *ngIf="activeDetailModal === 'transcript-review'"
+            type="button"
+            class="btn btn-outline-secondary btn-sm detail-download-button"
+            (click)="downloadTranscript()"
+          >
+            Download transcript
+          </button>
+          <button type="button" class="close-button" aria-label="Close detail modal" (click)="closeDetailModal()">×</button>
+        </div>
       </div>
 
       <div class="detail-modal-copy" [ngSwitch]="activeDetailModal">
@@ -719,6 +740,12 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
         align-items: start;
       }
 
+      .modal-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
       .panel-body,
       .empty-detail {
         margin-top: 1rem;
@@ -955,6 +982,12 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
         font-weight: 700;
       }
 
+      .detail-download-button {
+        border-radius: 999px;
+        padding-inline: 0.95rem;
+        font-weight: 700;
+      }
+
       .transcript-turn,
       .score-card,
       .artifact-card {
@@ -1057,6 +1090,7 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
         box-shadow: 0 18px 34px rgba(25, 135, 84, 0.18);
       }
 
+      .download-action-button,
       .delete-action-button {
         width: 3rem;
         height: 3rem;
@@ -1065,20 +1099,38 @@ const TEST_MODE_OPTIONS: TestModeOption[] = [
         justify-content: center;
         border: 0;
         border-radius: 0.9rem;
-        color: #fff;
-        background: linear-gradient(180deg, #dc3545, #b42331);
-        box-shadow: 0 16px 30px rgba(220, 53, 69, 0.2);
         transition:
           transform 160ms ease,
           box-shadow 160ms ease,
           opacity 160ms ease;
       }
 
+      .download-action-button {
+        color: #1f5e8f;
+        background: linear-gradient(180deg, #edf5ff, #dcecff);
+        box-shadow: 0 16px 30px rgba(31, 94, 143, 0.12);
+      }
+
+      .delete-action-button {
+        color: #fff;
+        background: linear-gradient(180deg, #dc3545, #b42331);
+        box-shadow: 0 16px 30px rgba(220, 53, 69, 0.2);
+      }
+
+      .download-action-button:hover:not(:disabled),
       .delete-action-button:hover:not(:disabled) {
         transform: translateY(-1px);
+      }
+
+      .download-action-button:hover:not(:disabled) {
+        box-shadow: 0 20px 34px rgba(31, 94, 143, 0.18);
+      }
+
+      .delete-action-button:hover:not(:disabled) {
         box-shadow: 0 20px 34px rgba(220, 53, 69, 0.25);
       }
 
+      .download-action-button:disabled,
       .delete-action-button:disabled {
         opacity: 0.6;
       }
@@ -1248,6 +1300,7 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
   private readonly changeDetector = inject(ChangeDetectorRef);
 
   protected readonly trashIcon = faTrashCan;
+  protected readonly downloadIcon = faDownload;
   protected readonly testModeOptions = TEST_MODE_OPTIONS;
 
   protected agents: TestingAgentRecord[] = [];
@@ -1339,6 +1392,10 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
 
   protected get canResumeSelectedRun(): boolean {
     return !!this.selectedRun && ['stopped', 'failed'].includes(this.selectedRun.status);
+  }
+
+  protected get canDownloadSelectedReport(): boolean {
+    return !!this.selectedRun?.report_markdown?.trim();
   }
 
   protected get primaryActionLabel(): string {
@@ -1571,6 +1628,47 @@ export class AgentTestingScreenComponent implements OnInit, OnDestroy {
 
   protected closeDetailModal(): void {
     this.activeDetailModal = null;
+  }
+
+  protected downloadTranscript(): void {
+    if (!this.selectedRun || this.selectedRun.turns.length === 0) {
+      return;
+    }
+
+    const content = this.selectedRun.turns
+      .map((turn) => {
+        const timestamp = new Date(turn.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        return `[Turn ${turn.turn_index}] ${this.formatActorLabel(turn.actor_type)} (${timestamp})\n${turn.message_text}`;
+      })
+      .join('\n\n');
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const fixtureKey = this.selectedRun.fixture_key || 'agent-test';
+    link.href = url;
+    link.download = `${fixtureKey}-transcript.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  protected downloadReport(): void {
+    const reportMarkdown = this.selectedRun?.report_markdown?.trim();
+    if (!reportMarkdown || !this.selectedRun) {
+      return;
+    }
+
+    const blob = new Blob([reportMarkdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const fixtureKey = this.selectedRun.fixture_key || 'agent-test';
+    link.href = url;
+    link.download = `${fixtureKey}-report.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
   private buildDraftDetailFromSummary(run: AgentTestRunSummary): AgentTestRunDetail {

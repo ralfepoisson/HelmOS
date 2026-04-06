@@ -34,6 +34,7 @@ class ComputedEvaluation:
     missed_opportunities: list[dict]
     generated_annotations: list[AgentTestAnnotationInput]
     summary: str
+    progression_metrics: dict[str, float]
 
 
 QUESTION_CUES = (
@@ -127,6 +128,87 @@ class AgentTestScoringService:
                         source_type="deterministic",
                     )
                 )
+            progression = turn.metadata_json.get("progression") if isinstance(turn.metadata_json, dict) else None
+            if isinstance(progression, dict):
+                if progression.get("redundant_question"):
+                    annotations.append(
+                        AgentTestAnnotationInput(
+                            turn_index=turn.turn_index,
+                            actor_type=turn.actor_type,
+                            tag="redundant_question",
+                            confidence=0.9,
+                            evidence_text=turn.message_text,
+                            linked_scoring_dimensions=["targeted_questioning_quality", "key_questions_asked"],
+                            source_type="deterministic",
+                        )
+                    )
+                if progression.get("generic_question"):
+                    annotations.append(
+                        AgentTestAnnotationInput(
+                            turn_index=turn.turn_index,
+                            actor_type=turn.actor_type,
+                            tag="generic_question",
+                            confidence=0.8,
+                            evidence_text=turn.message_text,
+                            linked_scoring_dimensions=["targeted_questioning_quality", "problem_framing_quality"],
+                            source_type="deterministic",
+                        )
+                    )
+                if progression.get("stagnation_event"):
+                    annotations.append(
+                        AgentTestAnnotationInput(
+                            turn_index=turn.turn_index,
+                            actor_type=turn.actor_type,
+                            tag="stagnation_detected",
+                            confidence=0.85,
+                            evidence_text=progression.get("stagnation_reason") or turn.message_text,
+                            linked_scoring_dimensions=["reasoning_continuity", "strategic_synthesis_quality"],
+                            source_type="deterministic",
+                        )
+                    )
+                if progression.get("information_gain_score", 0) <= 0:
+                    annotations.append(
+                        AgentTestAnnotationInput(
+                            turn_index=turn.turn_index,
+                            actor_type=turn.actor_type,
+                            tag="low_information_gain",
+                            confidence=0.75,
+                            evidence_text=turn.message_text,
+                            linked_scoring_dimensions=["usefulness_of_outputs", "weakest_area_prioritization"],
+                            source_type="deterministic",
+                        )
+                    )
+                if progression.get("synthesis_checkpoint_required") and not (
+                    progression.get("synthesis_checkpoint_satisfied")
+                    and progression.get("contradiction_checkpoint_satisfied")
+                ):
+                    annotations.append(
+                        AgentTestAnnotationInput(
+                            turn_index=turn.turn_index,
+                            actor_type=turn.actor_type,
+                            tag="missing_synthesis_checkpoint",
+                            confidence=0.9,
+                            evidence_text=turn.message_text,
+                            linked_scoring_dimensions=["strategic_synthesis_quality", "reasoning_continuity"],
+                            source_type="deterministic",
+                        )
+                    )
+                if progression.get("low_exploration_depth_failure"):
+                    annotations.append(
+                        AgentTestAnnotationInput(
+                            turn_index=turn.turn_index,
+                            actor_type=turn.actor_type,
+                            tag="low_exploration_depth_failure",
+                            confidence=0.95,
+                            evidence_text=progression.get("failure_reason") or turn.message_text,
+                            linked_scoring_dimensions=[
+                                "contradiction_surfacing",
+                                "strategic_synthesis_quality",
+                                "hidden_weaknesses_detected",
+                            ],
+                            source_type="deterministic",
+                        )
+                    )
         if manual_annotations:
             annotations.extend(manual_annotations)
         return annotations
@@ -159,7 +241,8 @@ class AgentTestScoringService:
         aggregate_confidence = self._calculate_aggregate_confidence(scores)
         hard_failures, quality_failures, missed_opportunities = self._classify_failures(scores, counts)
         verdict, review_required = self._compute_verdict(overall_score, aggregate_confidence, hard_failures, scores)
-        summary = self._build_summary(agent_key, overall_score, verdict, counts)
+        progression_metrics = self._compute_progression_metrics(transcript)
+        summary = self._build_summary(agent_key, overall_score, verdict, counts, progression_metrics)
 
         return ComputedEvaluation(
             scores=scores,
@@ -172,6 +255,7 @@ class AgentTestScoringService:
             missed_opportunities=missed_opportunities,
             generated_annotations=annotations,
             summary=summary,
+            progression_metrics=progression_metrics,
         )
 
     def _score_layer(
@@ -214,27 +298,43 @@ class AgentTestScoringService:
         if dimension.key == "instruction_adherence":
             raw_score = 5 - min(4, counts["instruction_violation"] + counts["format_non_compliance"])
         elif dimension.key == "reasoning_continuity":
-            raw_score = 4 + min(1, counts["good_synthesis"]) - min(3, counts["context_loss"] + counts["contradiction_introduced"])
+            raw_score = (
+                4
+                + min(1, counts["good_synthesis"])
+                - min(3, counts["context_loss"] + counts["contradiction_introduced"] + counts["stagnation_detected"])
+            )
         elif dimension.key == "hallucination_avoidance":
             raw_score = 5 - min(4, counts["assumption_without_basis"] + counts["hallucination_risk"])
         elif dimension.key == "clarity_and_structure":
             raw_score = 3 + min(2, counts["good_synthesis"] + counts["useful_next_step"])
         elif dimension.key == "usefulness_of_outputs":
-            raw_score = 3 + min(2, counts["strong_question"] + counts["useful_next_step"]) - min(2, counts["missed_opportunity"])
+            raw_score = (
+                3
+                + min(2, counts["strong_question"] + counts["useful_next_step"])
+                - min(2, counts["missed_opportunity"] + counts["low_information_gain"])
+            )
         elif dimension.key == "context_retention":
             raw_score = 4 - min(3, counts["context_loss"])
         elif dimension.key == "weakest_area_prioritization":
-            raw_score = 3 + min(2, counts["strong_question"]) - min(2, counts["missed_opportunity"])
+            raw_score = 3 + min(2, counts["strong_question"]) - min(
+                2, counts["missed_opportunity"] + counts["low_information_gain"]
+            )
         elif dimension.key == "problem_framing_quality":
-            raw_score = self._keyword_score(transcript, ("problem", "pain", "impact"), positive_bonus=1)
+            raw_score = self._keyword_score(transcript, ("problem", "pain", "impact"), positive_bonus=1) - min(
+                1, counts["generic_question"]
+            )
         elif dimension.key == "targeted_questioning_quality":
-            raw_score = 2 + min(3, counts["strong_question"])
+            raw_score = 2 + min(3, counts["strong_question"]) - min(
+                3, counts["redundant_question"] + counts["generic_question"]
+            )
         elif dimension.key == "contradiction_surfacing":
-            raw_score = 2 + min(3, counts["contradiction_surfaced"])
+            raw_score = 2 + min(3, counts["contradiction_surfaced"]) - min(2, counts["low_exploration_depth_failure"])
         elif dimension.key == "premature_solution_avoidance":
             raw_score = 5 - min(4, counts["premature_solutioning"])
         elif dimension.key == "strategic_synthesis_quality":
-            raw_score = 2 + min(3, counts["good_synthesis"])
+            raw_score = 2 + min(3, counts["good_synthesis"]) - min(
+                2, counts["missing_synthesis_checkpoint"] + counts["stagnation_detected"]
+            )
         elif dimension.key == "customer_profile_specificity":
             raw_score = self._keyword_score(transcript, ("customer", "segment", "role"), positive_bonus=1)
         elif dimension.key == "jobs_pains_gains_rigor":
@@ -248,13 +348,15 @@ class AgentTestScoringService:
         elif dimension.key == "output_canvas_structure":
             raw_score = self._keyword_score(transcript, ("customer profile", "value map"), positive_bonus=1)
         elif dimension.key == "hidden_weaknesses_detected":
-            raw_score = 2 + min(3, counts["strong_question"] + counts["contradiction_surfaced"])
+            raw_score = 2 + min(3, counts["strong_question"] + counts["contradiction_surfaced"]) - min(
+                2, counts["low_exploration_depth_failure"]
+            )
         elif dimension.key == "contradictions_surfaced":
-            raw_score = 2 + min(3, counts["contradiction_surfaced"])
+            raw_score = 2 + min(3, counts["contradiction_surfaced"]) - min(2, counts["low_exploration_depth_failure"])
         elif dimension.key == "critical_constraints_identified":
             raw_score = self._keyword_score(transcript, ("constraint", "pricing", "onboarding", "delivery model"), positive_bonus=0)
         elif dimension.key == "key_questions_asked":
-            raw_score = 2 + min(3, counts["strong_question"])
+            raw_score = 2 + min(3, counts["strong_question"]) - min(2, counts["redundant_question"])
         elif dimension.key == "prioritized_next_action":
             raw_score = self._keyword_score(transcript, ("next step", "validate", "interview"), positive_bonus=1)
 
@@ -309,6 +411,15 @@ class AgentTestScoringService:
         quality_failures: list[dict] = []
         missed_opportunities: list[dict] = []
 
+        if counts["low_exploration_depth_failure"]:
+            hard_failures.append(
+                {
+                    "dimension_key": "exploration_depth",
+                    "message": "LOW EXPLORATION DEPTH FAILURE",
+                    "evidence_turn_refs": [],
+                }
+            )
+
         for score in scores:
             if score.blocking and score.blocking_threshold is not None and score.raw_score <= max(1, score.blocking_threshold - 2):
                 hard_failures.append(
@@ -358,10 +469,56 @@ class AgentTestScoringService:
             return "CONDITIONAL_PASS", True if has_blocking_breach else review_required
         return "FAIL", review_required
 
-    def _build_summary(self, agent_key: str, overall_score: float, verdict: str, counts: Counter) -> str:
+    def _build_summary(
+        self,
+        agent_key: str,
+        overall_score: float,
+        verdict: str,
+        counts: Counter,
+        progression_metrics: dict[str, float],
+    ) -> str:
         return (
             f"{agent_key} scored {overall_score:.2f} with verdict {verdict}. "
             f"Detected {counts['strong_question']} strong-question signals, "
             f"{counts['contradiction_surfaced']} contradiction signals, and "
-            f"{counts['missed_opportunity']} missed-opportunity signals."
+            f"{counts['missed_opportunity']} missed-opportunity signals. "
+            f"Redundancy rate was {progression_metrics['redundancy_rate']:.2f} with "
+            f"average information gain {progression_metrics['avg_information_gain_per_turn']:.2f}."
         )
+
+    def _compute_progression_metrics(self, transcript: list[AgentTestTurnInput]) -> dict[str, float]:
+        progression_entries = []
+        for turn in transcript:
+            if turn.actor_type != "target_agent":
+                continue
+            payload = turn.metadata_json.get("progression") if isinstance(turn.metadata_json, dict) else None
+            if isinstance(payload, dict):
+                progression_entries.append(payload)
+
+        if not progression_entries:
+            return {
+                "redundancy_rate": 0.0,
+                "avg_information_gain_per_turn": 0.0,
+                "contradiction_density": 0.0,
+                "exploration_depth_score": 0.0,
+            }
+
+        total_turns = len(progression_entries)
+        redundant_count = sum(1 for entry in progression_entries if entry.get("redundant_question"))
+        contradiction_count = sum(1 for entry in progression_entries if entry.get("contradiction_surfaced"))
+        stagnation_events = sum(1 for entry in progression_entries if entry.get("stagnation_event"))
+        total_information_gain = sum(float(entry.get("information_gain_score", 0.0)) for entry in progression_entries)
+        redundancy_rate = redundant_count / total_turns
+        avg_information_gain = total_information_gain / total_turns
+        contradiction_density = contradiction_count / total_turns
+        exploration_depth_score = max(
+            0.0,
+            min(100.0, 50.0 + (avg_information_gain * 15.0) + (contradiction_density * 30.0) - (redundancy_rate * 40.0) - (stagnation_events * 10.0)),
+        )
+
+        return {
+            "redundancy_rate": round(redundancy_rate, 4),
+            "avg_information_gain_per_turn": round(avg_information_gain, 4),
+            "contradiction_density": round(contradiction_density, 4),
+            "exploration_depth_score": round(exploration_depth_score, 2),
+        }

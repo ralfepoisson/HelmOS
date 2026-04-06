@@ -192,6 +192,7 @@ class AgentTestEvaluationResponse(BaseModel):
     hard_failures: list[dict] = Field(default_factory=list)
     quality_failures: list[dict] = Field(default_factory=list)
     missed_opportunities: list[dict] = Field(default_factory=list)
+    progression_metrics: dict = Field(default_factory=dict)
     scores: list[AgentTestScoreSummary] = Field(default_factory=list)
     generated_annotations: list[AgentTestAnnotationInput] = Field(default_factory=list)
     created_at: datetime

@@ -725,6 +725,7 @@ async def evaluate_agent_transcript(
         "quality_failures": evaluation.quality_failures,
         "missed_opportunities": evaluation.missed_opportunities,
         "summary": evaluation.summary,
+        "progression_metrics": evaluation.progression_metrics,
     }
     await db.commit()
     await db.refresh(run)
@@ -745,6 +746,7 @@ async def evaluate_agent_transcript(
         hard_failures=evaluation.hard_failures,
         quality_failures=evaluation.quality_failures,
         missed_opportunities=evaluation.missed_opportunities,
+        progression_metrics=evaluation.progression_metrics,
         scores=[
             AgentTestScoreSummary(
                 layer_key=score.layer_key,

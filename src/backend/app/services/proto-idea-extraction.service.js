@@ -485,6 +485,15 @@ function buildSourceCandidates(configurations = []) {
   });
 }
 
+function isMissingProtoIdeaColumnError(error, columnNames = []) {
+  if (error?.code !== "P2022") {
+    return false;
+  }
+
+  const haystack = String(error?.meta?.column ?? error?.message ?? "");
+  return columnNames.some((columnName) => haystack.includes(columnName));
+}
+
 function normalizeProcessingStatus(status) {
   return String(status ?? "").trim().toUpperCase();
 }
@@ -523,63 +532,90 @@ async function claimProtoIdeaSource(prisma, candidate, policy, options = {}) {
   const now = new Date();
 
   if (!existing) {
+    const createData = {
+      ownerUserId: candidate.ownerUserId,
+      prospectingConfigurationId: candidate.configurationId,
+      extractionPolicyId: policy?.id ?? null,
+      upstreamSourceRecordId: String(candidate.sourceRecord?.id ?? candidate.sourceKey),
+      sourceKey: candidate.sourceKey,
+      sourceTitle: candidate.sourceRecord?.sourceTitle ?? "",
+      sourceUrl: candidate.sourceRecord?.sourceUrl ?? null,
+      sourceType: candidate.sourceRecord?.provider ?? "web_search",
+      sourceCapturedAt: candidate.sourceRecord?.capturedAt ? new Date(candidate.sourceRecord.capturedAt) : null,
+      sourcePayload: candidate.sourceRecord,
+      processingStatus: "PROCESSING",
+      processingStartedAt: now,
+      processingCompletedAt: null,
+      processingFailedAt: null,
+      lastErrorMessage: null,
+      lastErrorMeta: null,
+      latestGatewayRunId: null,
+      extractionPolicySnapshot: buildProtoIdeaRuntimePolicySection(policy),
+      attempts: 1,
+    };
     try {
       return await prisma.protoIdeaSource.create({
-        data: {
-          ownerUserId: candidate.ownerUserId,
-          prospectingConfigurationId: candidate.configurationId,
-          extractionPolicyId: policy?.id ?? null,
-          upstreamSourceRecordId: String(candidate.sourceRecord?.id ?? candidate.sourceKey),
-          sourceKey: candidate.sourceKey,
-          sourceTitle: candidate.sourceRecord?.sourceTitle ?? "",
-          sourceUrl: candidate.sourceRecord?.sourceUrl ?? null,
-          sourceType: candidate.sourceRecord?.provider ?? "web_search",
-          sourceCapturedAt: candidate.sourceRecord?.capturedAt ? new Date(candidate.sourceRecord.capturedAt) : null,
-          sourcePayload: candidate.sourceRecord,
-          processingStatus: "PROCESSING",
-          processingStartedAt: now,
-          processingCompletedAt: null,
-          processingFailedAt: null,
-          lastErrorMessage: null,
-          lastErrorMeta: null,
-          latestGatewayRunId: null,
-          extractionPolicySnapshot: buildProtoIdeaRuntimePolicySection(policy),
-          attempts: 1,
-        },
+        data: createData,
       });
     } catch (error) {
       if (error?.code === "P2002") {
         return null;
       }
+      if (isMissingProtoIdeaColumnError(error, ["extraction_policy_id", "extraction_policy_snapshot"])) {
+        const fallbackData = { ...createData };
+        delete fallbackData.extractionPolicyId;
+        delete fallbackData.extractionPolicySnapshot;
+        return prisma.protoIdeaSource.create({
+          data: fallbackData,
+        });
+      }
       throw error;
     }
   }
 
-  const claimResult = typeof prisma.protoIdeaSource.updateMany === "function"
-    ? await prisma.protoIdeaSource.updateMany({
+  const claimData = {
+    processingStatus: "PROCESSING",
+    processingStartedAt: now,
+    processingCompletedAt: null,
+    processingFailedAt: null,
+    lastErrorMessage: null,
+    lastErrorMeta: null,
+    prospectingConfigurationId: candidate.configurationId,
+    extractionPolicyId: policy?.id ?? null,
+    upstreamSourceRecordId: String(candidate.sourceRecord?.id ?? candidate.sourceKey),
+    sourceTitle: candidate.sourceRecord?.sourceTitle ?? "",
+    sourceUrl: candidate.sourceRecord?.sourceUrl ?? null,
+    sourceType: candidate.sourceRecord?.provider ?? "web_search",
+    sourceCapturedAt: candidate.sourceRecord?.capturedAt ? new Date(candidate.sourceRecord.capturedAt) : null,
+    sourcePayload: candidate.sourceRecord,
+    extractionPolicySnapshot: buildProtoIdeaRuntimePolicySection(policy),
+    attempts: Number(existing.attempts ?? 0) + 1,
+  };
+  let claimResult = { count: 1 };
+  if (typeof prisma.protoIdeaSource.updateMany === "function") {
+    try {
+      claimResult = await prisma.protoIdeaSource.updateMany({
         where: {
           id: existing.id,
         },
-        data: {
-          processingStatus: "PROCESSING",
-          processingStartedAt: now,
-          processingCompletedAt: null,
-          processingFailedAt: null,
-          lastErrorMessage: null,
-          lastErrorMeta: null,
-          prospectingConfigurationId: candidate.configurationId,
-          extractionPolicyId: policy?.id ?? null,
-          upstreamSourceRecordId: String(candidate.sourceRecord?.id ?? candidate.sourceKey),
-          sourceTitle: candidate.sourceRecord?.sourceTitle ?? "",
-          sourceUrl: candidate.sourceRecord?.sourceUrl ?? null,
-          sourceType: candidate.sourceRecord?.provider ?? "web_search",
-          sourceCapturedAt: candidate.sourceRecord?.capturedAt ? new Date(candidate.sourceRecord.capturedAt) : null,
-          sourcePayload: candidate.sourceRecord,
-          extractionPolicySnapshot: buildProtoIdeaRuntimePolicySection(policy),
-          attempts: Number(existing.attempts ?? 0) + 1,
-        },
-      })
-    : { count: 1 };
+        data: claimData,
+      });
+    } catch (error) {
+      if (isMissingProtoIdeaColumnError(error, ["extraction_policy_id", "extraction_policy_snapshot"])) {
+        const fallbackData = { ...claimData };
+        delete fallbackData.extractionPolicyId;
+        delete fallbackData.extractionPolicySnapshot;
+        claimResult = await prisma.protoIdeaSource.updateMany({
+          where: {
+            id: existing.id,
+          },
+          data: fallbackData,
+        });
+      } else {
+        throw error;
+      }
+    }
+  }
 
   if (claimResult?.count !== 1) {
     return null;
@@ -921,12 +957,22 @@ async function updateProtoIdeaPolicyRuntime(prisma, policyId, data) {
     return null;
   }
 
-  return prisma.protoIdeaExtractionPolicy.update({
-    where: {
-      id: policyId,
-    },
-    data,
-  });
+  try {
+    return await prisma.protoIdeaExtractionPolicy.update({
+      where: {
+        id: policyId,
+      },
+      data,
+    });
+  } catch (error) {
+    if (
+      isMissingProtoIdeaStorageError(error) ||
+      isMissingProtoIdeaColumnError(error, ["latest_run_status", "last_run_at", "latest_run_summary_json"])
+    ) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 function isMissingProtoIdeaStorageError(error) {
@@ -942,6 +988,10 @@ function isMissingProtoIdeaStorageError(error) {
 }
 
 function formatTimestamp(value) {
+  if (value == null || value === "") {
+    return null;
+  }
+
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
     return null;

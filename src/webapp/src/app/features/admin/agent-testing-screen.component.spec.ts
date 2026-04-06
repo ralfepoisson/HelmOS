@@ -312,6 +312,7 @@ describe('AgentTestingScreenComponent', () => {
     expect(host.textContent).not.toContain('Who specifically is feeling this pain?');
     expect(host.textContent).not.toContain('strong_question_signal');
     expect(host.querySelector('[aria-label="Close detail modal"]')).toBeNull();
+    expect(host.querySelector('[aria-label="Download full test report"]')).toBeTruthy();
 
     const reportButton = Array.from(host.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('View execution report')
@@ -353,6 +354,7 @@ describe('AgentTestingScreenComponent', () => {
     expect(host.textContent).toContain('I want to build an AI FinOps copilot.');
     expect(host.textContent).toContain('Who specifically is feeling this pain?');
     expect(host.textContent).toContain('strong_question_signal');
+    expect(host.textContent).toContain('Download transcript');
 
     Array.from(host.querySelectorAll('button'))
       .find((button) => button.getAttribute('aria-label') === 'Close detail modal')
@@ -363,6 +365,7 @@ describe('AgentTestingScreenComponent', () => {
     fixture.detectChanges();
     expect(host.textContent).toContain('Score Evidence');
     expect(host.textContent).toContain('problem_clarity');
+    expect(host.textContent).not.toContain('Download transcript');
 
     Array.from(host.querySelectorAll('button'))
       .find((button) => button.getAttribute('aria-label') === 'Close detail modal')

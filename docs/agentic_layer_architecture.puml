@@ -48,6 +48,7 @@ package "Specialist Agents" {
 package "Agent Testing Framework" {
   [Test Harness Service]
   [Agent Test Execution Service]
+  [Conversation Progression Service]
   [Agent Test Queue Worker]
   [Scenario Driver]
   [Fixture Registry Sync]
@@ -173,8 +174,10 @@ package "AWS Production Deployment" {
 [Workflow Graph Engine] --> [Artifact Agent]
 [Test Harness Service] --> [Scenario Driver]
 [Test Harness Service] --> [Agent Test Execution Service]
+[Test Harness Service] --> [Conversation Progression Service]
 [Agent Test Queue Worker] --> [Agent Test Execution Service]
 [Agent Test Execution Service] --> [Scenario Driver]
+[Agent Test Execution Service] --> [Conversation Progression Service]
 [Agent Test Execution Service] --> [Fixture Repository]
 [Fixture Registry Sync] --> [Fixture Repository]
 [Agent Test Execution Service] --> [Rubric Registry]

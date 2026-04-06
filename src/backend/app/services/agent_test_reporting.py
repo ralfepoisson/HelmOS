@@ -39,6 +39,13 @@ class AgentTestReportRenderer:
             f"- Quality failures: `{len(evaluation.quality_failures)}`",
             f"- Missed opportunities: `{len(evaluation.missed_opportunities)}`",
             "",
+            "## Progression Metrics",
+            "",
+            f"- Redundancy rate: `{evaluation.progression_metrics['redundancy_rate']:.2f}`",
+            f"- Average information gain per turn: `{evaluation.progression_metrics['avg_information_gain_per_turn']:.2f}`",
+            f"- Contradiction density: `{evaluation.progression_metrics['contradiction_density']:.2f}`",
+            f"- Exploration depth score: `{evaluation.progression_metrics['exploration_depth_score']:.2f}`",
+            "",
             "## Dimension Scores",
             "",
         ]
