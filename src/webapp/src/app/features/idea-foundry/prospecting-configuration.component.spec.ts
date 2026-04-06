@@ -3,7 +3,40 @@ import { vi } from 'vitest';
 
 import { IdeaFoundryApiService } from './idea-foundry-api.service';
 import { ProspectingConfigurationComponent } from './prospecting-configuration.component';
-import { PROSPECTING_CONFIGURATION_MOCK } from './prospecting-configuration.mock';
+
+const EMPTY_CONFIGURATION_SNAPSHOT = {
+  agentState: 'active',
+  strategyMode: 'Broad exploration',
+  lastRun: 'Not run yet',
+  nextRun: 'Not scheduled',
+  objective: {
+    name: '',
+    description: '',
+    targetDomain: '',
+    searchPosture: 'Broad exploration',
+    includeKeywords: '',
+    excludeThemes: '',
+    operatorNote: ''
+  },
+  strategySummary: '',
+  steeringHypothesis: '',
+  strategyPatterns: [],
+  themes: [],
+  sources: [],
+  queryFamilies: [],
+  signalRules: [],
+  cadence: {
+    runMode: 'Manual only',
+    cadence: '',
+    maxResultsPerRun: 0,
+    reviewThreshold: '',
+    geographicScope: '',
+    languageScope: '',
+    budgetGuardrail: ''
+  },
+  recentMetrics: [],
+  recentChanges: []
+} as const;
 
 describe('ProspectingConfigurationComponent', () => {
   const ideaFoundryApi = {
@@ -36,7 +69,7 @@ describe('ProspectingConfigurationComponent', () => {
       }
     })),
     executeProspectingRun: vi.fn(async () => ({
-      snapshot: PROSPECTING_CONFIGURATION_MOCK,
+      snapshot: EMPTY_CONFIGURATION_SNAPSHOT,
       latestReview: {
         reply_to_user: {
           content: 'Execution finished.'
@@ -93,6 +126,19 @@ describe('ProspectingConfigurationComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Run Agent');
   });
 
+  it('starts from an explicit empty configuration when no saved snapshot exists', async () => {
+    const fixture = TestBed.createComponent(ProspectingConfigurationComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.snapshot.objective.name).toBe('');
+    expect(fixture.componentInstance.snapshot.sources).toEqual([]);
+    expect(fixture.componentInstance.snapshot.queryFamilies).toEqual([]);
+    expect(fixture.nativeElement.textContent).toContain('No source mix configured yet.');
+    expect(fixture.nativeElement.textContent).toContain('No query families configured yet.');
+  });
+
   it('sends the live snapshot to the backend when Run Agent is clicked', async () => {
     const fixture = TestBed.createComponent(ProspectingConfigurationComponent);
     fixture.detectChanges();
@@ -100,7 +146,6 @@ describe('ProspectingConfigurationComponent', () => {
     fixture.detectChanges();
 
     await fixture.componentInstance.handleAgentAction();
-    fixture.detectChanges();
 
     expect(ideaFoundryApi.runProspectingConfigurationReview).toHaveBeenCalledTimes(1);
     expect(ideaFoundryApi.runProspectingConfigurationReview).toHaveBeenCalledWith(
@@ -110,10 +155,10 @@ describe('ProspectingConfigurationComponent', () => {
         })
       })
     );
-    expect(fixture.nativeElement.textContent).toContain(
+    expect(fixture.componentInstance.surfaceMessage).toContain(
       'The Prospecting Agent reviewed the current strategy and saved an updated configuration.'
     );
-    expect(fixture.nativeElement.textContent).toContain(
+    expect(fixture.componentInstance.surfaceMessage).toContain(
       'Re-executed the updated strategy and stored 7 normalized source records.'
     );
   });
@@ -121,10 +166,10 @@ describe('ProspectingConfigurationComponent', () => {
   it('preserves the current form values when the run response snapshot is sparse', async () => {
     ideaFoundryApi.runProspectingConfigurationReview.mockResolvedValueOnce({
       snapshot: {
-        ...PROSPECTING_CONFIGURATION_MOCK,
+        ...EMPTY_CONFIGURATION_SNAPSHOT,
         strategyMode: 'Broad exploration',
         objective: {
-          ...PROSPECTING_CONFIGURATION_MOCK.objective,
+          ...EMPTY_CONFIGURATION_SNAPSHOT.objective,
           name: '',
           description: '',
           targetDomain: '',
@@ -160,13 +205,36 @@ describe('ProspectingConfigurationComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
+    fixture.componentInstance.snapshot.objective.name = 'Live operator brief';
+    fixture.componentInstance.snapshot.strategySummary = 'Lean into operator-language evidence.';
+    fixture.componentInstance.snapshot.themes = [
+      {
+        id: 'theme-1',
+        label: 'operator pain',
+        status: 'active',
+        priority: 'High',
+        rationale: 'Added by the operator.'
+      }
+    ];
+    fixture.componentInstance.snapshot.sources = [
+      {
+        id: 'source-1',
+        label: 'Forums',
+        description: 'Configured manually',
+        enabled: true,
+        freshness: 'Fresh',
+        signalType: 'Complaints',
+        noiseProfile: 'Balanced',
+        reviewFrequency: 'Daily'
+      }
+    ];
+
     const originalName = fixture.componentInstance.snapshot.objective.name;
     const originalSummary = fixture.componentInstance.snapshot.strategySummary;
     const originalThemeCount = fixture.componentInstance.snapshot.themes.length;
     const originalSourceCount = fixture.componentInstance.snapshot.sources.length;
 
     await fixture.componentInstance.handleAgentAction();
-    fixture.detectChanges();
 
     expect(fixture.componentInstance.snapshot.objective.name).toBe(originalName);
     expect(fixture.componentInstance.snapshot.strategySummary).toBe(originalSummary);
@@ -182,10 +250,9 @@ describe('ProspectingConfigurationComponent', () => {
     fixture.detectChanges();
 
     await fixture.componentInstance.runNow();
-    fixture.detectChanges();
 
     expect(ideaFoundryApi.executeProspectingRun).toHaveBeenCalledTimes(1);
     expect(fixture.componentInstance.runtimeState.resultRecordCount).toBe(7);
-    expect(fixture.nativeElement.textContent).toContain('stored 7 normalized source records');
+    expect(fixture.componentInstance.surfaceMessage).toContain('stored 7 normalized source records');
   });
 });

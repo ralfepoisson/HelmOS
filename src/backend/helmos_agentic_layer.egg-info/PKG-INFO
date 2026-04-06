@@ -59,8 +59,7 @@ src/backend/
     services/         deterministic services
     tools/            registry and external service adapters
     workers/          async/background execution helpers
-  fixtures/           sample seed payloads
-  scripts/            local seed helpers
+  scripts/            local backend utilities
   tests/              backend tests
 ```
 
@@ -95,13 +94,7 @@ src/backend/
    The FastAPI gateway now treats `agent_definitions` plus active
    `prompt_configs` as the source of truth for runnable agents.
 
-5. Optional: seed sample registry data after your database is available:
-
-   ```bash
-   python scripts/seed_data.py
-   ```
-
-6. Start the LiteLLM proxy container if you want live model calls:
+5. Start the LiteLLM proxy container if you want live model calls:
 
    ```bash
    cp .env.litellm.example .env.litellm

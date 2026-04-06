@@ -17,82 +17,6 @@ const DEFAULT_RUNTIME_STATE = {
   resultRecordCount: 0,
 };
 
-const SOURCE_CARD_METADATA = {
-  "Reddit / forums": {
-    freshness: "Fresh",
-    noiseProfile: "Balanced",
-    description: "Unfiltered complaint language and workaround discussions from operators and practitioners.",
-  },
-  "App reviews": {
-    freshness: "Fresh",
-    noiseProfile: "Balanced",
-    description: "Evidence of where incumbent tools break down in live workflows.",
-  },
-  "Niche communities": {
-    freshness: "Stable",
-    noiseProfile: "Low noise",
-    description: "Higher-context conversations in specialist groups and industry communities.",
-  },
-  "Job boards": {
-    freshness: "Stable",
-    noiseProfile: "Balanced",
-    description: "Proxy signals for labour intensity and repeated manual work.",
-  },
-  "Product review sites": {
-    freshness: "Stable",
-    noiseProfile: "Low noise",
-    description: "Structured evidence of software gaps, friction, and unmet needs.",
-  },
-  "News / industry publications": {
-    freshness: "Fresh",
-    noiseProfile: "High noise",
-    description: "Broader context for regulation, market shifts, and structural pressure.",
-  },
-  "Academic / reports": {
-    freshness: "Aging",
-    noiseProfile: "Low noise",
-    description: "Supporting context for deeper validation and structural patterns.",
-  },
-  "Search trend inputs": {
-    freshness: "Fresh",
-    noiseProfile: "Balanced",
-    description: "Directional search demand that can hint at emerging operational pain.",
-  },
-};
-
-const DEFAULT_RECENT_METRICS = [
-  {
-    label: "Signals captured this week",
-    value: "0",
-    trend: "steady",
-    helper: "No recent result records have been stored yet.",
-  },
-  {
-    label: "Promoted to source queue",
-    value: "0",
-    trend: "steady",
-    helper: "Promotion metrics will appear after prospecting runs store reviewable output.",
-  },
-  {
-    label: "Duplicate suppression rate",
-    value: "N/A",
-    trend: "steady",
-    helper: "Duplicate handling metrics will appear once result records are available.",
-  },
-  {
-    label: "Weak-signal discard rate",
-    value: "N/A",
-    trend: "steady",
-    helper: "Discard-rate trends need recent result records to compare.",
-  },
-  {
-    label: "Strongest source type recently",
-    value: "Not enough data",
-    trend: "steady",
-    helper: "This will update once new result records are attached to prospecting runs.",
-  },
-];
-
 const strategyPatternSchema = z.object({
   key: z.string(),
   label: z.string(),
@@ -212,6 +136,7 @@ async function getProspectingConfiguration(prisma, currentUser) {
   return {
     snapshot: record?.uiSnapshotJson ?? null,
     latestReview: record?.latestReviewJson ?? null,
+    resultRecords: Array.isArray(record?.lastResultRecords) ? record.lastResultRecords : [],
     runtime: buildRuntimeState(record),
   };
 }
@@ -363,9 +288,11 @@ async function runProspectingConfigurationReview(prisma, agentGatewayClient, pay
         },
       });
     }
-    const updatedSnapshot = buildUiSnapshotFromAgentReview(normalizedOutput, currentSnapshot);
+    const updatedSnapshot = enforceHourlyCadence(
+      buildUiSnapshotFromAgentReview(normalizedOutput, currentSnapshot),
+    );
     const now = new Date();
-    const nextRunAt = inferNextRunAt(normalizedOutput.recommended_strategy_update?.scan_policy, now);
+    const nextRunAt = inferNextRunAt(buildReviewScanPolicy(updatedSnapshot), now);
 
     const persisted = await upsertProspectingConfiguration(prisma, currentUser.id, {
       agentState: "active",
@@ -500,7 +427,9 @@ async function executeProspectingConfiguration(prisma, agentGatewayClient, curre
   }
 
   const record = await loadProspectingConfiguration(prisma, currentUser.id);
-  const currentSnapshot = normalizeSnapshotInput(options?.snapshot, record?.uiSnapshotJson);
+  const currentSnapshot = enforceHourlyCadence(
+    normalizeSnapshotInput(options?.snapshot, record?.uiSnapshotJson),
+  );
   const latestReview = options?.latestReview ?? record?.latestReviewJson ?? null;
   const executionPlan = buildProspectingExecutionPlan(currentSnapshot);
 
@@ -537,12 +466,55 @@ async function executeProspectingConfiguration(prisma, agentGatewayClient, curre
     const collectedResults = [];
 
     for (const queryPlan of executionPlan) {
-      const searchResponse = await agentGatewayClient.searchWeb({
+      const primarySearchResponse = await agentGatewayClient.searchWeb({
         query: queryPlan.query,
         maxResults: MAX_RESULTS_PER_QUERY,
         actor: "prospecting_execution",
       });
-      const normalizedResults = normalizeProspectingSearchResults(searchResponse?.payload?.results, queryPlan);
+      let executedQuery = queryPlan.query;
+      let normalizedResults = normalizeProspectingSearchResults(
+        primarySearchResponse?.payload?.results,
+        queryPlan,
+        { executedQuery },
+      );
+
+      if (normalizedResults.length === 0) {
+        const retryQuery = buildSimplifiedSearchRetryQuery(queryPlan.query);
+        if (retryQuery && retryQuery !== queryPlan.query) {
+          const retrySearchResponse = await agentGatewayClient.searchWeb({
+            query: retryQuery,
+            maxResults: MAX_RESULTS_PER_QUERY,
+            actor: "prospecting_execution",
+          });
+          executedQuery = retryQuery;
+          normalizedResults = normalizeProspectingSearchResults(
+            retrySearchResponse?.payload?.results,
+            queryPlan,
+            { executedQuery },
+          );
+
+          await createLogEntry(prisma, {
+            level: normalizedResults.length > 0 ? "info" : "warn",
+            scope: "idea-foundry",
+            event:
+              normalizedResults.length > 0
+                ? "prospecting_execution_query_retry_succeeded"
+                : "prospecting_execution_query_retry_empty",
+            message:
+              normalizedResults.length > 0
+                ? "Recovered prospecting results by retrying a simplified query."
+                : "Retrying a simplified prospecting query still returned no results.",
+            context: {
+              userId: currentUser.id,
+              originalQuery: queryPlan.query,
+              retryQuery,
+              queryFamilyTitle: queryPlan.queryFamilyTitle,
+              normalizedResultCount: normalizedResults.length,
+            },
+          });
+        }
+      }
+
       collectedResults.push(...normalizedResults);
 
       await createLogEntry(prisma, {
@@ -555,6 +527,7 @@ async function executeProspectingConfiguration(prisma, agentGatewayClient, curre
           query: queryPlan.query,
           queryFamilyTitle: queryPlan.queryFamilyTitle,
           normalizedResultCount: normalizedResults.length,
+          executedQuery,
         },
       });
     }
@@ -620,6 +593,20 @@ async function executeProspectingConfiguration(prisma, agentGatewayClient, curre
 
     throw error;
   }
+}
+
+function enforceHourlyCadence(snapshot = {}) {
+  const nextSnapshot = {
+    ...snapshot,
+    nextRun: "Every hour",
+    cadence: {
+      ...(snapshot?.cadence ?? {}),
+      runMode: "Scheduled",
+      cadence: "Every hour",
+    },
+  };
+
+  return nextSnapshot;
 }
 
 async function ensureGatewayAgentAvailable({ prisma, agentGatewayClient, requestedAgent, currentUser }) {
@@ -1443,24 +1430,16 @@ function buildUiSnapshotFromAgentReview(review, previousSnapshot = {}) {
         }))
       : previousSnapshot.themes ?? [],
     sources: Array.isArray(config.source_mix)
-      ? config.source_mix.map((source) => {
-          const metadata = SOURCE_CARD_METADATA[source.label] ?? {
-            freshness: "Stable",
-            noiseProfile: "Balanced",
-            description: source.rationale ?? "",
-          };
-
-          return {
-            id: slugify(source.label ?? "source"),
-            label: source.label ?? "",
-            description: metadata.description,
-            enabled: Boolean(source.enabled),
-            freshness: metadata.freshness,
-            signalType: source.expected_signal_type ?? "",
-            noiseProfile: metadata.noiseProfile,
-            reviewFrequency: source.review_frequency ?? "",
-          };
-        })
+      ? config.source_mix.map((source) => ({
+          id: slugify(source.label ?? "source"),
+          label: source.label ?? "",
+          description: source.rationale ?? "",
+          enabled: Boolean(source.enabled),
+          freshness: "Unknown",
+          signalType: source.expected_signal_type ?? "",
+          noiseProfile: "Unknown",
+          reviewFrequency: source.review_frequency ?? "",
+        }))
       : previousSnapshot.sources ?? [],
     queryFamilies: Array.isArray(config.query_families)
       ? config.query_families.map((family, index) => ({
@@ -1494,7 +1473,7 @@ function buildUiSnapshotFromAgentReview(review, previousSnapshot = {}) {
       languageScope: Array.isArray(scanPolicy.language_scope) ? scanPolicy.language_scope.join(", ") : "",
       budgetGuardrail: Array.isArray(scanPolicy.guardrails) ? scanPolicy.guardrails.join("\n") : "",
     },
-    recentMetrics: previousSnapshot.recentMetrics ?? DEFAULT_RECENT_METRICS,
+    recentMetrics: Array.isArray(previousSnapshot.recentMetrics) ? previousSnapshot.recentMetrics : [],
     recentChanges: buildRecentChanges(review, previousSnapshot.recentChanges),
   };
 }
@@ -1574,11 +1553,6 @@ function inferNextRunAt(scanPolicy, now) {
   const cadence = (scanPolicy?.cadence ?? "").toLowerCase();
   const next = new Date(now.getTime());
 
-  if (cadence.includes("4 hour")) {
-    next.setHours(next.getHours() + 4);
-    return next;
-  }
-
   if (cadence.includes("hour")) {
     next.setHours(next.getHours() + 1);
     return next;
@@ -1605,8 +1579,8 @@ function buildReviewScanPolicy(snapshot = {}) {
   const cadence = snapshot?.cadence ?? {};
 
   return {
-    run_mode: normalizeRunMode(cadence.runMode),
-    cadence: cadence.cadence ?? "",
+    run_mode: "scheduled",
+    cadence: "Every hour",
   };
 }
 
@@ -1656,7 +1630,7 @@ function buildProspectingExecutionPlan(snapshot = {}) {
   return plan;
 }
 
-function normalizeProspectingSearchResults(results, queryPlan) {
+function normalizeProspectingSearchResults(results, queryPlan, { executedQuery = queryPlan?.query } = {}) {
   if (!Array.isArray(results)) {
     return [];
   }
@@ -1666,6 +1640,7 @@ function normalizeProspectingSearchResults(results, queryPlan) {
     .map((result, index) => ({
       id: randomUUID(),
       query: queryPlan.query,
+      executedQuery,
       queryFamilyId: queryPlan.queryFamilyId,
       queryFamilyTitle: queryPlan.queryFamilyTitle,
       themeLink: queryPlan.themeLink,
@@ -1693,6 +1668,32 @@ function deduplicateResultRecords(records) {
   }
 
   return deduplicated;
+}
+
+function buildSimplifiedSearchRetryQuery(query) {
+  const normalized = String(query ?? "").trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const hasBooleanSyntax = /\bOR\b|\bAND\b|"/i.test(normalized);
+  if (!hasBooleanSyntax) {
+    return null;
+  }
+
+  const simplified = normalized
+    .replace(/"/g, " ")
+    .replace(/\bOR\b/gi, " ")
+    .replace(/\bAND\b/gi, " ")
+    .replace(/[()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!simplified || simplified.toLowerCase() === normalized.toLowerCase()) {
+    return null;
+  }
+
+  return simplified;
 }
 
 module.exports = {

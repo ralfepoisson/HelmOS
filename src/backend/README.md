@@ -31,8 +31,7 @@ src/backend/
     services/         deterministic services
     tools/            registry and external service adapters
     workers/          async/background execution helpers
-  fixtures/           sample seed payloads
-  scripts/            local seed helpers
+  scripts/            local backend utilities
   tests/              backend tests
 ```
 
@@ -77,13 +76,7 @@ src/backend/
    The FastAPI gateway now treats `agent_definitions` plus active
    `prompt_configs` as the source of truth for runnable agents.
 
-5. Optional: seed sample registry data after your database is available:
-
-   ```bash
-   python scripts/seed_data.py
-   ```
-
-6. Start the LiteLLM proxy container if you want live model calls:
+5. Start the LiteLLM proxy container if you want live model calls:
 
    ```bash
    cp .env.litellm.example .env.litellm
@@ -113,5 +106,8 @@ but a healthy local stack should go through the Angular proxy first.
 - Agent Admin prompt fields are composed into a rich runtime system prompt. The active runtime uses either `config_json.system_prompt` directly or a synthesized prompt built from purpose, scope notes, prompt sections, execution settings, and tool permissions.
 - The product control plane can inspect runtime agent registration through `GET /api/v1/admin/agents`.
 - Prospecting Configuration runs now perform a gateway-registry preflight check before starting a review, so local registry drift is surfaced as a clear operator error instead of silently falling back to deterministic routing.
+- The Node control plane now starts a prospecting runtime that polls every minute and runs due prospecting configurations on an enforced hourly schedule, with each cycle executing Prospecting Agent review followed immediately by Prospecting Execution.
+- Prospecting review persistence now writes the enforced hourly cadence back into the saved UI snapshot, and Prospecting Execution retries zero-result quoted boolean queries once with a simplified query before storing an empty result set.
+- Background prospecting runtime tick failures are now emitted to stderr instead of being swallowed, so database or infrastructure outages remain observable between automation runs.
 - The gateway uses separate runtime and registry database connections in local development: runtime writes stay on `HELMOS_DATABASE_URL`, while registry reads can point at the shared Prisma `DATABASE_URL`.
 - Alembic is declared as a dependency and the model layout is migration-friendly, but migrations are not generated in this first pass.

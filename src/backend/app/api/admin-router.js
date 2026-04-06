@@ -109,6 +109,10 @@ function ensureUpdatePayload(data) {
   }
 }
 
+function ensureKnowledgeBaseAvailable(knowledgeBaseRuntime) {
+  knowledgeBaseRuntime?.assertAvailable?.();
+}
+
 function createAdminRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, storageService }) {
   const router = express.Router();
 
@@ -173,6 +177,7 @@ function createAdminRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, s
   });
 
   router.get("/knowledge-bases", async (_req, res) => {
+    ensureKnowledgeBaseAvailable(knowledgeBaseRuntime);
     const records = await listKnowledgeBases(prisma);
 
     res.json({
@@ -181,6 +186,7 @@ function createAdminRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, s
   });
 
   router.post("/knowledge-bases", async (req, res) => {
+    ensureKnowledgeBaseAvailable(knowledgeBaseRuntime);
     const payload = knowledgeBaseSchema.parse(req.body);
     const record = await createKnowledgeBase(prisma, payload, req.auth.currentUser);
 
@@ -190,6 +196,7 @@ function createAdminRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, s
   });
 
   router.get("/knowledge-bases/:id", async (req, res) => {
+    ensureKnowledgeBaseAvailable(knowledgeBaseRuntime);
     const record = await getKnowledgeBaseDetail(prisma, req.params.id);
 
     if (!record) {
@@ -205,6 +212,7 @@ function createAdminRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, s
   });
 
   router.put("/knowledge-bases/:id", async (req, res) => {
+    ensureKnowledgeBaseAvailable(knowledgeBaseRuntime);
     const payload = updateKnowledgeBaseSchema.parse(req.body);
     ensureUpdatePayload(payload);
     const record = await updateKnowledgeBase(prisma, req.params.id, payload, req.auth.currentUser);
@@ -215,11 +223,13 @@ function createAdminRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, s
   });
 
   router.delete("/knowledge-bases/:id", async (req, res) => {
+    ensureKnowledgeBaseAvailable(knowledgeBaseRuntime);
     await deleteKnowledgeBase(prisma, storageService, req.params.id, req.auth.currentUser);
     res.status(204).send();
   });
 
   router.post("/knowledge-base-files/upload", async (req, res) => {
+    ensureKnowledgeBaseAvailable(knowledgeBaseRuntime);
     const payload = knowledgeBaseUploadSchema.parse(req.body);
     const record = await uploadKnowledgeBaseFile({
       prisma,
@@ -239,6 +249,7 @@ function createAdminRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, s
   });
 
   router.get("/knowledge-base-files/:id", async (req, res) => {
+    ensureKnowledgeBaseAvailable(knowledgeBaseRuntime);
     const record = await getKnowledgeBaseFileDetail(prisma, req.params.id);
 
     if (!record) {
@@ -254,11 +265,13 @@ function createAdminRouter({ prisma, agentGatewayClient, knowledgeBaseRuntime, s
   });
 
   router.delete("/knowledge-base-files/:id", async (req, res) => {
+    ensureKnowledgeBaseAvailable(knowledgeBaseRuntime);
     await deleteKnowledgeBaseFile(prisma, storageService, req.params.id, req.auth.currentUser);
     res.status(204).send();
   });
 
   router.post("/knowledge-base-search", async (req, res) => {
+    ensureKnowledgeBaseAvailable(knowledgeBaseRuntime);
     const payload = knowledgeBaseSearchSchema.parse(req.body);
     const results = await knowledgeBaseRuntime.searchService.search({
       query: payload.query,

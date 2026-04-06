@@ -2171,6 +2171,26 @@ test("GET /api/idea-foundry/prospecting/configuration returns the persisted pros
     recentMetrics: [],
     recentChanges: [],
   };
+  const storedResultRecords = [
+    {
+      id: "result-1",
+      sourceTitle: "VAT reminders are killing your accounting firm",
+      sourceUrl: "https://example.com/vat-reminders",
+      snippet: "Operators describe recurring invoicing and VAT reminder pain.",
+      queryFamilyTitle: "Complaint language around invoicing / VAT / reminders",
+      themeLink: "fragmented compliance workflows",
+      capturedAt: "2026-04-05T20:00:00.000Z",
+    },
+    {
+      id: "result-2",
+      sourceTitle: "Manual rota coordination is chaos",
+      sourceUrl: "https://example.com/rota-chaos",
+      snippet: "Practice managers compare manual scheduling breakdowns.",
+      queryFamilyTitle: "Urgent rota / scheduling breakdowns",
+      themeLink: "last-minute scheduling pressure",
+      capturedAt: "2026-04-05T20:05:00.000Z",
+    },
+  ];
 
   const prisma = {
     user: {
@@ -2195,7 +2215,7 @@ test("GET /api/idea-foundry/prospecting/configuration returns the persisted pros
             content: "The current strategy is usable and slightly biased toward recurring compliance pain.",
           },
         },
-        lastResultRecords: [{ id: "result-1" }, { id: "result-2" }],
+        lastResultRecords: storedResultRecords,
       }),
     },
   };
@@ -2207,6 +2227,7 @@ test("GET /api/idea-foundry/prospecting/configuration returns the persisted pros
   assert.equal(response.body.data.snapshot.objective.name, "Recurring compliance pain");
   assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
   assert.equal(response.body.data.runtime.resultRecordCount, 2);
+  assert.deepEqual(response.body.data.resultRecords, storedResultRecords);
   assert.equal(
     response.body.data.latestReview.reply_to_user.content,
     "The current strategy is usable and slightly biased toward recurring compliance pain."
@@ -2474,6 +2495,8 @@ test("POST /api/idea-foundry/prospecting/configuration/run executes a full prosp
   assert.equal(capturedGatewayPayload.input_text.includes('"Stored result 31"'), false);
   assert.equal(response.body.data.snapshot.objective.name, "Recurring compliance pain in fragmented service sectors");
   assert.equal(response.body.data.snapshot.strategySummary, "Lean harder into complaint-led sources and recurring administrative friction.");
+  assert.equal(response.body.data.snapshot.cadence.runMode, "Scheduled");
+  assert.equal(response.body.data.snapshot.cadence.cadence, "Every hour");
   assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
   assert.equal(response.body.data.runtime.resultRecordCount, 2);
   assert.equal(
@@ -2495,6 +2518,8 @@ test("POST /api/idea-foundry/prospecting/configuration/run executes a full prosp
   assert.equal(Array.isArray(persistedUpdate.lastResultRecords), true);
   assert.equal(persistedUpdate.lastResultRecords.length, 2);
   assert.equal(persistedUpdate.lastResultRecords[0].sourceUrl, "https://example.com/vat-reminders");
+  assert.equal(persistedUpdate.uiSnapshotJson?.cadence?.runMode, "Scheduled");
+  assert.equal(persistedUpdate.uiSnapshotJson?.cadence?.cadence, "Every hour");
   assert.equal(
     prisma.logEntry.createCalls.some((entry) => entry.event === "prospecting_configuration_run_started"),
     true
@@ -2686,6 +2711,8 @@ test("POST /api/idea-foundry/prospecting/configuration/execute runs prospecting 
 
   assert.equal(response.statusCode, 200);
   assert.equal(searchCalls.length, 2);
+  assert.equal(response.body.data.snapshot.cadence.runMode, "Scheduled");
+  assert.equal(response.body.data.snapshot.cadence.cadence, "Every hour");
   assert.equal(response.body.data.runtime.latestRunStatus, "COMPLETED");
   assert.equal(response.body.data.runtime.resultRecordCount, 2);
   const persistedUpdate = configurationUpserts.at(-1)?.update ?? configurationUpserts.at(-1)?.create ?? {};

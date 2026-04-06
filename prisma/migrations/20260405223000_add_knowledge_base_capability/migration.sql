@@ -171,11 +171,6 @@ CREATE INDEX "knowledge_base_embeddings_knowledge_base_id_created_at_idx"
   ON "knowledge_base_embeddings"("knowledge_base_id", "created_at" DESC);
 CREATE INDEX "knowledge_base_embeddings_file_id_created_at_idx"
   ON "knowledge_base_embeddings"("file_id", "created_at" DESC);
-CREATE INDEX "knowledge_base_embeddings_embedding_ivfflat_idx"
-  ON "knowledge_base_embeddings"
-  USING ivfflat ("embedding" vector_cosine_ops)
-  WITH (lists = 100);
-
 CREATE INDEX "knowledge_base_processing_jobs_status_available_at_idx"
   ON "knowledge_base_processing_jobs"("status", "available_at");
 CREATE INDEX "knowledge_base_processing_jobs_file_id_created_at_idx"

@@ -42,3 +42,26 @@ async def test_web_search_adapter_returns_normalized_results(monkeypatch):
     assert len(result.payload["results"]) == 2
     assert result.payload["results"][0]["url"] == "https://example.com/manual-invoice-follow-up"
     assert result.payload["results"][1]["provider"] == "duckduckgo"
+
+
+def test_web_search_adapter_filters_duckduckgo_ad_redirects():
+    adapter = WebSearchAdapter()
+
+    html = """
+    <a class="result__a" href="https://duckduckgo.com/y.js?ad_domain=amazon.com&u3=https%3A%2F%2Fwww.amazon.com%2Fad">Sponsored result</a>
+    <div class="result__snippet">Advertisement</div>
+    <a class="result__a" href="https://example.com/real-result">Real result</a>
+    <div class="result__snippet">Actual organic result</div>
+    """
+
+    results = adapter._parse_duckduckgo_results(html, max_results=5)
+
+    assert results == [
+        {
+            "title": "Real result",
+            "url": "https://example.com/real-result",
+            "snippet": "",
+            "provider": "duckduckgo",
+            "rank": 1,
+        }
+    ]

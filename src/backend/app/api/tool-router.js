@@ -37,6 +37,15 @@ function createKnowledgeBaseToolRouter({ knowledgeBaseRuntime }) {
     next();
   });
 
+  router.use((_req, _res, next) => {
+    try {
+      knowledgeBaseRuntime?.assertAvailable?.();
+      next();
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/knowledge-base/search", async (req, res) => {
     const payload = searchSchema.parse(req.body);
     const results = await knowledgeBaseRuntime.toolService.searchKnowledgeBase({

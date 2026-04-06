@@ -8,6 +8,7 @@ const {
 const {
   KnowledgeBaseToolService,
   TextChunker,
+  createKnowledgeBaseProcessingRuntime,
   vectorLiteral,
 } = require("../app/services/knowledge-base-processing.service");
 
@@ -90,4 +91,36 @@ test("knowledge base tool service intersects agent scope with requested ids", as
 
 test("vectorLiteral serializes vectors for pgvector", () => {
   assert.equal(vectorLiteral([1, 2.5, 0]), "[1,2.5,0]");
+});
+
+test("knowledge base runtime tolerates missing schema on startup", async () => {
+  const prisma = {
+    knowledgeBaseProcessingJob: {
+      async findMany() {
+        const error = new Error("The table `knowledge_base_processing_jobs` does not exist.");
+        error.code = "P2021";
+        throw error;
+      },
+    },
+  };
+
+  const runtime = createKnowledgeBaseProcessingRuntime({
+    prisma,
+    storageService: {},
+    config: {
+      jinaApiKey: "test",
+      jinaBaseUrl: "https://example.com",
+      embeddingModel: "jina-embeddings-v4",
+      embeddingDimensions: 2048,
+      chunkSize: 1000,
+      chunkOverlap: 100,
+      queueBatchSize: 1,
+      queuePollMs: 1000,
+      agentScopes: {},
+    },
+  });
+
+  await runtime.start();
+  assert.equal(runtime.isAvailable(), false);
+  await runtime.stop();
 });

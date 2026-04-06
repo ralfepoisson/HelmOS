@@ -32,7 +32,7 @@ import { KnowledgeBaseAdminService, KnowledgeBaseSummary } from './knowledge-bas
 
         <div class="hero-actions">
           <button class="btn btn-primary" type="button" (click)="openCreateForm()">
-            {{ formMode === 'create' ? 'Creating…' : '+ New Knowledge Base' }}
+            + Knowledge Base
           </button>
         </div>
       </section>
@@ -64,64 +64,6 @@ import { KnowledgeBaseAdminService, KnowledgeBaseSummary } from './knowledge-bas
         <h2>Knowledge base data is temporarily unavailable</h2>
         <p>{{ errorMessage }}</p>
         <button class="btn btn-primary" type="button" (click)="loadKnowledgeBases()">Retry</button>
-      </section>
-
-      <section *ngIf="showForm" class="form-card helmos-card">
-        <div class="form-header">
-          <div>
-            <div class="section-kicker">Configuration</div>
-            <h2>{{ formMode === 'create' ? 'Create knowledge base' : 'Edit knowledge base' }}</h2>
-          </div>
-          <button class="btn btn-light" type="button" (click)="cancelForm()">Close</button>
-        </div>
-
-        <form class="kb-form" (ngSubmit)="submitForm()">
-          <label class="field-group">
-            <span class="field-label">Name</span>
-            <input class="form-control" [(ngModel)]="draft.name" name="name" required maxlength="200" />
-          </label>
-
-          <label class="field-group">
-            <span class="field-label">Description</span>
-            <textarea
-              class="form-control"
-              [(ngModel)]="draft.description"
-              name="description"
-              rows="3"
-              placeholder="Explain what this knowledge base is intended to hold."
-            ></textarea>
-          </label>
-
-          <div class="grid-two">
-            <label class="field-group">
-              <span class="field-label">Owner type</span>
-              <input class="form-control" [(ngModel)]="draft.ownerType" name="ownerType" maxlength="50" />
-            </label>
-
-            <label class="field-group">
-              <span class="field-label">Owner id</span>
-              <input class="form-control" [(ngModel)]="draft.ownerId" name="ownerId" maxlength="255" />
-            </label>
-          </div>
-
-          <label class="field-group">
-            <span class="field-label">Status</span>
-            <select class="form-select" [(ngModel)]="draft.status" name="status">
-              <option value="ACTIVE">Active</option>
-              <option value="ARCHIVED">Archived</option>
-            </select>
-          </label>
-
-          <div class="form-actions">
-            <button class="btn btn-primary" type="submit" [disabled]="saving">
-              {{ saving ? 'Saving…' : formMode === 'create' ? 'Create knowledge base' : 'Save changes' }}
-            </button>
-            <button class="btn btn-outline-secondary" type="button" (click)="cancelForm()" [disabled]="saving">
-              Cancel
-            </button>
-            <span *ngIf="formError" class="form-error">{{ formError }}</span>
-          </div>
-        </form>
       </section>
 
       <section *ngIf="loading" class="state-card helmos-card">Loading knowledge bases…</section>
@@ -187,6 +129,58 @@ import { KnowledgeBaseAdminService, KnowledgeBaseSummary } from './knowledge-bas
           </table>
         </div>
       </section>
+
+      <div *ngIf="showForm" class="modal-shell" role="dialog" aria-modal="true" aria-labelledby="kb-form-title">
+        <button class="modal-backdrop" type="button" aria-label="Close" (click)="cancelForm()"></button>
+        <section class="modal-card helmos-card">
+          <div class="form-header">
+            <div>
+              <div class="section-kicker">Configuration</div>
+              <h2 id="kb-form-title">{{ formMode === 'create' ? 'Create knowledge base' : 'Edit knowledge base' }}</h2>
+            </div>
+            <button class="btn btn-light" type="button" (click)="cancelForm()">Close</button>
+          </div>
+
+          <form class="kb-form" (ngSubmit)="submitForm()">
+            <label class="field-group">
+              <span class="field-label">Name</span>
+              <input class="form-control" [(ngModel)]="draft.name" name="name" required maxlength="200" />
+            </label>
+
+            <label class="field-group">
+              <span class="field-label">Description</span>
+              <textarea
+                class="form-control"
+                [(ngModel)]="draft.description"
+                name="description"
+                rows="3"
+                placeholder="Explain what this knowledge base is intended to hold."
+              ></textarea>
+              <span class="field-help">
+                Ownership and audit attribution are automatically derived from the logged-in admin.
+              </span>
+            </label>
+
+            <label class="field-group">
+              <span class="field-label">Status</span>
+              <select class="form-select" [(ngModel)]="draft.status" name="status">
+                <option value="ACTIVE">Active</option>
+                <option value="ARCHIVED">Archived</option>
+              </select>
+            </label>
+
+            <div class="form-actions">
+              <button class="btn btn-primary" type="submit" [disabled]="saving">
+                {{ saving ? 'Saving…' : formMode === 'create' ? 'Create knowledge base' : 'Save changes' }}
+              </button>
+              <button class="btn btn-outline-secondary" type="button" (click)="cancelForm()" [disabled]="saving">
+                Cancel
+              </button>
+              <span *ngIf="formError" class="form-error">{{ formError }}</span>
+            </div>
+          </form>
+        </section>
+      </div>
     </main>
   `,
   styles: [
@@ -203,7 +197,6 @@ import { KnowledgeBaseAdminService, KnowledgeBaseSummary } from './knowledge-bas
       }
 
       .kb-hero,
-      .form-card,
       .table-card,
       .state-card {
         padding: 1rem 1.1rem;
@@ -269,13 +262,12 @@ import { KnowledgeBaseAdminService, KnowledgeBaseSummary } from './knowledge-bas
         gap: 0.45rem;
       }
 
-      .kb-form {
-        gap: 1rem;
+      .field-help {
+        font-size: 0.82rem;
+        color: var(--helmos-muted);
       }
 
-      .grid-two {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+      .kb-form {
         gap: 1rem;
       }
 
@@ -290,6 +282,37 @@ import { KnowledgeBaseAdminService, KnowledgeBaseSummary } from './knowledge-bas
       .form-error {
         color: #b42318;
         font-size: 0.9rem;
+      }
+
+      .modal-shell {
+        position: fixed;
+        inset: 0;
+        z-index: 1200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        isolation: isolate;
+      }
+
+      .modal-backdrop {
+        position: absolute;
+        inset: 0;
+        border: 0;
+        background: rgba(15, 23, 42, 0.38);
+        backdrop-filter: blur(4px);
+        z-index: 0;
+      }
+
+      .modal-card {
+        position: relative;
+        z-index: 1;
+        width: min(760px, 100%);
+        max-height: calc(100vh - 3rem);
+        overflow: auto;
+        padding: 1.1rem 1.2rem 1.2rem;
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow: 0 28px 70px rgba(15, 23, 42, 0.2);
       }
 
       .table-wrap {
@@ -337,8 +360,7 @@ import { KnowledgeBaseAdminService, KnowledgeBaseSummary } from './knowledge-bas
       }
 
       @media (max-width: 991.98px) {
-        .summary-row,
-        .grid-two {
+        .summary-row {
           grid-template-columns: 1fr;
         }
 
@@ -346,6 +368,11 @@ import { KnowledgeBaseAdminService, KnowledgeBaseSummary } from './knowledge-bas
         .table-header,
         .form-header {
           flex-direction: column;
+        }
+
+        .modal-shell {
+          padding: 1rem;
+          align-items: flex-start;
         }
       }
     `
@@ -458,7 +485,9 @@ export class KnowledgeBaseListScreenComponent implements OnInit {
       }
 
       this.showForm = false;
-      await this.loadKnowledgeBases();
+      this.saving = false;
+      void this.loadKnowledgeBases();
+      return;
     } catch (error) {
       this.formError = error instanceof Error ? error.message : 'Unable to save the knowledge base.';
     } finally {

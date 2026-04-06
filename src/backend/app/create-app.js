@@ -7,6 +7,7 @@ const { createAgentGatewayClient } = require("./services/agent-gateway-client");
 const { getKnowledgeBaseConfig } = require("./services/knowledge-base.config");
 const { createKnowledgeBaseProcessingRuntime } = require("./services/knowledge-base-processing.service");
 const { createFileStorageService } = require("./services/knowledge-base-storage.service");
+const { createProspectingRuntime } = require("./services/prospecting-runtime.service");
 
 function getAllowedOrigins() {
   const configuredOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? "")
@@ -50,6 +51,10 @@ function createApp({ prisma, agentGatewayClient }) {
       baseUrl: process.env.AGENT_GATEWAY_BASE_URL || "http://127.0.0.1:8000/api/v1",
       prisma,
     });
+  const prospectingRuntime = createProspectingRuntime({
+    prisma,
+    agentGatewayClient: gatewayClient,
+  });
 
   app.disable("x-powered-by");
   app.use((req, res, next) => {
@@ -90,6 +95,7 @@ function createApp({ prisma, agentGatewayClient }) {
   app.use(errorHandler);
 
   app.locals.knowledgeBaseRuntime = knowledgeBaseRuntime;
+  app.locals.prospectingRuntime = prospectingRuntime;
   app.locals.storageService = storageService;
 
   return app;

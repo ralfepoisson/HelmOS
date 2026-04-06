@@ -195,9 +195,10 @@ end note
 
 note right of workspaces
 Idea Foundry is now available as a dedicated UI surface.
-Its pipeline board is currently scaffolded with seeded view data only;
-source artefacts, proto-ideas, and curated opportunities are not yet
-persisted in the MVP schema.
+Its pipeline board now renders explicit empty states unless persisted
+source artefacts exist. Only normalized source records are currently
+persisted in the MVP schema; downstream proto-ideas and curated
+opportunities remain intentionally empty until backed by real storage.
 end note
 
 package "Idea Foundry Control" {
@@ -217,6 +218,14 @@ package "Idea Foundry Control" {
     updated_at : TIMESTAMP
   }
 }
+
+note right of prospecting_configurations
+Hourly prospecting automation persists both the enforced
+runtime snapshot cadence and next_run_at on the same schedule
+so the scheduler and operator UI do not drift apart.
+Stale RUNNING rows are also recoverable once the due slot elapses,
+preventing interrupted cycles from wedging the hourly loop.
+end note
 
 package "Knowledge Base" {
   entity "knowledge_bases" as knowledge_bases {
@@ -323,7 +332,7 @@ package "Knowledge Base" {
 note right of prospecting_configurations
 Stores the persisted Prospecting Configuration UI state,
 the latest prospecting-agent review payload, and the
-normalized result-record sample supplied to the next
+normalized result-record set supplied to the next
 review run and populated by Prospecting Execution.
 latest_review_json stores the Prospecting Agent's latest strategy assessment.
 last_result_records stores the latest normalized execution results and feeds

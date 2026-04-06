@@ -65,6 +65,9 @@ class WebSearchAdapter(ToolAdapter):
             return None
 
         parsed = urlparse(candidate)
+        if parsed.netloc.endswith("duckduckgo.com") and parsed.path == "/y.js":
+            return None
+
         if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
             encoded_target = parse_qs(parsed.query).get("uddg", [None])[0]
             if encoded_target:

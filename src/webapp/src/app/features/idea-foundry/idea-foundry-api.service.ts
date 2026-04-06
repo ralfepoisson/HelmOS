@@ -18,9 +18,23 @@ export interface ProspectingConfigurationRuntimeState {
   resultRecordCount: number;
 }
 
+export interface ProspectingResultRecord {
+  id: string;
+  query?: string;
+  queryFamilyTitle?: string;
+  themeLink?: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
+  snippet?: string;
+  provider?: string;
+  rank?: number;
+  capturedAt?: string;
+}
+
 export interface ProspectingConfigurationResponse {
   snapshot: ProspectingConfigurationSnapshot | null;
   latestReview: Record<string, unknown> | null;
+  resultRecords: ProspectingResultRecord[];
   runtime: ProspectingConfigurationRuntimeState;
 }
 

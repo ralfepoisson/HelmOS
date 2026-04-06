@@ -28,7 +28,7 @@ test.describe('HelmOS Idea Foundry', () => {
       await expect(board.getByRole('heading', { name: column })).toBeVisible();
     }
 
-    await expect(page.getByText('EU freelancer compliance cockpit', { exact: true })).toBeVisible();
-    await expect(page.getByText('Managed onboarding ops for AI-heavy B2B SaaS', { exact: true })).toBeVisible();
+    await expect(page.getByText('No proto-ideas yet', { exact: true })).toBeVisible();
+    await expect(page.getByText('No curated opportunities yet', { exact: true })).toBeVisible();
   });
 });

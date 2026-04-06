@@ -16,6 +16,14 @@ function createHttpError(statusCode, message) {
   return error;
 }
 
+function isKnowledgeBaseSchemaMissing(error) {
+  return (
+    error?.code === "P2021" &&
+    typeof error?.message === "string" &&
+    error.message.toLowerCase().includes("knowledge_base")
+  );
+}
+
 function stripHtml(value) {
   return value.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ");
 }
@@ -973,6 +981,7 @@ function createKnowledgeBaseProcessingRuntime({ prisma, storageService, config =
 
   let timer = null;
   let draining = false;
+  let schemaReady = true;
 
   const tick = async () => {
     if (draining) {
@@ -981,18 +990,28 @@ function createKnowledgeBaseProcessingRuntime({ prisma, storageService, config =
 
     draining = true;
     try {
-      const jobs = await prisma.knowledgeBaseProcessingJob.findMany({
-        where: {
-          status: "QUEUED",
-          availableAt: {
-            lte: new Date(),
+      let jobs = [];
+      try {
+        jobs = await prisma.knowledgeBaseProcessingJob.findMany({
+          where: {
+            status: "QUEUED",
+            availableAt: {
+              lte: new Date(),
+            },
           },
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
-        take: config.queueBatchSize,
-      });
+          orderBy: {
+            createdAt: "asc",
+          },
+          take: config.queueBatchSize,
+        });
+        schemaReady = true;
+      } catch (error) {
+        if (isKnowledgeBaseSchemaMissing(error)) {
+          schemaReady = false;
+          return;
+        }
+        throw error;
+      }
 
       for (const job of jobs) {
         await processKnowledgeBaseJob({
@@ -1014,6 +1033,17 @@ function createKnowledgeBaseProcessingRuntime({ prisma, storageService, config =
     embeddingProvider,
     searchService,
     toolService,
+    isAvailable() {
+      return schemaReady;
+    },
+    assertAvailable() {
+      if (!schemaReady) {
+        throw createHttpError(
+          503,
+          "Knowledge base tables are not available yet. Run the latest Prisma migration before using this feature.",
+        );
+      }
+    },
     async start() {
       if (timer) {
         return;
@@ -1024,7 +1054,15 @@ function createKnowledgeBaseProcessingRuntime({ prisma, storageService, config =
       if (typeof timer.unref === "function") {
         timer.unref();
       }
-      await tick();
+      try {
+        await tick();
+      } catch (error) {
+        if (isKnowledgeBaseSchemaMissing(error)) {
+          schemaReady = false;
+          return;
+        }
+        throw error;
+      }
     },
     async stop() {
       if (timer) {
@@ -1033,7 +1071,15 @@ function createKnowledgeBaseProcessingRuntime({ prisma, storageService, config =
       }
     },
     async triggerProcessingPass() {
-      await tick();
+      try {
+        await tick();
+      } catch (error) {
+        if (isKnowledgeBaseSchemaMissing(error)) {
+          schemaReady = false;
+          return;
+        }
+        throw error;
+      }
     },
   };
 }
@@ -1129,4 +1175,5 @@ module.exports = {
   updateKnowledgeBase,
   uploadKnowledgeBaseFile,
   vectorLiteral,
+  isKnowledgeBaseSchemaMissing,
 };

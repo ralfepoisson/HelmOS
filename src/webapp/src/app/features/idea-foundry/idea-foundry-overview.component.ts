@@ -1,11 +1,14 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
+
+import { IdeaFoundryApiService, ProspectingResultRecord } from './idea-foundry-api.service';
 
 interface IdeaPipelineCard {
   title: string;
   summary: string;
   signal: string;
   status: string;
+  href?: string | null;
 }
 
 interface IdeaPipelineColumn {
@@ -41,6 +44,7 @@ interface IdeaPipelineColumn {
             for deeper strategy work.
           </p>
         </div>
+        <p *ngIf="sourceLoadError" class="pipeline-warning">{{ sourceLoadError }}</p>
       </section>
 
       <section class="pipeline-board" data-testid="idea-foundry-board" aria-label="Idea Foundry pipeline board">
@@ -61,7 +65,12 @@ interface IdeaPipelineColumn {
           <div class="pipeline-card-list">
             <article *ngFor="let card of column.cards" class="pipeline-card">
               <span class="pipeline-card-status">{{ card.status }}</span>
-              <h5>{{ card.title }}</h5>
+              <h5>
+                <a *ngIf="card.href; else plainTitle" [href]="card.href" target="_blank" rel="noreferrer">
+                  {{ card.title }}
+                </a>
+                <ng-template #plainTitle>{{ card.title }}</ng-template>
+              </h5>
               <p>{{ card.summary }}</p>
               <div class="pipeline-card-meta">{{ card.signal }}</div>
             </article>
@@ -129,6 +138,12 @@ interface IdeaPipelineColumn {
 
       .pipeline-intro {
         padding: 0.1rem 0.1rem 0;
+      }
+
+      .pipeline-warning {
+        margin: 0.6rem 0 0;
+        color: #9a3412;
+        font-size: 0.84rem;
       }
 
       .pipeline-intro h3 {
@@ -220,6 +235,15 @@ interface IdeaPipelineColumn {
         font-weight: 700;
       }
 
+      .pipeline-card h5 a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .pipeline-card h5 a:hover {
+        text-decoration: underline;
+      }
+
       .pipeline-card-meta {
         margin-top: 0.65rem;
         padding-top: 0.65rem;
@@ -231,26 +255,83 @@ interface IdeaPipelineColumn {
     `
   ]
 })
-export class IdeaFoundryOverviewComponent {
-  readonly columns: IdeaPipelineColumn[] = [
+export class IdeaFoundryOverviewComponent implements OnInit {
+  private readonly ideaFoundryApi = inject(IdeaFoundryApiService);
+
+  columns: IdeaPipelineColumn[] = buildEmptyColumns();
+  sourceLoadError: string | null = null;
+
+  async ngOnInit(): Promise<void> {
+    try {
+      const payload = await this.ideaFoundryApi.getProspectingConfiguration();
+      this.columns = buildColumnsFromResultRecords(payload.resultRecords);
+      this.sourceLoadError = null;
+    } catch (error) {
+      this.columns = buildEmptyColumns();
+      this.sourceLoadError = error instanceof Error ? error.message : 'Unable to load source records.';
+    }
+  }
+}
+
+function buildColumnsFromResultRecords(resultRecords: ProspectingResultRecord[]): IdeaPipelineColumn[] {
+  const columns = buildEmptyColumns();
+  const sourceColumn = columns.find((column) => column.id === 'sources');
+
+  if (!sourceColumn) {
+    return columns;
+  }
+
+  const normalizedCards = Array.isArray(resultRecords)
+    ? resultRecords
+        .filter((record) => typeof record?.sourceUrl === 'string' && record.sourceUrl.trim().length > 0)
+        .slice(0, 8)
+        .map((record) => mapResultRecordToSourceCard(record))
+    : [];
+
+  sourceColumn.cards =
+    normalizedCards.length > 0
+      ? normalizedCards
+      : [
+          {
+            title: 'No normalized sources captured yet',
+            summary: 'Run Prospecting Execution to populate this column with the latest stored source records.',
+            signal: 'Awaiting the next prospecting execution cycle',
+            status: 'Waiting'
+          }
+        ];
+
+  return columns;
+}
+
+function mapResultRecordToSourceCard(record: ProspectingResultRecord): IdeaPipelineCard {
+  return {
+    title: record.sourceTitle?.trim() || record.sourceUrl?.trim() || 'Normalized source',
+    summary:
+      record.snippet?.trim() ||
+      `Captured from ${record.queryFamilyTitle?.trim() || 'the latest prospecting query family'} using the query "${record.query?.trim() || 'n/a'}".`,
+    signal: buildSourceMeta(record),
+    status: 'Normalized',
+    href: record.sourceUrl?.trim() || null
+  };
+}
+
+function buildSourceMeta(record: ProspectingResultRecord): string {
+  const parts = [
+    record.queryFamilyTitle ? `Query family: ${record.queryFamilyTitle}` : null,
+    record.themeLink ? `Theme: ${record.themeLink}` : null,
+    record.query ? `Query: ${record.query}` : null
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  return parts.join(' · ');
+}
+
+function buildEmptyColumns(): IdeaPipelineColumn[] {
+  return [
     {
       id: 'sources',
       title: 'Sources',
       helper: 'Raw market signals and observed needs entering the pipeline.',
-      cards: [
-        {
-          title: 'Freelancer tax workflow complaints',
-          summary: 'Repeated forum posts about fragmented VAT, invoicing, and quarterly filing workflows across Europe.',
-          signal: 'Signal: niche ops pain with recurring compliance pressure',
-          status: 'Captured'
-        },
-        {
-          title: 'Clinic staffing bottleneck thread',
-          summary: 'Practice managers compare manual rota coordination, agency spend, and late-shift coverage failures.',
-          signal: 'Signal: urgent scheduling friction with budget sensitivity',
-          status: 'Normalized'
-        }
-      ]
+      cards: []
     },
     {
       id: 'proto-ideas',
@@ -258,16 +339,10 @@ export class IdeaFoundryOverviewComponent {
       helper: 'Early opportunity fragments extracted from the strongest signals.',
       cards: [
         {
-          title: 'Compliance co-pilot for solo operators',
-          summary: 'Translate scattered filing tasks into a lightweight workflow assistant for one-person businesses.',
-          signal: 'Focus: reduce mental load around recurring compliance work',
-          status: 'Extracted'
-        },
-        {
-          title: 'Shift-coverage orchestration layer',
-          summary: 'Coordinate internal availability and agency fallback for short-notice clinical staffing gaps.',
-          signal: 'Focus: recover revenue lost to canceled appointments',
-          status: 'Structured'
+          title: 'No proto-ideas yet',
+          summary: 'No extracted ideas have been persisted from live source records yet.',
+          signal: 'Run prospecting and extraction against real inputs to populate this stage',
+          status: 'Waiting'
         }
       ]
     },
@@ -277,16 +352,10 @@ export class IdeaFoundryOverviewComponent {
       helper: 'Strengthened opportunities being challenged, expanded, and differentiated.',
       cards: [
         {
-          title: 'EU freelancer compliance cockpit',
-          summary: 'A regional workflow layer combining filing reminders, evidence capture, and accountant handoff.',
-          signal: 'Refinement: sharpen wedge around cross-border freelancers',
-          status: 'In refinement'
-        },
-        {
-          title: 'Clinic fill-rate recovery platform',
-          summary: 'Turn staffing volatility into a triage dashboard that protects appointment capacity.',
-          signal: 'Refinement: test buyer urgency and procurement complexity',
-          status: 'Quality check'
+          title: 'No idea candidates yet',
+          summary: 'No refined opportunities have been persisted from real prospecting data yet.',
+          signal: 'This stage will fill as extracted ideas are reviewed and strengthened',
+          status: 'Waiting'
         }
       ]
     },
@@ -296,10 +365,10 @@ export class IdeaFoundryOverviewComponent {
       helper: 'Higher-confidence opportunities that look ready for downstream strategy work.',
       cards: [
         {
-          title: 'Managed onboarding ops for AI-heavy B2B SaaS',
-          summary: 'Service-plus-software opportunity aimed at reducing stalled enterprise onboarding after sales close.',
-          signal: 'Outcome: recommended for Strategy Copilot handoff',
-          status: 'Promoted'
+          title: 'No curated opportunities yet',
+          summary: 'No production-ready opportunities have been promoted from real pipeline work yet.',
+          signal: 'Curated opportunities will appear after downstream review and promotion',
+          status: 'Waiting'
         }
       ]
     }

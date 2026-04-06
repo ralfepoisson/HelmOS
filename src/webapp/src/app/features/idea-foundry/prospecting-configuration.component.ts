@@ -18,7 +18,6 @@ import {
   StrategyChangeEntry,
   StrategyPattern
 } from './prospecting-configuration.models';
-import { PROSPECTING_CONFIGURATION_MOCK } from './prospecting-configuration.mock';
 
 @Component({
   selector: 'app-prospecting-configuration',
@@ -46,12 +45,12 @@ import { PROSPECTING_CONFIGURATION_MOCK } from './prospecting-configuration.mock
           <button type="button" class="btn btn-outline-secondary" (click)="handleAgentAction()" [disabled]="isRunningAgent || isExecutingNow">
             {{ isRunningAgent ? 'Running…' : 'Run Agent' }}
           </button>
-          <button type="button" class="btn btn-primary" [disabled]="!hasUnsavedChanges" (click)="saveChanges()">
+          <button type="button" class="btn btn-primary" [disabled]="isLoading" (click)="saveChanges()">
             Save changes
           </button>
         </div>
 
-        <div class="status-strip">
+        <div *ngIf="!isLoading" class="status-strip">
           <div class="status-pill" [class.status-pill-paused]="runtimeState.agentState === 'paused' || !isRunningAgent && runtimeState.latestRunStatus !== 'RUNNING'">
             Agent state: {{ isRunningAgent || runtimeState.agentState === 'active' ? 'Active' : 'Paused' }}
           </div>
@@ -243,6 +242,10 @@ import { PROSPECTING_CONFIGURATION_MOCK } from './prospecting-configuration.mock
                   </label>
                 </div>
               </article>
+              <article *ngIf="snapshot.sources.length === 0" class="empty-panel">
+                <strong>No source mix configured yet.</strong>
+                <p>Run the Prospecting Agent or save a real configuration to populate this section.</p>
+              </article>
             </div>
           </app-prospecting-config-section>
 
@@ -262,6 +265,10 @@ import { PROSPECTING_CONFIGURATION_MOCK } from './prospecting-configuration.mock
                 (boost)="adjustQueryPriority($event, -1)"
                 (demote)="adjustQueryPriority($event, 1)"
               />
+              <article *ngIf="snapshot.queryFamilies.length === 0" class="empty-panel">
+                <strong>No query families configured yet.</strong>
+                <p>Search directions will appear here after the first saved prospecting strategy.</p>
+              </article>
             </div>
           </app-prospecting-config-section>
 
@@ -371,6 +378,10 @@ import { PROSPECTING_CONFIGURATION_MOCK } from './prospecting-configuration.mock
                 <strong>{{ metric.value }}</strong>
                 <span class="metric-trend" [attr.data-trend]="metric.trend">{{ metric.helper }}</span>
               </article>
+              <article *ngIf="snapshot.recentMetrics.length === 0" class="empty-panel empty-panel-compact">
+                <strong>No output metrics yet.</strong>
+                <p>Metrics appear only after real prospecting runs store results.</p>
+              </article>
             </div>
           </app-prospecting-config-section>
 
@@ -383,6 +394,10 @@ import { PROSPECTING_CONFIGURATION_MOCK } from './prospecting-configuration.mock
                   <p>{{ change.detail }}</p>
                   <span class="timeline-time">{{ change.timestamp }}</span>
                 </div>
+              </article>
+              <article *ngIf="snapshot.recentChanges.length === 0" class="empty-panel empty-panel-compact">
+                <strong>No strategy changes recorded yet.</strong>
+                <p>Persisted reviews and operator edits will be listed here once they happen.</p>
               </article>
             </div>
           </app-prospecting-config-section>
@@ -661,6 +676,27 @@ import { PROSPECTING_CONFIGURATION_MOCK } from './prospecting-configuration.mock
         gap: 0.85rem;
       }
 
+      .empty-panel {
+        padding: 1rem;
+        border-radius: 1rem;
+        border: 1px dashed rgba(191, 203, 217, 0.95);
+        background: rgba(248, 251, 255, 0.78);
+        color: #445167;
+      }
+
+      .empty-panel strong {
+        display: block;
+        margin-bottom: 0.35rem;
+      }
+
+      .empty-panel p {
+        margin: 0;
+      }
+
+      .empty-panel-compact {
+        padding: 0.85rem 0.9rem;
+      }
+
       .source-card {
         padding: 0.95rem;
         border: 1px solid rgba(219, 228, 238, 0.95);
@@ -858,8 +894,8 @@ import { PROSPECTING_CONFIGURATION_MOCK } from './prospecting-configuration.mock
   ]
 })
 export class ProspectingConfigurationComponent implements OnInit {
-  snapshot = cloneSnapshot(PROSPECTING_CONFIGURATION_MOCK);
-  private baseline = cloneSnapshot(PROSPECTING_CONFIGURATION_MOCK);
+  snapshot = createEmptySnapshot();
+  private baseline = createEmptySnapshot();
   runtimeState: ProspectingConfigurationRuntimeState = {
     agentState: 'active',
     latestRunStatus: 'idle',
@@ -868,11 +904,11 @@ export class ProspectingConfigurationComponent implements OnInit {
     nextRun: null,
     resultRecordCount: 0
   };
-  isLoading = false;
+  isLoading = true;
   isRunningAgent = false;
   isExecutingNow = false;
 
-  surfaceMessage = 'The current strategy is tuned for recurring administrative and compliance pain with strong operator-language evidence.';
+  surfaceMessage = 'No saved prospecting configuration yet. Real strategy data will appear here after the first successful review or execution.';
   newThemeLabel = '';
   newThemePriority: PriorityLevel = 'Medium';
   newThemeRationale = '';
@@ -958,6 +994,10 @@ export class ProspectingConfigurationComponent implements OnInit {
       .slice(0, 2)
       .map((source) => source.label)
       .join(' and ');
+
+    if (!activeThemes && !activeSources) {
+      return 'No active prospecting strategy has been saved yet. Run the Prospecting Agent to generate a first configuration from real inputs.';
+    }
 
     return `The agent is currently running a ${this.snapshot.strategyMode.toLowerCase()} around ${activeThemes}, prioritising ${activeSources} over lower-signal channels while filtering for repeated, operationally costly pain.`;
   }
@@ -1191,6 +1231,42 @@ function cloneSnapshot(snapshot: ProspectingConfigurationSnapshot): ProspectingC
   return JSON.parse(JSON.stringify(snapshot)) as ProspectingConfigurationSnapshot;
 }
 
+function createEmptySnapshot(): ProspectingConfigurationSnapshot {
+  return {
+    agentState: 'active',
+    strategyMode: 'Broad exploration',
+    lastRun: 'Not run yet',
+    nextRun: 'Not scheduled',
+    objective: {
+      name: '',
+      description: '',
+      targetDomain: '',
+      searchPosture: 'Broad exploration',
+      includeKeywords: '',
+      excludeThemes: '',
+      operatorNote: ''
+    },
+    strategySummary: '',
+    steeringHypothesis: '',
+    strategyPatterns: [],
+    themes: [],
+    sources: [],
+    queryFamilies: [],
+    signalRules: [],
+    cadence: {
+      runMode: 'Manual only',
+      cadence: '',
+      maxResultsPerRun: 0,
+      reviewThreshold: '',
+      geographicScope: '',
+      languageScope: '',
+      budgetGuardrail: ''
+    },
+    recentMetrics: [],
+    recentChanges: []
+  };
+}
+
 function normalizeIncomingSnapshot(
   snapshot: ProspectingConfigurationSnapshot,
   fallback: ProspectingConfigurationSnapshot
@@ -1238,9 +1314,9 @@ function normalizeIncomingSnapshot(
             label: readNonEmptyString(source?.label, fallback.sources[index]?.label ?? 'Source'),
             description: readNonEmptyString(source?.description, fallback.sources[index]?.description ?? ''),
             enabled: typeof source?.enabled === 'boolean' ? source.enabled : (fallback.sources[index]?.enabled ?? false),
-            freshness: readEnumValue(source?.freshness, fallback.sources[index]?.freshness ?? 'Stable'),
+            freshness: readEnumValue(source?.freshness, fallback.sources[index]?.freshness ?? 'Unknown'),
             signalType: readNonEmptyString(source?.signalType, fallback.sources[index]?.signalType ?? ''),
-            noiseProfile: readEnumValue(source?.noiseProfile, fallback.sources[index]?.noiseProfile ?? 'Balanced'),
+            noiseProfile: readEnumValue(source?.noiseProfile, fallback.sources[index]?.noiseProfile ?? 'Unknown'),
             reviewFrequency: readNonEmptyString(source?.reviewFrequency, fallback.sources[index]?.reviewFrequency ?? 'Every run')
           }))
         : cloneSnapshot(fallback).sources,

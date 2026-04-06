@@ -4,9 +4,13 @@ const { prisma } = require("./app/config/prisma");
 
 const app = createApp({ prisma });
 const knowledgeBaseRuntime = app.locals.knowledgeBaseRuntime;
+const prospectingRuntime = app.locals.prospectingRuntime;
 
 knowledgeBaseRuntime?.start?.().catch((error) => {
   process.stderr.write(`Knowledge base runtime failed to start: ${error.message}\n`);
+});
+prospectingRuntime?.start?.().catch((error) => {
+  process.stderr.write(`Prospecting runtime failed to start: ${error.message}\n`);
 });
 
 const server = app.listen(env.port, env.host, () => {
@@ -27,6 +31,7 @@ async function shutdown(signal) {
 
   server.close(async () => {
     await knowledgeBaseRuntime?.stop?.();
+    await prospectingRuntime?.stop?.();
     await prisma.$disconnect();
     process.exit(0);
   });

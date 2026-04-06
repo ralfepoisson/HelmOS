@@ -57,6 +57,7 @@ package "Agent Testing Framework" {
 }
 
 package "Deterministic Services" {
+  [Prospecting Runtime Scheduler]
   [Prospecting Execution Service]
   [Template Renderer]
   [Rules Engine]
@@ -116,10 +117,14 @@ package "AWS Production Deployment" {
 [Idea Foundry Shell] --> [Idea Foundry Overview Board] : pipeline navigation and overview stages
 [Idea Foundry Shell] --> [Prospecting Configuration Screen] : prospecting submenu and operator controls
 [Prospecting Configuration Screen] --> [Prospecting Configuration API] : load config, trigger agent optimization cycles, and run prospecting execution
+[Idea Foundry Overview Board] --> [Prospecting Configuration API] : read persisted source records or render empty states
 [Prospecting Configuration API] --> [Node Control Plane API] : authenticated control-plane request path
 [Prospecting Configuration API] --> [Gateway Registry Preflight] : verify requested agent is registered before review runs
 [Node Control Plane API] --> [Audit Logs] : persist gateway request traces, raw LLM output, and parsed JSON output for agent-driven workflows
+[Node Control Plane API] --> [Prospecting Runtime Scheduler] : start hourly prospecting runtime loop
 [Node Control Plane API] --> [Prospecting Execution Service] : execute latest saved prospecting strategy and close the review-feedback loop
+[Prospecting Runtime Scheduler] --> [Prospecting Execution Service] : run hourly prospecting optimization cycles
+[Prospecting Runtime Scheduler] ..> [Prospecting Configuration API] : persisted next run stays aligned to enforced hourly cadence
 [Gateway Registry Preflight] --> [Agent Gateway API (FastAPI)] : fetch runtime registry snapshot
 [Angular UI] --> [Node Control Plane API] : load workspace unlock state and available strategy tools
 [Angular UI] --> [Value Proposition Screen]
