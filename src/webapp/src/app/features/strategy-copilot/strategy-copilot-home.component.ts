@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, ViewRef, inject } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
@@ -255,6 +255,7 @@ import { StrategyCopilotShellComponent } from './strategy-copilot-shell.componen
 })
 export class StrategyCopilotHomeComponent {
   readonly destroyRef = inject(DestroyRef);
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
   readonly guidanceTitle = 'Start with ideation';
   readonly guidanceCopy =
     'Ideation is the first unlocked tool in Strategy Copilot. As the concept becomes clearer, HelmOS can open the next structured strategy tools.';
@@ -351,6 +352,7 @@ export class StrategyCopilotHomeComponent {
       this.selectedWorkspaceId = '';
       this.workspaceErrorMessage =
         'HelmOS could not load your business ideas. Make sure the backend is running and try again.';
+      this.requestRender();
     }
   }
 
@@ -385,6 +387,7 @@ export class StrategyCopilotHomeComponent {
       this.panelSubtitle = strategyCopilot.chat.panelSubtitle;
       this.placeholder = strategyCopilot.chat.placeholder;
       this.messages = strategyCopilot.chat.messages;
+      this.requestRender();
     } catch {
       const fallbackTools = this.shell.getStrategyTools();
       this.primaryTools = fallbackTools.filter((tool) => tool.group === 'core');
@@ -394,6 +397,14 @@ export class StrategyCopilotHomeComponent {
       this.panelSubtitle = this.chat.panelSubtitle;
       this.placeholder = this.chat.placeholder;
       this.messages = this.chat.getMessages();
+      this.requestRender();
+    }
+  }
+
+  private requestRender(): void {
+    const view = this.changeDetectorRef as ViewRef;
+    if (!view.destroyed) {
+      this.changeDetectorRef.detectChanges();
     }
   }
 }

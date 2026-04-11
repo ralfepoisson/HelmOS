@@ -101,7 +101,7 @@ describe('StrategyCopilotHomeComponent', () => {
     const fixture = TestBed.createComponent(StrategyCopilotHomeComponent);
     fixture.detectChanges();
     await fixture.whenStable();
-    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const text = fixture.nativeElement.textContent;
     const shell = fixture.debugElement.query(By.directive(StrategyCopilotShellComponent)).componentInstance as StrategyCopilotShellComponent;

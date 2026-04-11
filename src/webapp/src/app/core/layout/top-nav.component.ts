@@ -139,6 +139,16 @@ import { WorkspaceOption } from '../services/workspace-shell.service';
                 <span class="admin-link-copy">Search backend events, errors, and request context.</span>
               </a>
               <a
+                routerLink="/admin/pipeline-history"
+                routerLinkActive="admin-link-active"
+                class="admin-link"
+                role="menuitem"
+                (click)="closeAdminMenu()"
+              >
+                <span class="admin-link-title">Pipeline History</span>
+                <span class="admin-link-copy">Inspect each pipeline execution stage by stage, including created items and state changes.</span>
+              </a>
+              <a
                 routerLink="/admin/support"
                 routerLinkActive="admin-link-active"
                 class="admin-link"

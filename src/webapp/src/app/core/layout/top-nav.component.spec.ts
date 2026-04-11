@@ -108,6 +108,7 @@ describe('TopNavComponent', () => {
 
     expect(compiled.textContent).toContain('Conceptual Tools');
     expect(compiled.textContent).toContain('Agent Testing');
+    expect(compiled.textContent).toContain('Pipeline History');
   });
 
   it('lists admin submenu items in alphabetical order', async () => {
@@ -132,6 +133,7 @@ describe('TopNavComponent', () => {
       'Knowledge Bases',
       'Knowledge Search',
       'Logs',
+      'Pipeline History',
       'Support Dashboard'
     ]);
   });

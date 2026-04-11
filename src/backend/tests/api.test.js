@@ -3410,6 +3410,174 @@ test("GET /api/idea-foundry/pipeline/status returns the current backend-owned pi
   assert.equal(response.body.data.stageStates["idea-candidates"], "completed");
 });
 
+test("GET /api/idea-foundry/pipeline/history returns persisted run summaries for the authenticated admin", async () => {
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    supportConversation: {
+      findFirst: async () => null,
+    },
+    supportMessage: {
+      findMany: async () => [],
+    },
+    supportTicket: {
+      findMany: async () => [],
+    },
+    supportTicketEvent: {},
+    logEntry: {
+      findMany: async () => [
+        {
+          id: "start-1",
+          scope: "idea-foundry",
+          event: "idea_foundry_pipeline_run_started",
+          message: "Started an Idea Foundry pipeline run.",
+          context: {
+            ownerUserId: "admin-user-1",
+            runId: "run-1",
+            requestedStartStage: "sources",
+          },
+          createdAt: new Date("2026-04-11T08:00:00.000Z"),
+        },
+        {
+          id: "finish-1",
+          scope: "idea-foundry",
+          event: "idea_foundry_pipeline_run_completed",
+          message: "Completed an Idea Foundry pipeline run.",
+          context: {
+            ownerUserId: "admin-user-1",
+            runId: "run-1",
+            status: "COMPLETED",
+            completedStageCount: 4,
+            failedStageCount: 0,
+            stageStates: {
+              sources: "completed",
+              "proto-ideas": "completed",
+              "idea-candidates": "completed",
+              "curated-opportunities": "completed",
+            },
+          },
+          createdAt: new Date("2026-04-11T08:03:00.000Z"),
+        },
+      ],
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient: {} });
+  const response = await withAuth(request(app).get("/api/idea-foundry/pipeline/history"), {
+    isAdmin: true,
+    email: "ralfepoisson@gmail.com",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.length, 1);
+  assert.equal(response.body.data[0].runId, "run-1");
+  assert.equal(response.body.data[0].status, "COMPLETED");
+  assert.equal(response.body.data[0].startedAt, "2026-04-11T08:00:00.000Z");
+});
+
+test("GET /api/idea-foundry/pipeline/history/:runId returns the selected run detail", async () => {
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    supportConversation: {
+      findFirst: async () => null,
+    },
+    supportMessage: {
+      findMany: async () => [],
+    },
+    supportTicket: {
+      findMany: async () => [],
+    },
+    supportTicketEvent: {},
+    logEntry: {
+      findMany: async () => [
+        {
+          id: "start-1",
+          scope: "idea-foundry",
+          event: "idea_foundry_pipeline_run_started",
+          message: "Started an Idea Foundry pipeline run.",
+          context: {
+            ownerUserId: "admin-user-1",
+            runId: "run-9",
+            requestedStartStage: "sources",
+          },
+          createdAt: new Date("2026-04-11T08:00:00.000Z"),
+        },
+        {
+          id: "stage-1",
+          scope: "idea-foundry",
+          event: "idea_foundry_pipeline_stage_proto_idea",
+          message: "Executed an Idea Foundry pipeline stage.",
+          context: {
+            ownerUserId: "admin-user-1",
+            runId: "run-9",
+            stageKey: "proto-idea",
+            normalizedStageKey: "proto-ideas",
+            status: "COMPLETED",
+            attempts: 2,
+            processedCount: 2,
+            producedCount: 1,
+            history: [
+              {
+                kind: "created",
+                entityType: "proto-idea",
+                entityId: "proto-1",
+                title: "Emergency shift scheduling assistant",
+                summary: "Created a new proto-idea from the strongest source signal.",
+              },
+            ],
+          },
+          createdAt: new Date("2026-04-11T08:01:00.000Z"),
+        },
+        {
+          id: "finish-1",
+          scope: "idea-foundry",
+          event: "idea_foundry_pipeline_run_completed",
+          message: "Completed an Idea Foundry pipeline run.",
+          context: {
+            ownerUserId: "admin-user-1",
+            runId: "run-9",
+            status: "COMPLETED",
+            completedStageCount: 4,
+            failedStageCount: 0,
+            stageStates: {
+              sources: "completed",
+              "proto-ideas": "completed",
+              "idea-candidates": "completed",
+              "curated-opportunities": "completed",
+            },
+          },
+          createdAt: new Date("2026-04-11T08:03:00.000Z"),
+        },
+      ],
+    },
+  };
+
+  const app = createApp({ prisma, agentGatewayClient: {} });
+  const response = await withAuth(request(app).get("/api/idea-foundry/pipeline/history/run-9"), {
+    isAdmin: true,
+    email: "ralfepoisson@gmail.com",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.runId, "run-9");
+  assert.equal(response.body.data.stages.length, 1);
+  assert.equal(response.body.data.stages[0].stageKey, "proto-ideas");
+  assert.equal(response.body.data.stages[0].history[0].entityId, "proto-1");
+});
+
 test("POST /api/idea-foundry/prospecting/configuration/run executes a full prospecting optimization cycle and persists the refreshed result records", async () => {
   const currentSnapshot = {
     agentState: "active",

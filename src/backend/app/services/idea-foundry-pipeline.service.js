@@ -104,6 +104,7 @@ function accumulateTotals(accumulator, result) {
     refinedCount: Number(accumulator.refinedCount ?? 0) + Number(result?.refinedCount ?? 0),
     rejectedCount: Number(accumulator.rejectedCount ?? 0) + Number(result?.rejectedCount ?? 0),
     opportunityCount: Number(accumulator.opportunityCount ?? 0) + Number(result?.opportunityCount ?? 0),
+    resultRecordCount: Number(accumulator.resultRecordCount ?? 0) + Number(result?.resultRecordCount ?? 0),
   };
 }
 
@@ -117,6 +118,7 @@ function buildDefaultStages() {
         processedCount: Number(result?.runtime?.resultRecordCount ?? 0) > 0 ? 1 : 0,
         completedCount: 1,
         failedCount: 0,
+        resultRecordCount: Number(result?.runtime?.resultRecordCount ?? 0),
       }),
     },
     {
@@ -156,6 +158,8 @@ function createIdeaFoundryPipelineExecutor({
       let status = "COMPLETED";
       let stopReason = "no_work_remaining";
       const normalizedStageKey = normalizeStageKey(stage.key);
+      const stageStartedAt = new Date().toISOString();
+      const beforeSnapshot = await snapshotStageData(prisma, ownerUserId, normalizedStageKey);
 
       if (normalizedStageKey) {
         onStageStateChange?.({
@@ -187,6 +191,12 @@ function createIdeaFoundryPipelineExecutor({
         }
       }
 
+      const stageEndedAt = new Date().toISOString();
+      const afterSnapshot = await snapshotStageData(prisma, ownerUserId, normalizedStageKey);
+      const history = buildStageHistory(normalizedStageKey, beforeSnapshot, afterSnapshot);
+      const processedCount = Number(totals.processedCount ?? 0);
+      const producedCount = deriveProducedCount(normalizedStageKey, totals, attempts.at(-1), history);
+
       stageResults.push({
         key: stage.key,
         status,
@@ -194,6 +204,11 @@ function createIdeaFoundryPipelineExecutor({
         attempts: attempts.length,
         lastResult: attempts.at(-1) ?? null,
         totals,
+        processedCount,
+        producedCount,
+        history,
+        startedAt: stageStartedAt,
+        endedAt: stageEndedAt,
       });
 
       if (normalizedStageKey) {
@@ -215,11 +230,20 @@ function createIdeaFoundryPipelineExecutor({
         message: "Executed an Idea Foundry pipeline stage.",
         context: {
           ownerUserId,
+          runId: options.runId ?? null,
           stageKey: stage.key,
+          normalizedStageKey,
           status,
           stopReason,
           attempts: attempts.length,
           totals,
+          processedCount,
+          producedCount,
+          stageTimeline: {
+            startedAt: stageStartedAt,
+            endedAt: stageEndedAt,
+          },
+          history,
         },
       });
 
@@ -244,6 +268,321 @@ function createIdeaFoundryPipelineExecutor({
   return {
     execute,
   };
+}
+
+async function snapshotStageData(prisma, ownerUserId, normalizedStageKey) {
+  if (!normalizedStageKey) {
+    return {};
+  }
+
+  switch (normalizedStageKey) {
+    case "sources":
+      return { sources: await loadProspectingSourceSnapshot(prisma, ownerUserId) };
+    case "proto-ideas":
+      return {
+        sourceProcessing: await loadProtoIdeaSourceSnapshot(prisma, ownerUserId),
+        protoIdeas: await loadProtoIdeaSnapshot(prisma, ownerUserId),
+      };
+    case "idea-candidates":
+      return {
+        protoIdeas: await loadProtoIdeaSnapshot(prisma, ownerUserId),
+        ideaCandidates: await loadIdeaCandidateSnapshot(prisma, ownerUserId),
+      };
+    case "curated-opportunities":
+      return {
+        ideaCandidates: await loadIdeaCandidateEvaluationSnapshot(prisma, ownerUserId),
+        curatedOpportunities: await loadCuratedOpportunitySnapshot(prisma, ownerUserId),
+      };
+    default:
+      return {};
+  }
+}
+
+async function loadProspectingSourceSnapshot(prisma, ownerUserId) {
+  if (!prisma?.prospectingConfiguration || typeof prisma.prospectingConfiguration.findFirst !== "function") {
+    return [];
+  }
+
+  try {
+    const record = await prisma.prospectingConfiguration.findFirst({
+      where: {
+        ownerUserId,
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+      select: {
+        lastResultRecords: true,
+      },
+    });
+    const records = Array.isArray(record?.lastResultRecords) ? record.lastResultRecords : [];
+    return records.map((entry) => ({
+      id: String(entry?.id ?? entry?.sourceKey ?? entry?.sourceUrl ?? ""),
+      title: String(entry?.sourceTitle ?? entry?.title ?? entry?.query ?? "Untitled source"),
+      summary: String(entry?.snippet ?? entry?.queryFamilyTitle ?? ""),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function loadProtoIdeaSourceSnapshot(prisma, ownerUserId) {
+  if (!prisma?.protoIdeaSource || typeof prisma.protoIdeaSource.findMany !== "function") {
+    return [];
+  }
+
+  try {
+    return await prisma.protoIdeaSource.findMany({
+      where: {
+        ownerUserId,
+      },
+      select: {
+        id: true,
+        sourceTitle: true,
+        processingStatus: true,
+      },
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function loadProtoIdeaSnapshot(prisma, ownerUserId) {
+  if (!prisma?.protoIdea || typeof prisma.protoIdea.findMany !== "function") {
+    return [];
+  }
+
+  try {
+    return await prisma.protoIdea.findMany({
+      where: {
+        ownerUserId,
+      },
+      select: {
+        id: true,
+        title: true,
+        refinementStatus: true,
+      },
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function loadIdeaCandidateSnapshot(prisma, ownerUserId) {
+  if (!prisma?.ideaCandidate || typeof prisma.ideaCandidate.findMany !== "function") {
+    return [];
+  }
+
+  try {
+    return await prisma.ideaCandidate.findMany({
+      where: {
+        ownerUserId,
+      },
+      select: {
+        id: true,
+        protoIdeaId: true,
+        opportunityConcept: true,
+        workflowState: true,
+      },
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function loadIdeaCandidateEvaluationSnapshot(prisma, ownerUserId) {
+  if (!prisma?.ideaCandidate || typeof prisma.ideaCandidate.findMany !== "function") {
+    return [];
+  }
+
+  try {
+    return await prisma.ideaCandidate.findMany({
+      where: {
+        ownerUserId,
+      },
+      select: {
+        id: true,
+        opportunityConcept: true,
+        workflowState: true,
+        evaluationStatus: true,
+        evaluationDecision: true,
+      },
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function loadCuratedOpportunitySnapshot(prisma, ownerUserId) {
+  if (!prisma?.curatedOpportunity || typeof prisma.curatedOpportunity.findMany !== "function") {
+    return [];
+  }
+
+  try {
+    return await prisma.curatedOpportunity.findMany({
+      where: {
+        ownerUserId,
+      },
+      select: {
+        id: true,
+        ideaCandidateId: true,
+        title: true,
+      },
+    });
+  } catch {
+    return [];
+  }
+}
+
+function buildStageHistory(normalizedStageKey, beforeSnapshot = {}, afterSnapshot = {}) {
+  switch (normalizedStageKey) {
+    case "sources":
+      return buildCreatedEvents({
+        entityType: "source",
+        beforeItems: beforeSnapshot.sources,
+        afterItems: afterSnapshot.sources,
+        summaryText: "Captured a new source result from the prospecting execution.",
+      });
+    case "proto-ideas":
+      return [
+        ...buildCreatedEvents({
+          entityType: "proto-idea",
+          beforeItems: beforeSnapshot.protoIdeas,
+          afterItems: afterSnapshot.protoIdeas,
+          summaryText: "Created a new proto-idea from the strongest source signal.",
+        }),
+        ...buildStateChangeEvents({
+          entityType: "proto-idea-source",
+          beforeItems: beforeSnapshot.sourceProcessing,
+          afterItems: afterSnapshot.sourceProcessing,
+          getState: (entry) => entry.processingStatus,
+        }),
+      ];
+    case "idea-candidates":
+      return [
+        ...buildCreatedEvents({
+          entityType: "idea-candidate",
+          beforeItems: beforeSnapshot.ideaCandidates,
+          afterItems: afterSnapshot.ideaCandidates,
+          getTitle: (entry) => entry.opportunityConcept,
+          summaryText: "Created a new idea candidate during refinement.",
+        }),
+        ...buildStateChangeEvents({
+          entityType: "proto-idea",
+          beforeItems: beforeSnapshot.protoIdeas,
+          afterItems: afterSnapshot.protoIdeas,
+          getTitle: (entry) => entry.title,
+          getState: (entry) => entry.refinementStatus,
+        }),
+      ];
+    case "curated-opportunities":
+      return [
+        ...buildCreatedEvents({
+          entityType: "curated-opportunity",
+          beforeItems: beforeSnapshot.curatedOpportunities,
+          afterItems: afterSnapshot.curatedOpportunities,
+          summaryText: "Promoted a new curated opportunity.",
+        }),
+        ...buildStateChangeEvents({
+          entityType: "idea-candidate",
+          beforeItems: beforeSnapshot.ideaCandidates,
+          afterItems: afterSnapshot.ideaCandidates,
+          getTitle: (entry) => entry.opportunityConcept,
+          getState: (entry) =>
+            [entry.workflowState, entry.evaluationStatus, entry.evaluationDecision].filter(Boolean).join(" / "),
+        }),
+      ];
+    default:
+      return [];
+  }
+}
+
+function buildCreatedEvents({
+  entityType,
+  beforeItems = [],
+  afterItems = [],
+  getTitle = (entry) => entry.title,
+  summaryText,
+}) {
+  const beforeIds = new Set((Array.isArray(beforeItems) ? beforeItems : []).map((entry) => String(entry?.id ?? "")));
+  return (Array.isArray(afterItems) ? afterItems : [])
+    .filter((entry) => {
+      const id = String(entry?.id ?? "");
+      return id.length > 0 && !beforeIds.has(id);
+    })
+    .map((entry) => ({
+      kind: "created",
+      entityType,
+      entityId: String(entry.id),
+      title: String(getTitle(entry) ?? "Untitled item"),
+      summary: summaryText,
+    }));
+}
+
+function buildStateChangeEvents({
+  entityType,
+  beforeItems = [],
+  afterItems = [],
+  getTitle = (entry) => entry.sourceTitle ?? entry.title ?? entry.opportunityConcept ?? "Untitled item",
+  getState,
+}) {
+  if (typeof getState !== "function") {
+    return [];
+  }
+
+  const beforeMap = new Map(
+    (Array.isArray(beforeItems) ? beforeItems : []).map((entry) => [String(entry?.id ?? ""), entry]),
+  );
+  const events = [];
+
+  for (const entry of Array.isArray(afterItems) ? afterItems : []) {
+    const id = String(entry?.id ?? "");
+    if (!id || !beforeMap.has(id)) {
+      continue;
+    }
+
+    const previous = beforeMap.get(id);
+    const fromState = String(getState(previous) ?? "");
+    const toState = String(getState(entry) ?? "");
+    if (!fromState || !toState || fromState === toState) {
+      continue;
+    }
+
+    events.push({
+      kind: "state_changed",
+      entityType,
+      entityId: id,
+      title: String(getTitle(entry)),
+      summary: `State changed from ${fromState} to ${toState}.`,
+      fromState,
+      toState,
+    });
+  }
+
+  return events;
+}
+
+function deriveProducedCount(normalizedStageKey, totals = {}, lastResult = null, history = []) {
+  switch (normalizedStageKey) {
+    case "sources":
+      return Number(lastResult?.runtime?.resultRecordCount ?? totals.resultRecordCount ?? history.length ?? 0);
+    case "proto-ideas":
+      return Number(totals.createdCount ?? history.filter((entry) => entry.kind === "created").length);
+    case "idea-candidates":
+      return Number(
+        totals.candidateCount ??
+          (Number(totals.createdCount ?? 0) + Number(totals.updatedCount ?? 0)) ??
+          history.filter((entry) => entry.kind === "created").length,
+      );
+    case "curated-opportunities":
+      return Number(
+        totals.opportunityCount ??
+          totals.promotedCount ??
+          history.filter((entry) => entry.kind === "created").length,
+      );
+    default:
+      return 0;
+  }
 }
 
 function createIdeaFoundryPipelineRuntime({
@@ -316,12 +655,14 @@ function createIdeaFoundryPipelineRuntime({
       context: {
         ownerUserId,
         runId,
+        requestedStartStage: normalizeStageKey(options.startStage) ?? "sources",
       },
     });
 
     void executor
       .execute(prisma, agentGatewayClient, {
         ...options,
+        runId,
         ownerUserId,
         onStageStateChange(event) {
           const normalizedStageKey = normalizeStageKey(event?.stageKey);
@@ -362,6 +703,7 @@ function createIdeaFoundryPipelineRuntime({
             status: result.status,
             completedStageCount: latest.completedStageCount,
             failedStageCount: latest.failedStageCount,
+            stageStates: latest.stageStates,
           },
         });
       })
@@ -388,6 +730,10 @@ function createIdeaFoundryPipelineRuntime({
             ownerUserId,
             runId,
             errorMessage: latest.errorMessage,
+            status: latest.status,
+            completedStageCount: latest.completedStageCount,
+            failedStageCount: latest.failedStageCount,
+            stageStates: latest.stageStates,
           },
         });
       });

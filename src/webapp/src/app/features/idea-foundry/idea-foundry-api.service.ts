@@ -82,6 +82,45 @@ export interface IdeaFoundryPipelineRunResponse {
   run: IdeaFoundryPipelineStatusResponse;
 }
 
+export interface IdeaFoundryPipelineHistoryEntry {
+  runId: string;
+  ownerUserId: string | null;
+  requestedStartStage: IdeaFoundryPipelineStageKey;
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'HALTED';
+  startedAt: string | null;
+  endedAt: string | null;
+  completedStageCount: number;
+  failedStageCount: number;
+  errorMessage: string | null;
+}
+
+export interface IdeaFoundryPipelineHistoryChange {
+  kind: 'created' | 'state_changed';
+  entityType: string;
+  entityId: string;
+  title: string;
+  summary: string;
+  fromState?: string;
+  toState?: string;
+}
+
+export interface IdeaFoundryPipelineHistoryStage {
+  stageKey: IdeaFoundryPipelineStageKey;
+  status: string;
+  attempts: number;
+  processedCount: number;
+  producedCount: number;
+  totals?: Record<string, unknown>;
+  startedAt: string | null;
+  endedAt: string | null;
+  history: IdeaFoundryPipelineHistoryChange[];
+}
+
+export interface IdeaFoundryPipelineHistoryDetail extends IdeaFoundryPipelineHistoryEntry {
+  stageStates: IdeaFoundryPipelineStageStates;
+  stages: IdeaFoundryPipelineHistoryStage[];
+}
+
 export type IdeaFoundryPipelineStageKey =
   | 'sources'
   | 'proto-ideas'
@@ -316,6 +355,19 @@ export class IdeaFoundryApiService {
   async getIdeaFoundryPipelineStatus(): Promise<IdeaFoundryPipelineStatusResponse> {
     const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/pipeline/status`, 'GET');
     return this.parseApiResponse<IdeaFoundryPipelineStatusResponse>(response, 'load the Idea Foundry pipeline status');
+  }
+
+  async listIdeaFoundryPipelineRuns(): Promise<IdeaFoundryPipelineHistoryEntry[]> {
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/pipeline/history`, 'GET');
+    return this.parseApiResponse<IdeaFoundryPipelineHistoryEntry[]>(response, 'load Idea Foundry pipeline history');
+  }
+
+  async getIdeaFoundryPipelineRunDetail(runId: string): Promise<IdeaFoundryPipelineHistoryDetail> {
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/pipeline/history/${encodeURIComponent(runId)}`, 'GET');
+    return this.parseApiResponse<IdeaFoundryPipelineHistoryDetail>(
+      response,
+      'load the selected Idea Foundry pipeline execution detail'
+    );
   }
 
   async getProtoIdeaExtractionConfiguration(): Promise<ProtoIdeaExtractionConfigurationResponse> {

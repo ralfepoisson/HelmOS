@@ -10,3 +10,4 @@ __pycache__/
 *.pyc
 src/backend/.venv/
 src/backend/.env.litellm
+.playwright-cli/

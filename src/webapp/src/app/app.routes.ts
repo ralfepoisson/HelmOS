@@ -8,6 +8,7 @@ import { AuthStatusPageComponent } from './features/auth/auth-status-page.compon
 import { AgentAdminScreenComponent } from './features/admin/agent-admin-screen.component';
 import { AgentTestingScreenComponent } from './features/admin/agent-testing-screen.component';
 import { AdminLogsScreenComponent } from './features/admin/admin-logs-screen.component';
+import { PipelineHistoryScreenComponent } from './features/admin/pipeline-history-screen.component';
 import { KnowledgeBaseDetailScreenComponent } from './features/admin/knowledge-base-detail-screen.component';
 import { KnowledgeBaseListScreenComponent } from './features/admin/knowledge-base-list-screen.component';
 import { KnowledgeBaseSearchScreenComponent } from './features/admin/knowledge-base-search-screen.component';
@@ -174,6 +175,12 @@ export const routes: Routes = [
     component: AdminLogsScreenComponent,
     canActivate: [adminGuard],
     title: 'HelmOS Admin Logs'
+  },
+  {
+    path: 'admin/pipeline-history',
+    component: PipelineHistoryScreenComponent,
+    canActivate: [adminGuard],
+    title: 'HelmOS Pipeline History'
   },
   {
     path: 'auth/callback',

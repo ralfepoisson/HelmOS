@@ -196,6 +196,7 @@ Current implementation note:
 * Idea Foundry now also exposes a dedicated `Search` screen with a Google-style query field, a discrete filters control, and card-based results across proto-ideas, idea candidates, and curated opportunities
 * Search stage filters come directly from the persisted record type, while tag filters are derived from evaluation classification data already stored on idea candidates and curated opportunities
 * Clicking any search card now opens an `Idea Profile` that reconstructs lineage from the persisted source, proto-idea, idea candidate, and curated opportunity relationships and surfaces whatever metadata is currently available for that stage
+* Administrators can now open a dedicated `Pipeline History` screen from the top-nav admin menu to inspect past pipeline executions; each run is listed by timestamp and the detail view shows per-stage processed/produced counts plus item-level change history derived from durable `idea-foundry` audit logs
 
 ---
 

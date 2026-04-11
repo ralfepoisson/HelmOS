@@ -28,6 +28,7 @@ package "Agent Experience Layer" {
   [Agent Admin Screen]
   [Agent Test Admin Screen]
   [Logs Admin Screen]
+  [Pipeline History Screen]
   [Global Help Widget]
   [Support Dashboard Screen]
   [Support API]
@@ -181,6 +182,7 @@ package "AWS Production Deployment" {
 [Idea Foundry Pipeline Executor] --> [Proto-Idea Extraction Service] : repeat extraction passes until no pending source work remains
 [Idea Foundry Pipeline Executor] --> [Idea Refinement Service] : repeat refinement passes until no pending proto-ideas remain
 [Idea Foundry Pipeline Executor] --> [Idea Evaluation Service] : repeat evaluation passes until no pending candidates remain
+[Idea Foundry Pipeline Executor] --> [Audit Logs] : persist run start, completion, per-stage counts, and item-level change history keyed by run id
 [Prospecting Runtime Scheduler] ..> [Prospecting Configuration API] : persisted next run stays aligned to enforced hourly cadence
 [Proto-Idea Stage Runner] --> [Proto-Idea Extraction Service] : run a controlled extraction pass over pending sources
 [Idea Refinement Stage Runner] --> [Idea Refinement Service] : run a controlled refinement pass over eligible proto-ideas
@@ -206,6 +208,8 @@ package "AWS Production Deployment" {
 [Agent Test Admin Screen] --> [Run Detail Evidence API] : transcript turns, score evidence, and snapshot artifacts
 [Angular UI] --> [Logs Admin Screen]
 [Logs Admin Screen] --> [Node Control Plane API] : search backend logs, filter by scope, timed refresh
+[Angular UI] --> [Pipeline History Screen]
+[Pipeline History Screen] --> [Idea Foundry Pipeline API] : list recorded runs and inspect one execution with per-stage change detail
 [Angular UI] --> [Global Help Widget]
 [Global Help Widget] --> [Support API] : ask product questions, report bugs, receive ticket ids
 [Angular UI] --> [Support Dashboard Screen]

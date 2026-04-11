@@ -209,6 +209,15 @@ and associated metadata directly from these persisted relationships plus stored 
 implementation does not require a separate Idea Foundry search index table.
 end note
 
+note right of LogEntry
+Idea Foundry pipeline history is derived from durable
+`log_entries` rows scoped to `idea-foundry`.
+Run start, run completion/failure, and per-stage entries now
+carry a `runId`, stage counts, and item-level change summaries
+so the admin Pipeline History screen can reconstruct one execution
+without introducing a separate history table.
+end note
+
 package "Idea Foundry Control" {
   entity "prospecting_configurations" as prospecting_configurations {
     *id : UUID <<PK>>

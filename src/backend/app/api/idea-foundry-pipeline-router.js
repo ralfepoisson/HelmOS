@@ -5,6 +5,10 @@ const {
   createIdeaFoundryPipelineExecutor,
   createIdeaFoundryPipelineRuntime,
 } = require("../services/idea-foundry-pipeline.service");
+const {
+  getIdeaFoundryPipelineRunDetail,
+  listIdeaFoundryPipelineRuns,
+} = require("../services/idea-foundry-pipeline-history.service");
 
 const pipelineRunSchema = z
   .object({
@@ -42,6 +46,26 @@ function createIdeaFoundryPipelineRouter({
   router.get("/status", async (req, res) => {
     res.json({
       data: runtime.getStatus(req.auth.currentUser.id),
+    });
+  });
+
+  router.get("/history", async (req, res) => {
+    res.json({
+      data: await listIdeaFoundryPipelineRuns(prisma, req.auth.currentUser.id),
+    });
+  });
+
+  router.get("/history/:runId", async (req, res) => {
+    const detail = await getIdeaFoundryPipelineRunDetail(prisma, req.auth.currentUser.id, req.params.runId);
+    if (!detail) {
+      res.status(404).json({
+        error: "Pipeline run not found.",
+      });
+      return;
+    }
+
+    res.json({
+      data: detail,
     });
   });
 
