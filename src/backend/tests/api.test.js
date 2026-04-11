@@ -3578,6 +3578,96 @@ test("GET /api/idea-foundry/pipeline/history/:runId returns the selected run det
   assert.equal(response.body.data.stages[0].history[0].entityId, "proto-1");
 });
 
+test("GET /api/idea-foundry/pipeline/schedule returns the persisted pipeline schedule for the authenticated admin", async () => {
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    supportConversation: {
+      findFirst: async () => null,
+    },
+    supportMessage: {
+      findMany: async () => [],
+    },
+    supportTicket: {
+      findMany: async () => [],
+    },
+    supportTicketEvent: {},
+    $executeRawUnsafe: async () => {},
+    $queryRawUnsafe: async () => [
+      {
+        id: "schedule-1",
+        owner_user_id: "admin-user-1",
+        enabled: true,
+        interval_minutes: 240,
+        last_run_at: new Date("2026-04-11T08:00:00.000Z"),
+        next_run_at: new Date("2026-04-11T12:00:00.000Z"),
+        updated_at: new Date("2026-04-11T08:05:00.000Z"),
+      },
+    ],
+  };
+
+  const app = createApp({ prisma, agentGatewayClient: {} });
+  const response = await withAuth(request(app).get("/api/idea-foundry/pipeline/schedule"), {
+    isAdmin: true,
+    email: "ralfepoisson@gmail.com",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.enabled, true);
+  assert.equal(response.body.data.intervalMinutes, 240);
+  assert.equal(response.body.data.nextRunAt, "2026-04-11T12:00:00.000Z");
+  assert.equal(response.body.data.upcomingRuns.length, 5);
+});
+
+test("POST /api/idea-foundry/pipeline/schedule saves the pipeline schedule for the authenticated admin", async () => {
+  const prisma = {
+    user: {
+      upsert: async ({ create, update }) => ({
+        id: "admin-user-1",
+        email: create.email,
+        displayName: update.displayName,
+        appRole: "ADMIN",
+      }),
+    },
+    supportConversation: {
+      findFirst: async () => null,
+    },
+    supportMessage: {
+      findMany: async () => [],
+    },
+    supportTicket: {
+      findMany: async () => [],
+    },
+    supportTicketEvent: {},
+    $executeRawUnsafe: async () => {},
+    $queryRawUnsafe: async () => [],
+    $transaction: async (callback) =>
+      callback({
+        $executeRawUnsafe: async () => {},
+        $queryRawUnsafe: async () => [],
+      }),
+  };
+
+  const app = createApp({ prisma, agentGatewayClient: {} });
+  const response = await withAuth(
+    request(app)
+      .post("/api/idea-foundry/pipeline/schedule")
+      .send({ enabled: true, intervalMinutes: 720 }),
+    { isAdmin: true, email: "ralfepoisson@gmail.com" }
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.enabled, true);
+  assert.equal(response.body.data.intervalMinutes, 720);
+  assert.equal(response.body.data.upcomingRuns.length, 5);
+});
+
 test("POST /api/idea-foundry/prospecting/configuration/run executes a full prospecting optimization cycle and persists the refreshed result records", async () => {
   const currentSnapshot = {
     agentState: "active",

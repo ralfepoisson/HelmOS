@@ -5,6 +5,7 @@ const { errorHandler } = require("./api/error-handler");
 const { buildRequestLogger } = require("./api/request-log-middleware");
 const { createAgentGatewayClient } = require("./services/agent-gateway-client");
 const { createIdeaFoundryPipelineRuntime } = require("./services/idea-foundry-pipeline.service");
+const { createIdeaFoundryPipelineScheduleRuntime } = require("./services/idea-foundry-pipeline-schedule.service");
 const { getKnowledgeBaseConfig } = require("./services/knowledge-base.config");
 const { createKnowledgeBaseProcessingRuntime } = require("./services/knowledge-base-processing.service");
 const { createFileStorageService } = require("./services/knowledge-base-storage.service");
@@ -37,7 +38,13 @@ function isAllowedOrigin(origin, allowedOrigins = getAllowedOrigins()) {
   }
 }
 
-function createApp({ prisma, agentGatewayClient, ideaFoundryPipelineExecutor, ideaFoundryPipelineRuntime }) {
+function createApp({
+  prisma,
+  agentGatewayClient,
+  ideaFoundryPipelineExecutor,
+  ideaFoundryPipelineRuntime,
+  ideaFoundryPipelineScheduleRuntime,
+}) {
   const app = express();
   const allowedOrigins = getAllowedOrigins();
   const knowledgeBaseConfig = getKnowledgeBaseConfig();
@@ -61,6 +68,13 @@ function createApp({ prisma, agentGatewayClient, ideaFoundryPipelineExecutor, id
     ideaFoundryPipelineRuntime ??
     createIdeaFoundryPipelineRuntime({
       executor: ideaFoundryPipelineExecutor,
+    });
+  const pipelineScheduleRuntime =
+    ideaFoundryPipelineScheduleRuntime ??
+    createIdeaFoundryPipelineScheduleRuntime({
+      prisma,
+      agentGatewayClient: gatewayClient,
+      pipelineRuntime,
     });
 
   ensureSupportScaffolding(prisma).catch((error) => {
@@ -111,6 +125,7 @@ function createApp({ prisma, agentGatewayClient, ideaFoundryPipelineExecutor, id
   app.locals.prospectingRuntime = prospectingRuntime;
   app.locals.storageService = storageService;
   app.locals.ideaFoundryPipelineRuntime = pipelineRuntime;
+  app.locals.ideaFoundryPipelineScheduleRuntime = pipelineScheduleRuntime;
 
   return app;
 }

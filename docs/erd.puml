@@ -235,6 +235,18 @@ package "Idea Foundry Control" {
     updated_at : TIMESTAMP
   }
 
+  entity "idea_foundry_pipeline_schedules" as idea_foundry_pipeline_schedules {
+    *id : UUID <<PK>>
+    --
+    owner_user_id : UUID <<FK,UK>>
+    enabled : BOOLEAN
+    interval_minutes : INTEGER
+    last_run_at : TIMESTAMP
+    next_run_at : TIMESTAMP
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+  }
+
   entity "proto_idea_sources" as proto_idea_sources {
     *id : UUID <<PK>>
     --
@@ -544,6 +556,14 @@ runtime snapshot cadence and next_run_at on the same schedule
 so the scheduler and operator UI do not drift apart.
 Stale RUNNING rows are also recoverable once the due slot elapses,
 preventing interrupted cycles from wedging the hourly loop.
+end note
+
+note right of idea_foundry_pipeline_schedules
+Each row stores whether the pipeline should run automatically
+for one admin owner plus the cadence in minutes.
+last_run_at records the latest scheduler-fired execution and
+next_run_at drives both the background runtime and the operator
+preview of the next five planned pipeline runs.
 end note
 
 note right of proto_idea_sources
@@ -993,6 +1013,7 @@ users ||--o{ companies : created_by
 companies ||--o{ workspaces
 users ||--o{ workspaces : created_by
 users ||--|| prospecting_configurations : owns
+users ||--|| idea_foundry_pipeline_schedules : owns
 users ||--o{ proto_idea_sources : owns
 proto_idea_extraction_policies ||--o{ proto_idea_sources : guides
 prospecting_configurations ||--o{ proto_idea_sources : feeds

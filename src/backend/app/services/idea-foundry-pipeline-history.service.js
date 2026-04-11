@@ -83,16 +83,18 @@ function buildRunHistory(logEntries = []) {
       current.errorMessage = entry.context?.errorMessage ?? null;
       current.stageStates = normalizeStageStates(entry.context?.stageStates, current.stageStates);
     } else if (entry.event.startsWith("idea_foundry_pipeline_stage_")) {
+      const history = Array.isArray(entry.context?.history) ? entry.context.history : [];
+      const producedCount = deriveProducedCount(entry.context, history);
       current.stages.push({
         stageKey: normalizeStageKey(entry.context?.normalizedStageKey ?? entry.context?.stageKey) ?? String(entry.context?.stageKey ?? ""),
         status: String(entry.context?.status ?? "COMPLETED"),
         attempts: Number(entry.context?.attempts ?? 0),
         processedCount: Number(entry.context?.processedCount ?? entry.context?.totals?.processedCount ?? 0),
-        producedCount: Number(entry.context?.producedCount ?? 0),
+        producedCount,
         totals: entry.context?.totals ?? {},
         startedAt: entry.context?.stageTimeline?.startedAt ?? null,
         endedAt: entry.context?.stageTimeline?.endedAt ?? toIsoString(entry.createdAt),
-        history: Array.isArray(entry.context?.history) ? entry.context.history : [],
+        history,
       });
     }
 
@@ -145,6 +147,27 @@ function toIsoString(value) {
   }
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function deriveProducedCount(context = {}, history = []) {
+  const explicitProducedCount = Number(context?.producedCount ?? Number.NaN);
+  const totals = context?.totals ?? {};
+  const createdHistoryCount = history.filter((entry) => entry?.kind === "created").length;
+  const candidateCounts = [
+    explicitProducedCount,
+    Number(totals.createdCount ?? Number.NaN),
+    Number(totals.candidateCount ?? Number.NaN),
+    Number(totals.opportunityCount ?? Number.NaN),
+    Number(totals.promotedCount ?? Number.NaN),
+    createdHistoryCount,
+  ].filter((value) => Number.isFinite(value));
+
+  const positiveCount = candidateCounts.find((value) => value > 0);
+  if (typeof positiveCount === "number") {
+    return positiveCount;
+  }
+
+  return candidateCounts[0] ?? 0;
 }
 
 module.exports = {

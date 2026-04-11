@@ -9,12 +9,23 @@ const {
   getIdeaFoundryPipelineRunDetail,
   listIdeaFoundryPipelineRuns,
 } = require("../services/idea-foundry-pipeline-history.service");
+const {
+  getIdeaFoundryPipelineSchedule,
+  saveIdeaFoundryPipelineSchedule,
+} = require("../services/idea-foundry-pipeline-schedule.service");
 
 const pipelineRunSchema = z
   .object({
     retryFailed: z.boolean().optional(),
     maxStageIterations: z.number().int().min(1).max(250).optional(),
     startStage: z.enum(["sources", "proto-ideas", "idea-candidates", "curated-opportunities"]).optional(),
+  })
+  .strict();
+
+const pipelineScheduleSchema = z
+  .object({
+    enabled: z.boolean(),
+    intervalMinutes: z.number().int().min(60).max(7 * 24 * 60),
   })
   .strict();
 
@@ -66,6 +77,19 @@ function createIdeaFoundryPipelineRouter({
 
     res.json({
       data: detail,
+    });
+  });
+
+  router.get("/schedule", async (req, res) => {
+    res.json({
+      data: await getIdeaFoundryPipelineSchedule(prisma, req.auth.currentUser.id),
+    });
+  });
+
+  router.post("/schedule", async (req, res) => {
+    const payload = pipelineScheduleSchema.parse(req.body);
+    res.json({
+      data: await saveIdeaFoundryPipelineSchedule(prisma, req.auth.currentUser.id, payload),
     });
   });
 

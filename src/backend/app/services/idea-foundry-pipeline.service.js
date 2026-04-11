@@ -112,6 +112,7 @@ function buildDefaultStages() {
   return [
     {
       key: "sources",
+      repeatWhileProgress: false,
       run: async (prisma, agentGatewayClient, options) =>
         executeProspectingConfiguration(prisma, agentGatewayClient, { id: options.ownerUserId }, options),
       mapResult: (result) => ({
@@ -182,6 +183,11 @@ function createIdeaFoundryPipelineExecutor({
 
         if (!shouldContinueStage(result)) {
           stopReason = "no_work_remaining";
+          break;
+        }
+
+        if (stage.repeatWhileProgress === false) {
+          stopReason = "single_pass_stage";
           break;
         }
 
@@ -565,7 +571,7 @@ function buildStateChangeEvents({
 function deriveProducedCount(normalizedStageKey, totals = {}, lastResult = null, history = []) {
   switch (normalizedStageKey) {
     case "sources":
-      return Number(lastResult?.runtime?.resultRecordCount ?? totals.resultRecordCount ?? history.length ?? 0);
+      return Number(totals.resultRecordCount ?? lastResult?.runtime?.resultRecordCount ?? history.length ?? 0);
     case "proto-ideas":
       return Number(totals.createdCount ?? history.filter((entry) => entry.kind === "created").length);
     case "idea-candidates":

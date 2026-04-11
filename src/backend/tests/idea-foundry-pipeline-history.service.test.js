@@ -281,3 +281,83 @@ test("getIdeaFoundryPipelineRunDetail returns stage summaries and structured ite
   assert.equal(result.stages[1].history[1].fromState, "PENDING");
   assert.equal(result.stages[1].history[1].toState, "COMPLETED");
 });
+
+test("getIdeaFoundryPipelineRunDetail derives producedCount from created history when totals report zero", async () => {
+  const prisma = {
+    logEntry: {
+      findMany: async () => [
+        createLogEntry({
+          id: "run-start",
+          event: "idea_foundry_pipeline_run_started",
+          createdAt: new Date("2026-04-11T11:41:00.000Z"),
+          context: {
+            ownerUserId: "user-1",
+            runId: "run-88",
+            requestedStartStage: "sources",
+          },
+        }),
+        createLogEntry({
+          id: "stage-1",
+          event: "idea_foundry_pipeline_stage_proto_idea",
+          createdAt: new Date("2026-04-11T11:44:00.000Z"),
+          context: {
+            ownerUserId: "user-1",
+            runId: "run-88",
+            stageKey: "proto-idea",
+            normalizedStageKey: "proto-ideas",
+            status: "COMPLETED",
+            attempts: 9,
+            processedCount: 8,
+            producedCount: 0,
+            totals: {
+              processedCount: 8,
+              completedCount: 8,
+              failedCount: 0,
+              createdCount: 0,
+            },
+            history: [
+              {
+                kind: "created",
+                entityType: "proto-idea",
+                entityId: "proto-1",
+                title: "First proto idea",
+                summary: "Created a new proto-idea from the strongest source signal.",
+              },
+              {
+                kind: "created",
+                entityType: "proto-idea",
+                entityId: "proto-2",
+                title: "Second proto idea",
+                summary: "Created a new proto-idea from the strongest source signal.",
+              },
+            ],
+          },
+        }),
+        createLogEntry({
+          id: "run-finish",
+          event: "idea_foundry_pipeline_run_completed",
+          createdAt: new Date("2026-04-11T11:54:00.000Z"),
+          context: {
+            ownerUserId: "user-1",
+            runId: "run-88",
+            status: "COMPLETED",
+            completedStageCount: 4,
+            failedStageCount: 0,
+            stageStates: {
+              sources: "completed",
+              "proto-ideas": "completed",
+              "idea-candidates": "completed",
+              "curated-opportunities": "completed",
+            },
+          },
+        }),
+      ],
+    },
+  };
+
+  const result = await getIdeaFoundryPipelineRunDetail(prisma, "user-1", "run-88");
+
+  assert.equal(result.stages[0].stageKey, "proto-ideas");
+  assert.equal(result.stages[0].processedCount, 8);
+  assert.equal(result.stages[0].producedCount, 2);
+});

@@ -121,6 +121,14 @@ export interface IdeaFoundryPipelineHistoryDetail extends IdeaFoundryPipelineHis
   stages: IdeaFoundryPipelineHistoryStage[];
 }
 
+export interface IdeaFoundryPipelineScheduleResponse {
+  enabled: boolean;
+  intervalMinutes: number;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  upcomingRuns: string[];
+}
+
 export type IdeaFoundryPipelineStageKey =
   | 'sources'
   | 'proto-ideas'
@@ -367,6 +375,25 @@ export class IdeaFoundryApiService {
     return this.parseApiResponse<IdeaFoundryPipelineHistoryDetail>(
       response,
       'load the selected Idea Foundry pipeline execution detail'
+    );
+  }
+
+  async getIdeaFoundryPipelineSchedule(): Promise<IdeaFoundryPipelineScheduleResponse> {
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/pipeline/schedule`, 'GET');
+    return this.parseApiResponse<IdeaFoundryPipelineScheduleResponse>(
+      response,
+      'load the Idea Foundry pipeline schedule'
+    );
+  }
+
+  async saveIdeaFoundryPipelineSchedule(payload: {
+    enabled: boolean;
+    intervalMinutes: number;
+  }): Promise<IdeaFoundryPipelineScheduleResponse> {
+    const response = await this.requestText(`${this.apiBaseUrl}/idea-foundry/pipeline/schedule`, 'POST', payload);
+    return this.parseApiResponse<IdeaFoundryPipelineScheduleResponse>(
+      response,
+      'save the Idea Foundry pipeline schedule'
     );
   }
 

@@ -29,6 +29,7 @@ package "Agent Experience Layer" {
   [Agent Test Admin Screen]
   [Logs Admin Screen]
   [Pipeline History Screen]
+  [Pipeline Schedule Modal]
   [Global Help Widget]
   [Support Dashboard Screen]
   [Support API]
@@ -77,6 +78,7 @@ package "Agent Testing Framework" {
 
 package "Deterministic Services" {
   [Prospecting Runtime Scheduler]
+  [Idea Foundry Pipeline Schedule Runtime]
   [Idea Foundry Pipeline Executor]
   [Prospecting Execution Service]
   [Proto-Idea Extraction Service]
@@ -172,12 +174,14 @@ package "AWS Production Deployment" {
 [Idea Evaluation API] --> [Gateway Registry Preflight] : verify requested agent is registered before evaluation runs
 [Node Control Plane API] --> [Audit Logs] : persist gateway request traces, raw LLM output, and parsed JSON output for agent-driven workflows
 [Node Control Plane API] --> [Prospecting Runtime Scheduler] : start hourly prospecting runtime loop
+[Node Control Plane API] --> [Idea Foundry Pipeline Schedule Runtime] : start persisted Idea Foundry pipeline schedule loop
 [Node Control Plane API] --> [Idea Foundry Pipeline Executor] : start and track backend-owned ordered stage execution across the pipeline
 [Node Control Plane API] --> [Prospecting Execution Service] : execute latest saved prospecting strategy and close the review-feedback loop
 [Node Control Plane API] --> [Proto-Idea Extraction Service] : load persisted proto-ideas for pipeline reads
 [Node Control Plane API] --> [Idea Refinement Service] : load persisted idea candidates for pipeline reads
 [Node Control Plane API] --> [Idea Evaluation Service] : load evaluation queues, curated opportunities, and run the final quality gate
 [Prospecting Runtime Scheduler] --> [Prospecting Execution Service] : run hourly prospecting optimization cycles
+[Idea Foundry Pipeline Schedule Runtime] --> [Idea Foundry Pipeline Executor] : trigger full pipeline runs when saved cadence rows become due
 [Idea Foundry Pipeline Executor] --> [Prospecting Execution Service] : execute the source stage once per pipeline run
 [Idea Foundry Pipeline Executor] --> [Proto-Idea Extraction Service] : repeat extraction passes until no pending source work remains
 [Idea Foundry Pipeline Executor] --> [Idea Refinement Service] : repeat refinement passes until no pending proto-ideas remain
@@ -210,6 +214,8 @@ package "AWS Production Deployment" {
 [Logs Admin Screen] --> [Node Control Plane API] : search backend logs, filter by scope, timed refresh
 [Angular UI] --> [Pipeline History Screen]
 [Pipeline History Screen] --> [Idea Foundry Pipeline API] : list recorded runs and inspect one execution with per-stage change detail
+[Pipeline History Screen] --> [Pipeline Schedule Modal] : open the cadence editor and preview next scheduled runs
+[Pipeline Schedule Modal] --> [Idea Foundry Pipeline API] : load and save persisted pipeline schedule settings
 [Angular UI] --> [Global Help Widget]
 [Global Help Widget] --> [Support API] : ask product questions, report bugs, receive ticket ids
 [Angular UI] --> [Support Dashboard Screen]

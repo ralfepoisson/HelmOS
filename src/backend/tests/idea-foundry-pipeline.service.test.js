@@ -137,6 +137,45 @@ test("idea foundry pipeline executor can start from a requested stage and skip e
   assert.deepEqual(result.stageResults.map((entry) => entry.key), ["idea-refinement"]);
 });
 
+test("idea foundry pipeline executor runs the sources stage only once even when it produces results", async () => {
+  const stageCalls = [];
+  const executor = createIdeaFoundryPipelineExecutor({
+    stages: [
+      {
+        key: "sources",
+        repeatWhileProgress: false,
+        run: async () => {
+          stageCalls.push("sources");
+          return {
+            runtime: {
+              resultRecordCount: 30,
+            },
+          };
+        },
+        mapResult: (result) => ({
+          processedCount: Number(result?.runtime?.resultRecordCount ?? 0) > 0 ? 1 : 0,
+          completedCount: 1,
+          failedCount: 0,
+          resultRecordCount: Number(result?.runtime?.resultRecordCount ?? 0),
+        }),
+      },
+      {
+        key: "proto-idea",
+        run: async () => {
+          stageCalls.push("proto-idea");
+          return { processedCount: 0, completedCount: 0, failedCount: 0 };
+        },
+      },
+    ],
+  });
+
+  const result = await executor.execute({}, {}, {});
+
+  assert.deepEqual(stageCalls, ["sources", "proto-idea"]);
+  assert.equal(result.stageResults[0].attempts, 1);
+  assert.equal(result.stageResults[0].producedCount, 30);
+});
+
 test("idea foundry pipeline runtime starts an asynchronous run and updates status when it completes", async () => {
   let releaseExecution;
   const executor = {

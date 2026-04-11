@@ -197,6 +197,7 @@ Current implementation note:
 * Search stage filters come directly from the persisted record type, while tag filters are derived from evaluation classification data already stored on idea candidates and curated opportunities
 * Clicking any search card now opens an `Idea Profile` that reconstructs lineage from the persisted source, proto-idea, idea candidate, and curated opportunity relationships and surfaces whatever metadata is currently available for that stage
 * Administrators can now open a dedicated `Pipeline History` screen from the top-nav admin menu to inspect past pipeline executions; each run is listed by timestamp and the detail view shows per-stage processed/produced counts plus item-level change history derived from durable `idea-foundry` audit logs
+* That same admin surface now includes a pipeline configuration modal with a cog button between `Refresh` and `Run Pipeline`; it persists a per-admin schedule, previews the next five run times from the chosen cadence, and a backend runtime triggers full pipeline runs when those due slots arrive
 
 ---
 
