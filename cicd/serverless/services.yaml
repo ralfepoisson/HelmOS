@@ -28,6 +28,9 @@ Parameters:
   LiteLlmDesiredCount:
     Type: Number
     Default: 1
+  IdeaFoundrySchedulePassScheduleExpression:
+    Type: String
+    Default: rate(5 minutes)
   NodeApiCpu:
     Type: Number
     Default: 512
@@ -370,6 +373,77 @@ Resources:
             - ","
             - Fn::ImportValue: !Sub "${FoundationStackName}-PublicSubnetIds"
       TaskDefinition: !Ref LiteLlmTaskDefinition
+
+  IdeaFoundrySchedulePassEventsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: run-idea-foundry-schedule-pass-task
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                Resource: !Ref NodeApiTaskDefinition
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !Sub
+                      - "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}"
+                      - ClusterName:
+                          Fn::ImportValue: !Sub "${FoundationStackName}-ClusterName"
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - Fn::ImportValue: !Sub "${FoundationStackName}-ExecutionRoleArn"
+                  - Fn::ImportValue: !Sub "${FoundationStackName}-AppTaskRoleArn"
+                Condition:
+                  StringLike:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+
+  IdeaFoundrySchedulePassRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Run the Idea Foundry schedule catch-up pass on a short cadence.
+      ScheduleExpression: !Ref IdeaFoundrySchedulePassScheduleExpression
+      State: ENABLED
+      Targets:
+        - Id: idea-foundry-schedule-pass
+          Arn: !Sub
+            - "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}"
+            - ClusterName:
+                Fn::ImportValue: !Sub "${FoundationStackName}-ClusterName"
+          RoleArn: !GetAtt IdeaFoundrySchedulePassEventsRole.Arn
+          EcsParameters:
+            LaunchType: FARGATE
+            PlatformVersion: LATEST
+            TaskCount: 1
+            TaskDefinitionArn: !Ref NodeApiTaskDefinition
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: ENABLED
+                SecurityGroups:
+                  - Fn::ImportValue: !Sub "${FoundationStackName}-EcsTaskSecurityGroupId"
+                Subnets: !Split
+                  - ","
+                  - Fn::ImportValue: !Sub "${FoundationStackName}-PublicSubnetIds"
+          Input: |
+            {
+              "containerOverrides": [
+                {
+                  "name": "node-api",
+                  "command": ["npm", "run", "idea-foundry:pipeline:schedule:run"]
+                }
+              ]
+            }
 
 Outputs:
   NodeApiTaskDefinitionArn:

@@ -3,6 +3,7 @@ const { randomUUID } = require("node:crypto");
 const { createLogEntry } = require("./log-entry.service");
 
 const DEFAULT_INTERVAL_MINUTES = 60;
+const DEFAULT_ADMIN_INTERVAL_MINUTES = 24 * 60;
 const DEFAULT_POLL_MS = 60_000;
 const DEFAULT_UPCOMING_RUN_COUNT = 5;
 
@@ -91,6 +92,24 @@ function computeNextRunAt(enabled, intervalMinutes, currentTime) {
   return new Date(baseTime.getTime() + intervalMinutes * 60 * 1000);
 }
 
+function computeAnchoredNextRunAt(schedule, triggeredAt) {
+  const intervalMinutes = normalizeIntervalMinutes(schedule?.intervalMinutes);
+  const intervalMs = intervalMinutes * 60 * 1000;
+  const actualTriggeredAt = toDate(triggeredAt) ?? new Date();
+  const scheduledNextRunAt = toDate(schedule?.nextRunAt);
+
+  if (!scheduledNextRunAt) {
+    return computeNextRunAt(true, intervalMinutes, actualTriggeredAt);
+  }
+
+  let nextRunAt = new Date(scheduledNextRunAt.getTime() + intervalMs);
+  while (nextRunAt.getTime() <= actualTriggeredAt.getTime()) {
+    nextRunAt = new Date(nextRunAt.getTime() + intervalMs);
+  }
+
+  return nextRunAt;
+}
+
 async function ensureIdeaFoundryPipelineScheduleTable(prisma) {
   if (!prisma || typeof prisma.$executeRawUnsafe !== "function") {
     return;
@@ -172,7 +191,51 @@ async function upsertPipelineScheduleRecord(prisma, ownerUserId, data) {
   return normalizeScheduleRecord(Array.isArray(rows) ? rows[0] : null);
 }
 
+async function ensureDefaultAdminPipelineSchedules(prisma, currentTime) {
+  if (!prisma || typeof prisma.$queryRawUnsafe !== "function") {
+    return [];
+  }
+
+  await ensureIdeaFoundryPipelineScheduleTable(prisma);
+  const timestamp = toDate(currentTime) ?? new Date();
+  const nextRunAt = computeNextRunAt(true, DEFAULT_ADMIN_INTERVAL_MINUTES, timestamp);
+  const rows = await prisma.$queryRawUnsafe(
+    `
+      INSERT INTO idea_foundry_pipeline_schedules (
+        id,
+        owner_user_id,
+        enabled,
+        interval_minutes,
+        last_run_at,
+        next_run_at,
+        updated_at
+      )
+      SELECT
+        gen_random_uuid(),
+        users.id,
+        TRUE,
+        $2::integer,
+        NULL,
+        $3::timestamptz,
+        $1::timestamptz
+      FROM users
+      LEFT JOIN idea_foundry_pipeline_schedules schedules
+        ON schedules.owner_user_id = users.id
+      WHERE users.app_role = 'ADMIN'
+        AND users.is_active = TRUE
+        AND schedules.owner_user_id IS NULL
+      RETURNING id, owner_user_id, enabled, interval_minutes, last_run_at, next_run_at, updated_at
+    `,
+    timestamp,
+    DEFAULT_ADMIN_INTERVAL_MINUTES,
+    nextRunAt,
+  );
+
+  return (Array.isArray(rows) ? rows : []).map((row) => normalizeScheduleRecord(row)).filter(Boolean);
+}
+
 const testOnly = {
+  ensureDefaultAdminPipelineSchedules,
   upsertPipelineScheduleRecord,
 };
 
@@ -261,7 +324,7 @@ async function persistScheduleAfterTrigger(prisma, schedule, triggeredAt) {
   }
 
   const timestamp = toDate(triggeredAt) ?? new Date();
-  const nextRunAt = computeNextRunAt(true, schedule.intervalMinutes, timestamp);
+  const nextRunAt = computeAnchoredNextRunAt(schedule, timestamp);
   const rows = await prisma.$queryRawUnsafe(
     `
       UPDATE idea_foundry_pipeline_schedules
@@ -298,13 +361,31 @@ function createIdeaFoundryPipelineScheduleRuntime({
 
   async function tick() {
     if (draining || !pipelineRuntime || typeof pipelineRuntime.start !== "function") {
-      return;
+      return {
+        checkedAt: toIsoString(now()),
+        dueScheduleCount: 0,
+        claimedScheduleCount: 0,
+        startedRunCount: 0,
+        skippedAlreadyRunningCount: 0,
+        triggeredScheduleIds: [],
+        startedOwnerUserIds: [],
+      };
     }
 
     draining = true;
     try {
       const timestamp = now();
+      await testOnly.ensureDefaultAdminPipelineSchedules(prisma, timestamp);
       const dueSchedules = await loadDueSchedules(prisma, timestamp);
+      const summary = {
+        checkedAt: toIsoString(timestamp),
+        dueScheduleCount: dueSchedules.length,
+        claimedScheduleCount: 0,
+        startedRunCount: 0,
+        skippedAlreadyRunningCount: 0,
+        triggeredScheduleIds: [],
+        startedOwnerUserIds: [],
+      };
 
       for (const schedule of dueSchedules) {
         if (!schedule?.id || inFlightScheduleIds.has(schedule.id)) {
@@ -316,6 +397,7 @@ function createIdeaFoundryPipelineScheduleRuntime({
           continue;
         }
 
+        summary.claimedScheduleCount += 1;
         inFlightScheduleIds.add(schedule.id);
         try {
           const result = await pipelineRuntime.start(prisma, agentGatewayClient, {
@@ -324,9 +406,15 @@ function createIdeaFoundryPipelineScheduleRuntime({
           });
 
           if (!result?.started) {
+            summary.skippedAlreadyRunningCount += 1;
             continue;
           }
 
+          summary.startedRunCount += 1;
+          summary.triggeredScheduleIds.push(schedule.id);
+          if (schedule.ownerUserId) {
+            summary.startedOwnerUserIds.push(schedule.ownerUserId);
+          }
           await persistScheduleAfterTriggerImpl(prisma, schedule, timestamp);
           await logEntryWriter(prisma, {
             level: "info",
@@ -345,6 +433,8 @@ function createIdeaFoundryPipelineScheduleRuntime({
           inFlightScheduleIds.delete(schedule.id);
         }
       }
+
+      return summary;
     } finally {
       draining = false;
     }
@@ -367,7 +457,7 @@ function createIdeaFoundryPipelineScheduleRuntime({
       }
 
       try {
-        await tick();
+        return await tick();
       } catch (error) {
         if (isPipelineScheduleSchemaMissing(error)) {
           schemaReady = false;
@@ -384,7 +474,7 @@ function createIdeaFoundryPipelineScheduleRuntime({
     },
     async triggerProcessingPass() {
       try {
-        await tick();
+        return await tick();
       } catch (error) {
         if (isPipelineScheduleSchemaMissing(error)) {
           schemaReady = false;
@@ -416,6 +506,7 @@ module.exports = {
   __testOnly: testOnly,
   buildUpcomingPipelineRuns,
   claimScheduleRun,
+  computeAnchoredNextRunAt,
   createIdeaFoundryPipelineScheduleRuntime,
   getIdeaFoundryPipelineSchedule,
   persistScheduleAfterTrigger,
